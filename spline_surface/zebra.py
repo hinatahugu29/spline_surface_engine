@@ -65,6 +65,21 @@ def update_material(settings):
     nodes["frequency"].inputs[1].default_value = settings.zebra_frequency
 
 
+def real_materials(ob):
+    """`ob`'s materials as if zebra were off, even while it's on.
+
+    Use this instead of `ob.data.materials` when copying a source's
+    materials onto a newly created patch, so a patch built while zebra is
+    active doesn't inherit the display-only stripe material in place of
+    the source's real ones.
+    """
+    if ORIG_KEY in ob:
+        names = json.loads(ob[ORIG_KEY])
+        return [bpy.data.materials.get(n) if n else None for n in names]
+    mats = getattr(ob.data, "materials", ())
+    return [m for m in mats if m is None or m.name != MAT_NAME]
+
+
 def is_on(ob):
     mats = getattr(ob.data, "materials", ())
     return ORIG_KEY in ob or any(m is not None and m.name == MAT_NAME for m in mats)

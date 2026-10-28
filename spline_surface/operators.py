@@ -19,6 +19,7 @@ from .core.extend import bezier_orders, extend_net
 from .core.loft import loft_net, order_sections
 from .core.nurbs import eval_points
 from . import pick
+from . import zebra
 
 META_KEY = "spline_surface"
 # Patches the add-on itself just rewrote: Linked Edit must not treat them as user edits.
@@ -631,7 +632,7 @@ class SS_OT_extend_edge(bpy.types.Operator):
         except ValueError as e:
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
-        for mat in source.data.materials:
+        for mat in zebra.real_materials(source):
             cu.materials.append(mat)
         ob = bpy.data.objects.new(source.name + "_ext", cu)
         context.collection.objects.link(ob)
@@ -794,7 +795,7 @@ class _EdgePairPicker:
         except ValueError as e:
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
-        for mat in sources[0].data.materials:
+        for mat in zebra.real_materials(sources[0]):
             cu.materials.append(mat)
         ob = bpy.data.objects.new(name, cu)
         context.collection.objects.link(ob)
@@ -1060,7 +1061,7 @@ class SS_OT_fill_hole(bpy.types.Operator):
             name = meta["sources"][0] + "_fill"
             cu = build_surface_data(name, net, settings.resolution, orders)
             if patch_src is not None:
-                for mat in patch_src.data.materials:
+                for mat in zebra.real_materials(patch_src):
                     cu.materials.append(mat)
             ob = bpy.data.objects.new(name, cu)
             context.collection.objects.link(ob)
@@ -1138,7 +1139,7 @@ class SS_OT_to_mesh(bpy.types.Operator):
         if self.weld:
             me = weld_mesh(surfaces[0].name + "_mesh", surfaces, settings.mesh_resolution, context)
             for ob in surfaces:
-                for mat in ob.data.materials:
+                for mat in zebra.real_materials(ob):
                     if mat is not None and mat.name not in me.materials:
                         me.materials.append(mat)
             mob = bpy.data.objects.new(me.name, me)
@@ -1302,7 +1303,7 @@ class SS_OT_offset_surface(bpy.types.Operator):
                 self.report({'WARNING'}, "%s: %s" % (src.name, e))
                 continue
             worst = max(worst, err)
-            for mat in src.data.materials:
+            for mat in zebra.real_materials(src):
                 cu.materials.append(mat)
             ob = bpy.data.objects.new(cu.name, cu)
             (src.users_collection[0] if src.users_collection

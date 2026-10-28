@@ -13,6 +13,7 @@ import bpy
 import numpy as np
 
 from . import pick
+from . import zebra
 from .bridge.write_surface import build_surface_data
 from .core.continuity import find_shared_edge, grade, match_net, measure
 from .core.linked import (chain_polyline, deform, edge_order, edge_row, falloff_field,
@@ -422,7 +423,7 @@ class SS_OT_merge_patches(bpy.types.Operator):
         except ValueError as e:
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
-        for mat in obs[0].data.materials:
+        for mat in zebra.real_materials(obs[0]):
             cu.materials.append(mat)
         ob = bpy.data.objects.new("Merged", cu)
         context.collection.objects.link(ob)

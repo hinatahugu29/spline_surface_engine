@@ -4,7 +4,7 @@ import json
 import bpy
 import numpy as np
 
-from . import live
+from . import live, zebra
 from .bridge.write_surface import build_surface_data
 from .core.mirror import edges_on_plane
 from .operators import (META_KEY, _make_active, compute_from_meta, hand_edited, replace_net,
@@ -94,7 +94,7 @@ class SS_OT_mirror_group(bpy.types.Operator):
                 except ValueError as e:
                     self.report({'WARNING'}, "%s: %s" % (ob.name, e))
                     continue
-                for mat in ob.data.materials:
+                for mat in zebra.real_materials(ob):
                     cu.materials.append(mat)
                 mob = bpy.data.objects.new(cu.name, cu)
                 for coll in ob.users_collection:

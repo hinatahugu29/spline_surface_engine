@@ -5,7 +5,7 @@ import bpy
 import numpy as np
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 
-from . import live, pick
+from . import live, pick, zebra
 from .bridge.write_surface import build_surface_data
 from .core.continuity import find_shared_edge
 from .core.nurbs import eval_points
@@ -235,7 +235,7 @@ class SS_OT_split_patch(bpy.types.Operator):
             store_meta(source, {"method": "raw", "sources": [], "net": A.tolist(),
                                 "orders": list(oa)})
             cu = build_surface_data(source.name + "_split", B, settings.resolution, ob_)
-            for mat in source.data.materials:
+            for mat in zebra.real_materials(source):
                 cu.materials.append(mat)
             piece = bpy.data.objects.new(cu.name, cu)
             (source.users_collection[0] if source.users_collection
@@ -247,7 +247,7 @@ class SS_OT_split_patch(bpy.types.Operator):
                 meta = dict(_meta(m), sources=[piece.name])
                 meta.pop("fp", None)
                 mcu = build_surface_data(piece.name + "_mirror", B, settings.resolution, ob_)
-                for mat in m.data.materials:
+                for mat in zebra.real_materials(m):
                     mcu.materials.append(mat)
                 mob = bpy.data.objects.new(mcu.name, mcu)
                 (m.users_collection[0] if m.users_collection
