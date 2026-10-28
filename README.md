@@ -63,6 +63,7 @@ Extend Edge・Corner Fill・Bridge Edges・Fill Hole・Split Patch は、押す�
 - 手で編集した面は「手で直した」と記録され、Regenerate や Live Update で上書きされないようにしています（Regenerate を押した場合は警告が出て、Ctrl+Z で戻せます）
 - 対応する面：Endpoint がオン、Cyclic なし、制御点の Weight がすべて 1
 - Corner Fill の頂点と、4辺以外の Fill Hole の中心付近は、わずかに近似になります
+- Fill Hole の Layout：輪郭に「角」がない穴（筒の端のフタなど）は自動で Radial（中心に集まるドーム状の面）になります。Grid / Radial は調整パネルで切り替え可。Radial の境目は G1（折れなし）で、曲率までは揃いきらないことがあります
 - Split Patch で切った面は、作り方の記録を持たない「固定された面」になります
 - Offset Surface は近似（標準で誤差は距離の1%程度以下）。元の面に連動します
 

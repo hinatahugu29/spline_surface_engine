@@ -34,11 +34,18 @@ def find_shared_edge(Pa, Pb, tol, orders_a=None, orders_b=None, samples=16):
         C, (ka, _) = _framed(P, orders, e)
         return eval_curve(C[:, -1], ka, t)
 
+    def collapsed(c):  # a patch edge squeezed to a point (pole of a cap, corner fill)
+        return np.linalg.norm(np.diff(c, axis=0), axis=1).sum() <= tol
+
     best = None
     for ea in EDGES:
         ca = curve(Pa, orders_a, ea)
+        if collapsed(ca):
+            continue
         for eb in EDGES:
             cb = curve(Pb, orders_b, eb)
+            if collapsed(cb):
+                continue
             for rev in (False, True):
                 gap = np.linalg.norm(ca - (cb[::-1] if rev else cb), axis=1).mean()
                 if best is None or gap < best[3]:

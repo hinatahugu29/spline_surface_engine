@@ -450,6 +450,41 @@ def test_curve_network_top_view():
                 assert grade(measure(A, B, *sh[:3], oa, ob_)) == 'G2'
 
 
+def test_fill_tube_end_cap():
+    """Closing the open end of a tube (smooth outline) goes radial and stays G1."""
+    from core.bezier import bernstein
+    from core.fill import fill_patches, side_from_patch
+    t = np.linspace(0, 1, 15)
+    pinv = np.linalg.pinv(bernstein(5, t))
+    ring = []
+    for q in range(4):  # an oval cross-section in the yz plane, extruded along +x
+        a = (q + t) * np.pi / 2
+        y, z = 1.5 * np.cos(a), np.sin(a)
+        X = 0.0 + 2.0 * t[None, :] + 0 * y[:, None]
+        Y, Z = y[:, None] + 0 * X, z[:, None] + 0 * X
+        ring.append(np.stack([pinv @ C @ pinv.T for C in (X, Y, Z)], axis=-1))
+    sides = [side_from_patch(P, (6, 6), 'V0') for P in ring]  # the x = 0 end
+    parts = fill_patches(sides, 'G2', tol=1e-3)
+    assert len(parts) >= 4
+    g = np.linspace(0.02, 0.98, 30)
+    for net, o in parts:  # tangent plane at the outline must contain the x axis
+        du = nurbs.eval_points(net, o, g, np.zeros_like(g), 1, 0)
+        dv = nurbs.eval_points(net, o, g, np.zeros_like(g), 0, 1)
+        n = np.cross(du, dv)
+        n /= np.linalg.norm(n, axis=1)[:, None]
+        assert np.degrees(np.arcsin(np.abs(n[:, 0]).max())) < 0.1
+        assert nurbs.eval_points(net, o, [0.5], [0.5])[0][0] < -0.3  # bulges outwards
+    for j in range(len(parts)):  # neighbouring cap patches meet with G1
+        (A, oa), (B, ob_) = parts[j], parts[(j + 1) % len(parts)]
+        v = np.linspace(0.02, 0.95, 20)
+        na = np.cross(nurbs.eval_points(A, oa, np.ones_like(v), v, 1, 0),
+                      nurbs.eval_points(A, oa, np.ones_like(v), v, 0, 1))
+        nb = np.cross(nurbs.eval_points(B, ob_, np.zeros_like(v), v, 1, 0),
+                      nurbs.eval_points(B, ob_, np.zeros_like(v), v, 0, 1))
+        cosang = np.abs((na * nb).sum(1)) / np.linalg.norm(na, axis=1) / np.linalg.norm(nb, axis=1)
+        assert np.degrees(np.arccos(np.clip(cosang, 0, 1))).max() < 0.1
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

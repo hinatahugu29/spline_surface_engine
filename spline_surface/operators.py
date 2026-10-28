@@ -115,7 +115,8 @@ def compute_fill(meta, settings):
         size = max(size, np.ptp(pts, axis=0).max())
         sides.append(side)
     return fill_patches(sides, meta["continuity"], meta.get("tension", 1.0),
-                        tol=settings.gap_tolerance * 0.1 * size + 1e-6)
+                        tol=settings.gap_tolerance * 0.1 * size + 1e-6,
+                        layout=meta.get("layout", 'AUTO'))
 
 
 def compute_blend(sources, meta, settings):
@@ -916,6 +917,11 @@ class SS_OT_fill_hole(bpy.types.Operator):
     tension: bpy.props.FloatProperty(
         name="Tension", default=1.0, min=0.05, max=3.0,
         description="How far the neighbours' tangents reach into the fill")
+    layout: bpy.props.EnumProperty(
+        name="Layout", default='AUTO',
+        items=[('AUTO', "Auto", "Radial when the outline has smooth corners, grid otherwise"),
+               ('GRID', "Grid", "One patch for four sides, otherwise one per corner"),
+               ('RADIAL', "Radial", "One patch per side meeting at a centre (caps, tube ends)")])
 
     @classmethod
     def poll(cls, context):
@@ -968,7 +974,7 @@ class SS_OT_fill_hole(bpy.types.Operator):
         self._preview = []
         keys = self._chosen + ([self._hover] if self._hover and self._hover not in self._chosen
                                else [])
-        if len(keys) >= 3:
+        if len(keys) >= 2:
             self._set_picks(keys)
             try:
                 for net, orders in compute_fill(self._meta(), context.scene.spline_surface):
@@ -1009,8 +1015,8 @@ class SS_OT_fill_hole(bpy.types.Operator):
             self._header(context)
             self._update_preview(context)
         elif event.type in {'RET', 'NUMPAD_ENTER', 'SPACE'} and event.value == 'PRESS':
-            if len(self._chosen) < 3:
-                self.report({'WARNING'}, "Pick at least three edges")
+            if len(self._chosen) < 2:
+                self.report({'WARNING'}, "Pick at least two edges")
                 return {'RUNNING_MODAL'}
             self._set_picks(self._chosen)
             self._finish(context)
@@ -1027,13 +1033,13 @@ class SS_OT_fill_hole(bpy.types.Operator):
         pairs = [p.rsplit(":", 1) for p in self.picks.split(";") if p]
         return {"method": "fill", "sources": [p[0] for p in pairs],
                 "edges": [p[1] for p in pairs],
-                "continuity": self.continuity, "tension": self.tension}
+                "continuity": self.continuity, "tension": self.tension, "layout": self.layout}
 
     def execute(self, context):
         settings = context.scene.spline_surface
         meta = self._meta()
-        if len(meta["sources"]) < 3:
-            self.report({'ERROR'}, "Pick at least three edges")
+        if len(meta["sources"]) < 2:
+            self.report({'ERROR'}, "Pick at least two edges")
             return {'CANCELLED'}
         try:
             parts = compute_fill(meta, settings)

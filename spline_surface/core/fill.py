@@ -110,10 +110,12 @@ def _side_normal(side, t=0.5):
     return sign * np.cross(dE, basis_matrix(n, k, t)[0] @ T)
 
 
-def quad_net(loop, continuity='G2', tension=1.0, min_points=MIN_POINTS):
+def quad_net(loop, continuity='G2', tension=1.0, min_points=MIN_POINTS, g1_first=False):
     """One patch from four loop-oriented sides (c0->c1, c1->c2, c2->c3, c3->c0).
 
-    More points (min_points) keep the averaged corner zones small.
+    More points (min_points) keep the averaged corner zones small. With
+    g1_first, tangent rows win over curvature rows where sides overlap (for
+    sides whose data disagree at the corners, e.g. radial caps).
     """
     s0, s1, s2, s3 = loop
     # Coons sides: bottom c0->c1, right c1->c2, top c3->c2, left c0->c3.
@@ -155,10 +157,14 @@ def quad_net(loop, continuity='G2', tension=1.0, min_points=MIN_POINTS):
                 alpha = rows_[3]  # reach fixed by the caller (N-sided quads)
             else:
                 alpha = tension * width / max(np.linalg.norm(T, axis=1).mean(), 1e-12)
-            rows = _taylor_rows(E, T, A, n, k, alpha, continuity)
+            # A side without curvature rows (A None) is joined with G1 only.
+            rows = _taylor_rows(E, T, A, n, k, alpha, 'G1' if A is None else continuity)
             for j, r in enumerate(rows, 1):
-                acc[inner(j)] += r[1:-1]
-                cnt[inner(j)] += 1
+                # g1_first: where sides overlap near a corner, tangent rows (G1)
+                # win over curvature rows (G2): a kink shows more than a jump.
+                w = 1e-3 if (g1_first and j > 1) else 1.0
+                acc[inner(j)] += w * r[1:-1]
+                cnt[inner(j)] += w
         mask = cnt[..., 0] > 0
         net[mask] = acc[mask] / cnt[mask]
     return net, (ku, kv)
@@ -262,23 +268,160 @@ def _star_quads(loop, ref, continuity, tension):
     return quads
 
 
-def fill_patches(sides, continuity='G2', tension=1.0, tol=1e-3):
+def _corner_turn(loop):
+    """Turning angle (deg) of the boundary at every corner c_j (between side j-1 and j)."""
+    out = []
+    for j in range(len(loop)):
+        (Ep, _, _), kp = loop[j - 1][0][:3], loop[j - 1][1]
+        (Ej, _, _), kj = loop[j][0][:3], loop[j][1]
+        a = basis_matrix(len(Ep), kp, 1.0, 1)[0] @ Ep
+        b = basis_matrix(len(Ej), kj, 0.0, 1)[0] @ Ej
+        cosang = np.dot(a, b) / max(np.linalg.norm(a) * np.linalg.norm(b), 1e-12)
+        out.append(np.degrees(np.arccos(np.clip(cosang, -1.0, 1.0))))
+    return out
+
+
+def _side_pieces(side, count):
+    """Cut a loop-oriented side into `count` equal parameter pieces."""
+    if count <= 1:
+        return [side]
+    from .split import _fit_piece
+    rows, k, sign = side
+    n = len(rows[0])
+    spans = n - k + 1
+    n_piece = max(spans // count, 1) + 1 + k - 1 if spans > 1 else n
+    have = [R for R in rows if _is_rows(R)]
+    stack = np.stack(have, axis=1)
+    out = []
+    for i in range(count):
+        piece, _ = _fit_piece(stack, k, i / count, (i + 1) / count, n_piece)
+        it = iter(piece[:, c] for c in range(piece.shape[1]))
+        out.append(([next(it) if _is_rows(R) else R for R in rows], k, sign))
+    return out
+
+
+def _balanced(loop, sectors=6):
+    """Split long sides so the radial patches cover similar parts of the boundary."""
+    lengths = []
+    for (rows, k, _) in loop:
+        pts = basis_matrix(len(rows[0]), k, np.linspace(0, 1, 50)) @ rows[0]
+        lengths.append(np.linalg.norm(np.diff(pts, axis=0), axis=1).sum())
+    total = sum(lengths)
+    target = max(sectors, len(loop))
+    out = []
+    for side, length in zip(loop, lengths):
+        out += _side_pieces(side, max(1, int(round(length / total * target))))
+    return out
+
+
+def _radial_patches(loop, continuity, tension):
+    """One patch per side, all meeting at a centre pole (a cap / dome).
+
+    Used when the boundary has smooth "corners" (e.g. closing the open end
+    of a tube), where quads would be crushed. Patch j: its side, two spokes
+    from the side's ends to the centre, and a collapsed top at the centre.
+    Neighbouring patches share each spoke with a common cross direction (the
+    boundary tangent at the spoke's foot) fading to zero at the pole.
+    """
+    loop = _balanced(loop)
+    N = len(loop)
+    ends = []
+    for side in loop:
+        (E, T, A), k = side[0][:3], side[1]
+        n = len(E)
+        d0, d1 = basis_matrix(n, k, 0.0, 1)[0] @ E, basis_matrix(n, k, 1.0, 1)[0] @ E
+        t0 = None if T is None else basis_matrix(n, k, 0.0)[0] @ T
+        t1 = None if T is None else basis_matrix(n, k, 1.0)[0] @ T
+        ends.append((E[0], d0, d1, t0, t1))
+    corners = [e[0] for e in ends]
+    c0 = np.mean(corners, axis=0)
+    # Cross tangent at each corner: mean of the two sides' (curve sides: head inwards).
+    t_corner = []
+    for j in range(N):
+        ts = [v for v in (ends[j][3], ends[j - 1][4]) if v is not None]
+        t_corner.append(np.mean(ts, axis=0) if ts else c0 - corners[j])
+    unit = [t / max(np.linalg.norm(t), 1e-12) for t in t_corner]
+    axis = np.mean(unit, axis=0)
+    if np.linalg.norm(axis) < 1e-6:  # flat-ish ring: use the plane normal
+        axis = np.cross(corners[1] - corners[0], corners[2 % N] - corners[0])
+    axis /= max(np.linalg.norm(axis), 1e-12)
+    # Pole: over the centroid of the whole boundary, as far out along the cap's
+    # axis as the boundary is wide (a hemisphere-like cap).
+    samples = np.concatenate([basis_matrix(len(sd[0][0]), sd[1], np.linspace(0, 1, 40))
+                              @ sd[0][0] for sd in loop])
+    c0 = samples.mean(axis=0)
+    radius = np.linalg.norm(samples - c0, axis=1).mean()
+    centre = c0 + axis * radius * tension
+    L = np.mean([np.linalg.norm(centre - c) for c in corners])
+    alpha = tension * L / max(np.mean([np.linalg.norm(t) for t in t_corner]), 1e-12)
+
+    spokes = []
+    s = np.linspace(0.0, 1.0, 6)[:, None]
+    for j in range(N):
+        c = corners[j]
+        dc = c - centre
+        dc = dc - np.dot(dc, axis) * axis
+        dc /= max(np.linalg.norm(dc), 1e-12)
+        Lj = np.linalg.norm(centre - c)
+        cubic = np.array([c, c + alpha * t_corner[j] / 3.0, centre + dc * Lj / 3.0, centre])
+        # Shared cross direction: the boundary's tangent at the corner.
+        a, b = ends[j - 1][2], ends[j][1]
+        D = a / max(np.linalg.norm(a), 1e-12) + b / max(np.linalg.norm(b), 1e-12)
+        D /= max(np.linalg.norm(D), 1e-12)
+        spokes.append((elevate_curve(cubic, 5), D * (1.0 - s)))
+
+    patches = []
+    for j in range(N):
+        rows, k, sign = loop[j]
+        n = len(rows[0])
+        side = (list(rows[:3]) + [alpha] if rows[1] is not None else list(rows[:3]), k, sign)
+        Ej, Dj = spokes[j]
+        En, Dn = spokes[(j + 1) % N]
+        lam_l = np.linalg.norm(ends[j][1])          # side j's speed at its start
+        lam_r = np.linalg.norm(ends[j][2])          # and at its end
+        # Spokes join the neighbouring cap patches with G1 (A = None): a
+        # curvature condition there would fight the boundary's own near the
+        # corners. The boundary itself keeps the requested continuity.
+        left = ([Ej, lam_l * Dj, None, 1.0], 6, 0.0)       # c_j -> centre, into patch j
+        right = ([En, -lam_r * Dn, None, 1.0], 6, 0.0)     # c_j+1 -> centre, into patch j
+        pole = ([np.repeat(centre[None], n, axis=0), None, None], k, 0.0)
+        quad = [side, right, _rev(pole), _rev(left)]
+        net, orders = quad_net(quad, continuity, tension, STAR_POINTS, g1_first=True)
+        patches.append((net, orders, _side_normal(loop[j]) if rows[1] is not None else axis))
+    return patches
+
+
+SMOOTH_CORNER = 30.0  # deg: boundary turning less than this is not a real corner
+
+
+def fill_patches(sides, continuity='G2', tension=1.0, tol=1e-3, layout='AUTO'):
     """Nets filling the hole bounded by `sides` (from side_from_patch/curve).
 
-    Returns [(net, orders)]: one patch for four sides, otherwise one per side.
+    layout: 'GRID' = one patch for four sides, else one quad per corner around
+    a centre; 'RADIAL' = one patch per side meeting at a centre pole (caps,
+    e.g. closing the end of a tube); 'AUTO' picks RADIAL when some boundary
+    "corner" is smooth (quads would be crushed there), GRID otherwise.
+    Returns [(net, orders)].
     """
     if continuity not in ('G0', 'G1', 'G2'):
         raise ValueError("continuity must be G0, G1 or G2")
-    if len(sides) < 3:
-        raise ValueError("a hole needs at least three sides")
+    if len(sides) < 2:
+        raise ValueError("a hole needs at least two sides")
     patch_first = sorted(sides, key=lambda s: s[0][1] is None)
     if patch_first[0][0][1] is None:
         raise ValueError("pick at least one patch edge (only curves: use Coons)")
     loop = order_loop(patch_first, tol)
+    if layout == 'AUTO':
+        layout = 'RADIAL' if (len(loop) < 3 or min(_corner_turn(loop)) < SMOOTH_CORNER)             else 'GRID'
+    if layout == 'RADIAL':
+        return [(_orient(net, orders, ref), orders)
+                for net, orders, ref in _radial_patches(loop, continuity, tension)]
+    if len(loop) < 3:
+        raise ValueError("two sides can only be filled radially")
     normals = [_side_normal(s) for s in loop if s[0][1] is not None]
     ref = np.sum([v / max(np.linalg.norm(v), 1e-12) for v in normals], axis=0)
     if len(loop) == 4:
-        nets = [quad_net(loop, continuity, tension)]
+        nets = [quad_net(loop, continuity, tension, STAR_POINTS)]
     else:
         nets = _star_quads(loop, ref, continuity, tension)
     return [(_orient(net, orders, ref), orders) for net, orders in nets]
