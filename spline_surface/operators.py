@@ -577,7 +577,8 @@ class SS_OT_extend_edge(bpy.types.Operator):
                                          self.continuity, context.scene.spline_surface.degree,
                                          self._nets[name][1])
                 self._preview = iso_lines(net, orders)
-            except ValueError:
+            except Exception:
+                # Preview-only: any geometry failure just means no preview.
                 pass
         context.area.tag_redraw()
 
@@ -611,7 +612,8 @@ class SS_OT_extend_edge(bpy.types.Operator):
         elif event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
             self._finish(context)
             return {'CANCELLED'}
-        elif event.type in {'MIDDLEMOUSE', 'NUMPAD_PERIOD'} or event.type.startswith('NDOF')                 or event.type.startswith('TRACKPAD'):
+        elif (event.type in {'MIDDLEMOUSE', 'NUMPAD_PERIOD'}
+                or event.type.startswith('NDOF') or event.type.startswith('TRACKPAD')):
             return {'PASS_THROUGH'}
         return {'RUNNING_MODAL'}
 
@@ -723,7 +725,8 @@ class _EdgePairPicker:
                     [bpy.data.objects[self.source_a], bpy.data.objects[self.source_b]],
                     self._meta(), context.scene.spline_surface)
                 self._preview = iso_lines(net, orders)
-            except ValueError:
+            except Exception:
+                # Preview-only: any geometry failure just means no preview.
                 pass
         context.area.tag_redraw()
 
@@ -982,7 +985,8 @@ class SS_OT_fill_hole(bpy.types.Operator):
             try:
                 for net, orders in compute_fill(self._meta(), context.scene.spline_surface):
                     self._preview += iso_lines(net, orders, count=4, samples=20)
-            except (ValueError, KeyError):
+            except Exception:
+                # Preview-only: any geometry failure just means no preview.
                 pass
         context.area.tag_redraw()
 
@@ -1071,7 +1075,7 @@ class SS_OT_fill_hole(bpy.types.Operator):
         return {'FINISHED'}
 
 
-def weld_mesh(name, surfaces, resolution):
+def weld_mesh(name, surfaces, resolution, context=None):
     """One mesh of all patches, sampled uniformly and welded along shared edges.
 
     Patches built by this add-on share the parametrisation of the edges they
@@ -1087,7 +1091,7 @@ def weld_mesh(name, surfaces, resolution):
             net, orders = world_net(ob)
         except ValueError:
             # Not a clean patch: fall back to Blender's own tessellation.
-            dg = bpy.context.evaluated_depsgraph_get()
+            dg = (context or bpy.context).evaluated_depsgraph_get()
             me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg))
             me.transform(ob.matrix_world)
             bm.from_mesh(me)
@@ -1132,7 +1136,7 @@ class SS_OT_to_mesh(bpy.types.Operator):
         surfaces = [o for o in context.selected_objects if o.type == 'SURFACE']
         created = []
         if self.weld:
-            me = weld_mesh(surfaces[0].name + "_mesh", surfaces, settings.mesh_resolution)
+            me = weld_mesh(surfaces[0].name + "_mesh", surfaces, settings.mesh_resolution, context)
             for ob in surfaces:
                 for mat in ob.data.materials:
                     if mat is not None and mat.name not in me.materials:

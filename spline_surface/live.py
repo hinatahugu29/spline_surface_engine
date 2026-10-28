@@ -6,6 +6,7 @@ group. When a source changes, everything downstream is rebuilt in dependency
 order so the seams stay exact. Patches edited by hand are left alone.
 """
 import json
+import traceback
 
 import bpy
 import numpy as np
@@ -189,6 +190,10 @@ def _on_depsgraph(scene, depsgraph):
     _state["busy"] = True
     try:
         linked.on_update(touched, ctx)
+    except Exception:
+        # Never let a geometry-math bug escape the handler: an uncaught
+        # exception here reprints on every future scene edit.
+        traceback.print_exc()
     finally:
         _state["busy"] = False
     if not settings.live_update:
@@ -223,6 +228,9 @@ def _on_depsgraph(scene, depsgraph):
         if result["error"]:
             notes.append("failed or looped: " + ", ".join(result["error"]))
         settings.live_note = "; ".join(notes)
+    except Exception:
+        traceback.print_exc()
+        settings.live_note = "live update failed (see console)"
     finally:
         _state["busy"] = False
 
