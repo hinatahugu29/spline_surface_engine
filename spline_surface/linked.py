@@ -207,8 +207,14 @@ def sync_chain(cob, context):
         moved[ob.name] = (N, Nn, orders)
     before = {n: (v[0], v[2]) for n, v in moved.items()}
     after = {n: (v[1], v[2]) for n, v in moved.items()}
+    # The chain's own patches first (in chain order), then everything else
+    # caught by the falloff, nearest to the chain first: a deterministic
+    # order, matching propagate()'s "closer wins" rule.
     chain = [g["ob"] for g in data["segments"] if g["ob"] in moved]
-    _rejoin(chain + [n for n in moved if n not in chain], before, after)
+    centre = new.mean(0)
+    rest_names = sorted((n for n in moved if n not in chain),
+                        key=lambda n: np.linalg.norm(before[n][0].mean((0, 1)) - centre))
+    _rejoin(chain + rest_names, before, after)
     for name in moved:
         _write(bpy.data.objects[name], *after[name], context)
     data["rest"] = new.tolist()
