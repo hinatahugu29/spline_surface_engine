@@ -88,6 +88,11 @@ def check_patch(ob):
     for axis in ("u", "v"):
         n = getattr(sp, "point_count_" + axis)
         k = getattr(sp, "order_" + axis)
+        if n < 2:
+            problems.append("only %d point in %s (a single curve, not a surface: extrude it "
+                            "or use Add Patch)" % (n, axis.upper()))
+        elif k > n:
+            problems.append("order %s is %d but only %d points" % (axis.upper(), k, n))
         if getattr(sp, "use_cyclic_" + axis):
             problems.append("%s is cyclic" % axis.upper())
         if not getattr(sp, "use_endpoint_" + axis):

@@ -703,6 +703,17 @@ def run():
     assert zebra_mod.is_on(newp)
     assert bpy.ops.spline_surface.zebra_toggle() == {'FINISHED'} and not sc.zebra_on
     assert not any(zebra_mod.is_on(o) for o in bpy.data.objects if o.type == 'SURFACE')
+    # a one-row "surface" (e.g. Add > Surface > NURBS Curve) is rejected, not a crash
+    bpy.ops.surface.primitive_nurbs_surface_curve_add(location=(0, -90, 0))
+    curve_surf = bpy.context.active_object
+    try:
+        world_net(curve_surf)
+    except ValueError as e:
+        print("one-row surface:", e)
+    else:
+        raise AssertionError("one-row surface accepted")
+    from spline_surface.operators import surface_edges
+    assert not any(k[0] == curve_surf.name for k in surface_edges(bpy.context))
     spline_surface.unregister()
     print("ALL OK")
 
