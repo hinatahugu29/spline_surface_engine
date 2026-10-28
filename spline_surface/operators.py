@@ -491,6 +491,9 @@ class SS_OT_check_continuity(bpy.types.Operator):
 
 
 EDGE_KEYS = ('V1', 'V0', 'U1', 'U0')
+# The only same-patch edge pairing that isn't a degenerate, corner-sharing
+# pair: a patch's two opposite edges (e.g. to close a tube into a loop).
+OPPOSITE_EDGE = {'U0': 'U1', 'U1': 'U0', 'V0': 'V1', 'V1': 'V0'}
 
 
 def edge_polyline(net, orders, edge, samples=48):
@@ -672,6 +675,11 @@ def surface_edges(context, samples=24, free_only=True):
 class _EdgePairPicker:
     """Modal two-edge picking shared by Corner Fill and Bridge Edges."""
 
+    # Bridge Edges can close a single patch's two opposite edges into a
+    # loop; Corner Fill joins two patches meeting at a corner, where that
+    # has no meaning, so it keeps the plain "different patch" rule.
+    _allow_same_patch = False
+
     def _candidates(self, context):
         return surface_edges(context)
 
@@ -719,7 +727,10 @@ class _EdgePairPicker:
 
     def _update_preview(self, context):
         self._preview = []
-        if self._first and self._hover and self._hover[0] != self._first[0]:
+        pair_ok = self._first and self._hover and (
+            self._hover[0] != self._first[0]
+            or (self._allow_same_patch and OPPOSITE_EDGE.get(self._first[1]) == self._hover[1]))
+        if pair_ok:
             self._set_pair(self._first, self._hover)
             try:
                 net, orders = self._compute(
@@ -762,8 +773,14 @@ class _EdgePairPicker:
                 context.area.tag_redraw()
                 return {'RUNNING_MODAL'}
             if self._hover[0] == self._first[0]:
-                self.report({'WARNING'}, "Pick an edge of a different patch")
-                return {'RUNNING_MODAL'}
+                if not self._allow_same_patch:
+                    self.report({'WARNING'}, "Pick an edge of a different patch")
+                    return {'RUNNING_MODAL'}
+                if OPPOSITE_EDGE.get(self._first[1]) != self._hover[1]:
+                    self.report({'WARNING'},
+                                "On the same patch, pick its opposite edge (U0/U1 or V0/V1) "
+                                "to close it into a loop")
+                    return {'RUNNING_MODAL'}
             self._set_pair(self._first, self._hover)
             self._finish(context)
             return self.execute(context)
@@ -861,6 +878,7 @@ class SS_OT_bridge_edges(_EdgePairPicker, bpy.types.Operator):
         description="How the bridge meets a curve (curves only give position, G0)")
 
     _method, _suffix, _title = "blend", "_blend", "Bridge Edges (F: flip)"
+    _allow_same_patch = True
 
     def _compute(self, sources, meta, settings):
         return compute_blend(sources, meta, settings)
