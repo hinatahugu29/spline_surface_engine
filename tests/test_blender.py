@@ -677,6 +677,32 @@ def run():
     moved = max(np.abs(world_net(o)[0] - b).max() for o, b in zip(cells, before))
     print("network follows curve", moved)
     assert moved > 0.005
+    # curve grid starter -> curve network, all inner seams G2
+    from spline_surface import zebra as zebra_mod
+    bpy.context.scene.cursor.location = (0, -60, 0)
+    assert bpy.ops.spline_surface.add_curve_grid() == {'FINISHED'}
+    assert len(bpy.context.selected_objects) == 7
+    assert bpy.ops.spline_surface.curve_network() == {'FINISHED'}
+    grid_cells = list(bpy.context.selected_objects)
+    gs = [seam(a, b) for k, a in enumerate(grid_cells) for b in grid_cells[k + 1:]]
+    gs = [g for g in gs if g is not None]
+    print("curve grid seams", gs)
+    assert len(gs) == 7 and all(g == 'G2' for g in gs)
+    # zebra: one click stripes every visible patch, new patches too, and back off
+    sc = bpy.context.scene.spline_surface
+    if sc.zebra_on:
+        bpy.ops.spline_surface.zebra_toggle()
+    for o in bpy.context.selected_objects:
+        o.select_set(False)
+    assert bpy.ops.spline_surface.zebra_toggle() == {'FINISHED'} and sc.zebra_on
+    surfs = [o for o in bpy.context.visible_objects if o.type == 'SURFACE']
+    assert surfs and all(zebra_mod.is_on(o) for o in surfs)
+    bpy.ops.spline_surface.extend_edge(source=grid_cells[0].name, edge='U0')
+    newp = bpy.context.active_object
+    vl.update()
+    assert zebra_mod.is_on(newp)
+    assert bpy.ops.spline_surface.zebra_toggle() == {'FINISHED'} and not sc.zebra_on
+    assert not any(zebra_mod.is_on(o) for o in bpy.data.objects if o.type == 'SURFACE')
     spline_surface.unregister()
     print("ALL OK")
 

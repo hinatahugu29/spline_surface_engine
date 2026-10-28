@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Spline Surface",
     "author": "hinata",
-    "version": (0, 18, 0),
+    "version": (0, 19, 0),
     "blender": (5, 0, 0),
     "location": "View3D > Sidebar > Spline Surface",
     "description": "Build smooth NURBS patches from boundary curves",
@@ -19,6 +19,7 @@ classes = (ui.classes + operators.classes + live.classes + cage.classes + symmet
 def _add_menu(self, context):
     self.layout.separator()
     self.layout.operator("spline_surface.add_patch", icon='SURFACE_NSURFACE')
+    self.layout.operator("spline_surface.add_curve_grid", icon='MESH_GRID')
 
 
 def register():
@@ -28,9 +29,11 @@ def register():
     bpy.types.VIEW3D_MT_surface_add.append(_add_menu)
     live.register()
     seams.register()
+    zebra.register()
 
 
 def unregister():
+    zebra.unregister()
     seams.unregister()
     live.unregister()
     bpy.types.VIEW3D_MT_surface_add.remove(_add_menu)

@@ -1152,6 +1152,60 @@ class SS_OT_to_mesh(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class SS_OT_add_curve_grid(bpy.types.Operator):
+    bl_idname = "spline_surface.add_curve_grid"
+    bl_label = "Add Curve Grid"
+    bl_description = ("Add a ready-made grid of crossing Bezier curves at the 3D cursor, "
+                      "selected and ready for Curve Network. Edit the curves to taste")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    count_u: bpy.props.IntProperty(name="Curves Along X", default=3, min=2, max=12)
+    count_v: bpy.props.IntProperty(name="Curves Along Y", default=4, min=2, max=12)
+    size_x: bpy.props.FloatProperty(name="Size X", default=3.0, min=0.01, unit='LENGTH')
+    size_y: bpy.props.FloatProperty(name="Size Y", default=2.0, min=0.01, unit='LENGTH')
+    bulge: bpy.props.FloatProperty(name="Bulge", default=0.4, unit='LENGTH',
+                                   description="Height of the dome the curves follow")
+    overhang: bpy.props.FloatProperty(name="Overhang", default=0.1, min=0.0, max=0.5,
+                                      subtype='FACTOR',
+                                      description="How far curves run past the outer ones")
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT'
+
+    def execute(self, context):
+        c = np.array(context.scene.cursor.location)
+        hx, hy = self.size_x / 2.0, self.size_y / 2.0
+        z = lambda x, y: self.bulge * (1 - (x / hx) ** 2) * (1 - (y / hy) ** 2)
+        made = []
+
+        def curve(name, pts):
+            cu = bpy.data.curves.new(name, 'CURVE')
+            cu.dimensions = '3D'
+            sp = cu.splines.new('BEZIER')
+            sp.bezier_points.add(len(pts) - 1)
+            for bp, co in zip(sp.bezier_points, pts):
+                bp.co = co
+                bp.handle_left_type = bp.handle_right_type = 'AUTO'
+            ob = bpy.data.objects.new(name, cu)
+            context.collection.objects.link(ob)
+            made.append(ob)
+
+        ext = 1.0 + self.overhang
+        for y in np.linspace(-hy, hy, self.count_v):     # curves running along X
+            xs = np.linspace(-hx * ext, hx * ext, 5)
+            curve("GridX", [c + (x, y, z(min(max(x, -hx), hx), y)) for x in xs])
+        for x in np.linspace(-hx, hx, self.count_u):     # curves running along Y
+            ys = np.linspace(-hy * ext, hy * ext, 5)
+            curve("GridY", [c + (x, y, z(x, min(max(y, -hy), hy))) for y in ys])
+        for o in context.selected_objects:
+            o.select_set(False)
+        for ob in made:
+            ob.select_set(True)
+        context.view_layer.objects.active = made[0]
+        return {'FINISHED'}
+
+
 class SS_OT_curve_network(bpy.types.Operator):
     bl_idname = "spline_surface.curve_network"
     bl_label = "Curve Network"
@@ -1310,5 +1364,6 @@ class SS_OT_add_patch(bpy.types.Operator):
 
 classes = (SS_OT_add_patch, SS_OT_coons, SS_OT_loft, SS_OT_snap_ends, SS_OT_regenerate,
            SS_OT_extend_edge, SS_OT_corner_fill, SS_OT_bridge_edges,
-           SS_OT_fill_hole, SS_OT_offset_surface, SS_OT_curve_network,
+           SS_OT_fill_hole, SS_OT_offset_surface, SS_OT_add_curve_grid,
+           SS_OT_curve_network,
            SS_OT_match_edge, SS_OT_check_continuity, SS_OT_to_mesh)

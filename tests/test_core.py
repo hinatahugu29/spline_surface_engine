@@ -433,6 +433,23 @@ def test_curve_network():
     assert all(np.dot(ns[0], v) > 0 for v in ns)
 
 
+def test_curve_network_top_view():
+    """Curves crossing only in top view (different heights) still make a G2 network."""
+    from core.network import build_network
+    curves, f = _network_curves()
+    for k in range(3, 7):
+        curves[k] = curves[k] + [0, 0, 0.4 + 0.05 * k]
+    cells, info = build_network(curves, tol=0.06)
+    assert len(cells) == 6 and info["max_gap"] > 0.4
+    nets = {(i, j): (net, o) for i, j, net, o in cells}
+    for (i, j), (A, oa) in nets.items():
+        for (di, dj) in ((1, 0), (0, 1)):
+            if (i + di, j + dj) in nets:
+                B, ob_ = nets[(i + di, j + dj)]
+                sh = find_shared_edge(A, B, 1e-9, oa, ob_)
+                assert grade(measure(A, B, *sh[:3], oa, ob_)) == 'G2'
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

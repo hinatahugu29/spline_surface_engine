@@ -54,21 +54,33 @@ class Curve:
         self.P = np.linalg.lstsq(B, bent, rcond=None)[0]
 
 
-def _closest(a, b, samples=400):
-    """(t_a, t_b, distance) of the closest approach between two curves."""
+def _closest(a, b, samples=400, flat=None):
+    """(t_a, t_b, distance) of the closest approach between two curves.
+
+    With `flat` (a unit normal) distances are measured after projecting out
+    that direction: curves that cross when seen along it count as crossing.
+    """
+    keep = (lambda X: X) if flat is None else (lambda X: X - np.outer(X @ flat, flat))
     t = np.linspace(0.0, 1.0, samples)
-    A, B = a(t), b(t)
+    A, B = keep(a(t)), keep(b(t))
     D = np.linalg.norm(A[:, None] - B[None], axis=2)
     i, j = np.unravel_index(np.argmin(D), D.shape)
     ta, tb = t[i], t[j]
-    for _ in range(20):  # Gauss-Newton on |a(ta) - b(tb)|^2
-        r = a(ta)[0] - b(tb)[0]
-        J = np.stack([a(ta, 1)[0], -b(tb, 1)[0]], axis=1)
+    for _ in range(20):  # Gauss-Newton on |a(ta) - b(tb)|^2 (projected)
+        r = keep(a(ta) - b(tb))[0]
+        J = np.stack([keep(a(ta, 1))[0], -keep(b(tb, 1))[0]], axis=1)
         step = np.linalg.lstsq(J, -r, rcond=None)[0]
         ta, tb = np.clip(ta + step[0], 0, 1), np.clip(tb + step[1], 0, 1)
         if np.abs(step).max() < 1e-12:
             break
-    return float(ta), float(tb), float(np.linalg.norm(a(ta)[0] - b(tb)[0]))
+    return float(ta), float(tb), float(np.linalg.norm(keep(a(ta) - b(tb))[0]))
+
+
+def sheet_normal(polylines):
+    """Normal of the plane the network mostly lies in (its thinnest direction)."""
+    P = np.concatenate(polylines)
+    _, _, vt = np.linalg.svd(P - P.mean(axis=0), full_matrices=False)
+    return vt[-1]
 
 
 def _families(n, crosses):
@@ -91,23 +103,33 @@ def _families(n, crosses):
     return colour
 
 
-def build_network(polylines, tol, continuity='G2'):
+def build_network(polylines, tol, continuity='G2', flat=True):
     """Patches skinning a curve network.
 
-    Returns ([(i, j, net, orders)], info) with cells indexed along the two
-    families; info holds the curve fit error and the largest crossing gap.
+    With `flat`, curves that cross when seen along the network's normal (e.g.
+    drawn in top view at different heights) also count as crossing; they are
+    bent to meet half way. Returns ([(i, j, net, orders)], info) with cells
+    indexed along the two families; info holds the curve fit error and the
+    largest crossing gap in 3D.
     """
     if continuity not in ('G0', 'G1', 'G2'):
         raise ValueError("continuity must be G0, G1 or G2")
     curves = [Curve(p) for p in polylines]
     n = len(curves)
+    normal = sheet_normal(polylines) if flat else None
     crosses = {}
     for a in range(n):
         for b in range(a + 1, n):
             ta, tb, d = _closest(curves[a], curves[b])
-            if d <= tol:
-                crosses[(a, b)] = (ta, tb, d)
-                crosses[(b, a)] = (tb, ta, d)
+            if d > tol and normal is not None:
+                ta, tb, d2 = _closest(curves[a], curves[b], flat=normal)
+                if d2 > tol:
+                    continue
+                d = float(np.linalg.norm(curves[a](ta)[0] - curves[b](tb)[0]))
+            elif d > tol:
+                continue
+            crosses[(a, b)] = (ta, tb, d)
+            crosses[(b, a)] = (tb, ta, d)
     colour = _families(n, crosses)
     U = [c for c in range(n) if colour[c] == 0]
     V = [c for c in range(n) if colour[c] == 1]
@@ -143,10 +165,11 @@ def build_network(polylines, tol, continuity='G2'):
     t_on_v = [[crosses[(V[i], U[j])][0] for j in range(nu)] for i in range(nv)]  # along V[i]
     # Curves drawn by hand rarely meet exactly: bend each one through its
     # crossing nodes so both families agree there (tangents included).
-    for j in range(nu):
-        curves[U[j]].pass_through(t_on_u[j], [node[i][j] for i in range(nv)])
-    for i in range(nv):
-        curves[V[i]].pass_through(t_on_v[i], [node[i][j] for j in range(nu)])
+    for _ in range(4):  # the refit leaves a small residual; a few rounds remove it
+        for j in range(nu):
+            curves[U[j]].pass_through(t_on_u[j], [node[i][j] for i in range(nv)])
+        for i in range(nv):
+            curves[V[i]].pass_through(t_on_v[i], [node[i][j] for j in range(nu)])
 
     def segment(curve, t0, t1, p0, p1):
         """The curve between two crossings as a quintic B-spline.

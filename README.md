@@ -18,10 +18,10 @@
 ## パネル
 | 欄 | 内容 |
 |---|---|
-| Create | Add Patch、Coons、Loft、Curve Network、Snap Ends（カーブの端をくっつける）、Regenerate、Fit Settings |
+| Create | Add Patch、Coons、Loft、Curve Network（＋ボタンで見本のカーブの網）、Snap Ends（カーブの端をくっつける）、Regenerate、Fit Settings |
 | Grow & Connect | Extend Edge、Bridge Edges、Match Edge、Corner Fill、Fill Hole、Split Patch、Offset Surface |
 | Group | Live Update、Select / Regenerate、Mirror Group、Cage（Add / Apply / ✕） |
-| Inspect | Zebra、Seam Colors（つなぎ目を継続性で色分け）、Check Continuity（結果の一覧） |
+| Inspect | Zebra（表示中の全部の面に一括、On の間は新しい面にも自動）、Seam Colors（つなぎ目を継続性で色分け）、Check Continuity（結果の一覧） |
 | Output | Mesh Resolution、To Mesh |
 
 ## クリックで選ぶツールの操作
@@ -46,12 +46,24 @@ Extend Edge・Corner Fill・Bridge Edges・Fill Hole・Split Patch は、押す�
 - **G1**：向きまでそろう（縞模様が折れずにつながる）
 - **G2**：曲がり具合までそろう（縞模様の太さも途切れない。車の外板の目標）
 
+## Curve Network のカーブの置き方
+まずは Curve Network の横の **＋**（Add Curve Grid）で見本の網を出し、点を動かして形を変えるのが一番簡単です。
+
+自分で描く場合のルール：
+1. **2方向に分けて描く**：横方向（例：X 方向に走るカーブ）を何本か、縦方向（Y 方向）を何本か。最低 2本×2本
+2. **全部交差させる**：横のカーブはどれも、縦のカーブ全部と交差させる。途中で終わって届かない線があると作れない
+3. **同じ方向どうしは交差させない**：横どうし・縦どうしが交わると作れない
+4. **外周は少しはみ出させて良い**：外側のカーブより外に出た部分は自動で切り捨てる
+5. **高さは揃っていなくて良い**：上から見て交差していれば、高さが違っても中間で出会うように自動で曲げる（網全体の向きから「上」を判断）
+6. **1本のカーブは1つのスプライン**：1つのオブジェクトに複数のスプラインがあると最初の1本しか使わない
+
+ベジェなら上面図で横線・縦線を引き、側面図や G Z で高さの起伏を付けるのが手早いです。
+
 ## 知っておくと良いこと
 - 手で編集した面は「手で直した」と記録され、Regenerate や Live Update で上書きされないようにしています（Regenerate を押した場合は警告が出て、Ctrl+Z で戻せます）
 - 対応する面：Endpoint がオン、Cyclic なし、制御点の Weight がすべて 1
 - Corner Fill の頂点と、4辺以外の Fill Hole の中心付近は、わずかに近似になります
 - Split Patch で切った面は、作り方の記録を持たない「固定された面」になります
-- Curve Network：縦方向と横方向のカーブを描き、全部選んで押す。どのカーブも反対方向のカーブ全部と交差している必要がある（少しずれていても、サイズの5%程度までなら自動で交点を通るように曲げる）。外周より外にはみ出た部分は無視される
 - Offset Surface は近似（標準で誤差は距離の1%程度以下）。元の面に連動します
 
 ## 試してほしいこと（v0.16 の調整用チェックリスト）

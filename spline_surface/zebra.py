@@ -66,7 +66,8 @@ def update_material(settings):
 
 
 def is_on(ob):
-    return ORIG_KEY in ob
+    mats = getattr(ob.data, "materials", ())
+    return ORIG_KEY in ob or any(m is not None and m.name == MAT_NAME for m in mats)
 
 
 def enable(ob, settings):
@@ -83,40 +84,70 @@ def enable(ob, settings):
 def disable(ob):
     if not is_on(ob):
         return
-    names = json.loads(ob[ORIG_KEY])
-    del ob[ORIG_KEY]
     mats = ob.data.materials
-    mats.clear()
-    for n in names:
-        mats.append(bpy.data.materials.get(n) if n else None)
+    if ORIG_KEY in ob:
+        names = json.loads(ob[ORIG_KEY])
+        del ob[ORIG_KEY]
+        mats.clear()
+        for n in names:
+            mats.append(bpy.data.materials.get(n) if n else None)
+    else:  # a patch copied from a striped one: just drop the stripes
+        keep = [m for m in mats if m is None or m.name != MAT_NAME]
+        mats.clear()
+        for m in keep:
+            mats.append(m)
+
+
+def _targets(context):
+    """Every visible patch, plus selected meshes (e.g. To Mesh results)."""
+    obs = [o for o in context.visible_objects if o.type == 'SURFACE']
+    obs += [o for o in context.selected_objects if o.type == 'MESH']
+    return obs
 
 
 class SS_OT_zebra_toggle(bpy.types.Operator):
     bl_idname = "spline_surface.zebra_toggle"
     bl_label = "Zebra"
-    bl_description = ("Toggle zebra stripes on the selected surfaces/meshes "
-                      "(view in Material Preview)")
+    bl_description = ("Toggle zebra stripes on all visible patches at once (and selected "
+                      "meshes). New patches get stripes too while it is on")
     bl_options = {'REGISTER', 'UNDO'}
 
-    @classmethod
-    def poll(cls, context):
-        return any(o.type in {'SURFACE', 'MESH'} for o in context.selected_objects)
-
     def execute(self, context):
-        targets = [o for o in context.selected_objects if o.type in {'SURFACE', 'MESH'}]
-        turn_on = not all(is_on(o) for o in targets)
-        for ob in targets:
-            if turn_on:
-                enable(ob, context.scene.spline_surface)
-            else:
-                disable(ob)
-        if turn_on:
+        settings = context.scene.spline_surface
+        settings.zebra_on = not settings.zebra_on
+        if settings.zebra_on:
+            for ob in _targets(context):
+                enable(ob, settings)
             for area in context.screen.areas if context.screen else ():
                 if area.type == 'VIEW_3D':
                     for space in area.spaces:
                         if space.type == 'VIEW_3D' and space.shading.type == 'SOLID':
                             space.shading.type = 'MATERIAL'
+        else:
+            for ob in bpy.data.objects:
+                if ob.type in {'SURFACE', 'MESH'}:
+                    disable(ob)
         return {'FINISHED'}
 
 
+def _on_depsgraph(scene, depsgraph):
+    settings = getattr(scene, "spline_surface", None)
+    if settings is None or not settings.zebra_on:
+        return
+    for u in depsgraph.updates:
+        idb = getattr(u.id, "original", u.id)
+        if isinstance(idb, bpy.types.Object) and idb.type == 'SURFACE' and not is_on(idb):
+            enable(idb, settings)
+
+
 classes = (SS_OT_zebra_toggle,)
+
+
+def register():
+    if _on_depsgraph not in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph)
+
+
+def unregister():
+    if _on_depsgraph in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph)

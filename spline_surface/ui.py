@@ -16,6 +16,7 @@ class SS_Settings(bpy.types.PropertyGroup):
         name="Live Update", default=True,
         description="Rebuild dependent patches automatically when a source patch or curve changes")
     live_note: bpy.props.StringProperty(options={'HIDDEN'})
+    zebra_on: bpy.props.BoolProperty(options={'HIDDEN'})
     degree: bpy.props.IntProperty(
         name="Degree", default=5, min=2, max=5,
         description="Bezier degree of each patch side (Blender NURBS allows up to 5)")
@@ -76,7 +77,9 @@ class SS_PT_create(_SubPanel, bpy.types.Panel):
         row = col.row(align=True)
         row.operator("spline_surface.coons", icon='MOD_MESHDEFORM', text="Coons")
         row.operator("spline_surface.loft", icon='MOD_SCREW', text="Loft")
-        col.operator("spline_surface.curve_network", icon='MESH_GRID')
+        row = col.row(align=True)
+        row.operator("spline_surface.curve_network", icon='MESH_GRID')
+        row.operator("spline_surface.add_curve_grid", icon='ADD', text="")
         row = layout.row(align=True)
         row.prop(s, "gap_tolerance")
         row.operator("spline_surface.snap_ends", icon='SNAP_ON', text="")
@@ -145,7 +148,8 @@ class SS_PT_inspect(_SubPanel, bpy.types.Panel):
     def draw(self, context):
         s = context.scene.spline_surface
         layout = self.layout
-        layout.operator("spline_surface.zebra_toggle", icon='SEQ_STRIP_DUPLICATE')
+        layout.operator("spline_surface.zebra_toggle", icon='SEQ_STRIP_DUPLICATE',
+                        depress=s.zebra_on, text="Zebra: On" if s.zebra_on else "Zebra")
         row = layout.row(align=True)
         row.prop(s, "zebra_frequency")
         row.prop(s, "zebra_axis", text="")
