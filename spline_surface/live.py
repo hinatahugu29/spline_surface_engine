@@ -10,7 +10,7 @@ import json
 import bpy
 import numpy as np
 
-from .operators import (META_KEY, compute_from_meta, hand_edited, replace_net,
+from .operators import (ADDON_WRITES, META_KEY, compute_from_meta, hand_edited, replace_net,
                         store_meta, world_net)
 
 
@@ -102,6 +102,7 @@ def _write_in_place(ob, net, orders):
                          np.ones((nu * nv, 1))], axis=1)
     sp.points.foreach_set("co", co.ravel())
     cu.update_tag()
+    ADDON_WRITES.add(ob.name)
     return True
 
 
@@ -170,13 +171,10 @@ def _signature(ob):
 
 def _on_depsgraph(scene, depsgraph):
     settings = getattr(scene, "spline_surface", None)
-    if _state["busy"] or settings is None or not settings.live_update:
+    if _state["busy"] or settings is None:
         return
     ctx = bpy.context
     if ctx.mode != 'OBJECT':
-        return
-    down = dependency_graph()
-    if not down:
         return
     # Only objects the depsgraph reports as updated can have changed; sources
     # seen for the first time just get a baseline signature.
@@ -187,6 +185,17 @@ def _on_depsgraph(scene, depsgraph):
             touched.add(idb.name)
         elif isinstance(idb, bpy.types.Curve):
             touched.update(o.name for o in bpy.data.objects if o.data == idb)
+    from . import linked
+    _state["busy"] = True
+    try:
+        linked.on_update(touched, ctx)
+    finally:
+        _state["busy"] = False
+    if not settings.live_update:
+        return
+    down = dependency_graph()
+    if not down:
+        return
     changed = []
     for name in down:
         ob = bpy.data.objects.get(name)
@@ -220,6 +229,8 @@ def _on_depsgraph(scene, depsgraph):
 
 def _reset(*_):
     _state["fps"].clear()
+    from . import linked
+    linked.reset()
 
 
 # ---------------------------------------------------------------- operators
@@ -297,13 +308,17 @@ classes = (SS_OT_regenerate_all, SS_OT_select_group)
 def register():
     if _on_depsgraph not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph)
-    if _reset not in bpy.app.handlers.load_post:
-        bpy.app.handlers.load_post.append(_reset)
+    for hs in (bpy.app.handlers.load_post, bpy.app.handlers.undo_post,
+               bpy.app.handlers.redo_post):
+        if _reset not in hs:
+            hs.append(_reset)
 
 
 def unregister():
     if _on_depsgraph in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph)
-    if _reset in bpy.app.handlers.load_post:
-        bpy.app.handlers.load_post.remove(_reset)
+    for hs in (bpy.app.handlers.load_post, bpy.app.handlers.undo_post,
+               bpy.app.handlers.redo_post):
+        if _reset in hs:
+            hs.remove(_reset)
     _reset()

@@ -20,7 +20,7 @@
 |---|---|
 | Create | Add Patch、Coons、Loft、Curve Network（＋ボタンで見本のカーブの網）、Snap Ends（カーブの端をくっつける）、Regenerate、Fit Settings |
 | Grow & Connect | Extend Edge、Bridge Edges、Match Edge、Corner Fill、Fill Hole、Split Patch、Offset Surface |
-| Group | Live Update、Select / Regenerate、Mirror Group、Cage（Add / Apply / ✕） |
+| Group | Live Update、Linked Edit（＋Falloff）、Edge Chain、Merge、Select / Regenerate、Mirror Group、Cage（Add / Apply / ✕） |
 | Inspect | Zebra（表示中の全部の面に一括、On の間は新しい面にも自動）、Seam Colors（つなぎ目を継続性で色分け）、Check Continuity（結果の一覧） |
 | Output | Mesh Resolution、To Mesh |
 
@@ -58,6 +58,13 @@ Extend Edge・Corner Fill・Bridge Edges・Fill Hole・Split Patch は、押す�
 6. **1本のカーブは1つのスプライン**：1つのオブジェクトに複数のスプラインがあると最初の1本しか使わない
 
 ベジェなら上面図で横線・縦線を引き、側面図や G Z で高さの起伏を付けるのが手早いです。
+
+## 面が増えてきたら（v0.21）
+- **Linked Edit**（Group パネルのチェック）：オンにすると、面を編集（編集モードで制御点を動かして Tab で戻る、または移動）したとき、周りの面も付いてきます。辺を共有していた面は、元の G0/G1/G2 のままつなぎ直されます。Falloff で影響が届く範囲（編集した面の大きさに対する倍率）を決めます
+  - 付いてくるのは「編集中（アクティブ）の面」から周りへです。周りの面は「手で直した面」として扱われます
+  - 元の面から作られた面（Extend など）は、動かすのではなく Live Update で作り直されます
+- **Edge Chain**：開いた辺をクリックすると、端でつながって同じ向きに続く辺がまとめて選ばれ、1本の NURBS カーブ（EdgeChain）になります。このカーブを編集して Tab で戻ると、並んだ面の端がまとめて付いてきます。カーブはそのまま残しておけば何度でも使えます
+- **Merge**：選んだ面（縦横に並んだ格子状のもの）を1枚の面に作り直します。元の面は隠されます（調整パネルで削除も可）。Detail で制御点の多さを調整。近似なので、誤差（%）が報告されます。仕上げ向けで、元の面から作られていた面は元の面に連動したままです
 
 ## 知っておくと良いこと
 - 手で編集した面は「手で直した」と記録され、Regenerate や Live Update で上書きされないようにしています（Regenerate を押した場合は警告が出て、Ctrl+Z で戻せます）

@@ -21,6 +21,8 @@ from .core.nurbs import eval_points
 from . import pick
 
 META_KEY = "spline_surface"
+# Patches the add-on itself just rewrote: Linked Edit must not treat them as user edits.
+ADDON_WRITES = set()
 BOUNDARY_TYPES = {'CURVE', 'GREASEPENCIL'}
 
 
@@ -231,6 +233,7 @@ def replace_net(ob, net, settings, orders=None):
         cu.materials.append(mat)
     ob.data = cu
     ob.matrix_world.identity()
+    ADDON_WRITES.add(ob.name)
     if old.users == 0:
         bpy.data.curves.remove(old)
 

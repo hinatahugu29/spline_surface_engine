@@ -485,6 +485,54 @@ def test_fill_tube_end_cap():
         assert np.degrees(np.arccos(np.clip(cosang, 0, 1))).max() < 0.1
 
 
+def test_falloff_field():
+    from core.linked import falloff_field
+    src = np.array([[0, 0, 0], [1, 0, 0]], float)
+    disp = np.array([[0, 0, 1], [0, 0, 0]], float)
+    f = falloff_field(src, disp, 2.0)
+    out = f(np.array([[0, 0, 0], [1, 0, 0], [0, 5, 0], [0, 0.5, 0]], float))
+    assert np.allclose(out[0], [0, 0, 1], atol=1e-6) and np.allclose(out[1], 0, atol=1e-6)
+    assert np.allclose(out[2], 0) and 0 < out[3, 2] < 1
+
+
+def test_order_chain():
+    from core.linked import chain_polyline, order_chain
+    a = np.array([[0, 0, 0], [1, 0, 0]], float)
+    b = np.array([[2, 0, 0], [1, 0, 0]], float)   # reversed
+    c = np.array([[2, 0, 0], [3, 0, 0]], float)
+    d = np.array([[9, 9, 9], [8, 9, 9]], float)   # not joined
+    chain = order_chain({"b": b, "a": a, "c": c, "d": d}, 1e-6)
+    assert [k for k, _ in chain] in (["a", "b", "c"], ["c", "b", "a"]), chain
+    pts, ranges = chain_polyline({"a": a, "b": b, "c": c}, chain)
+    assert len(pts) == 4 and np.isclose(ranges[0][0], 0) and np.isclose(ranges[-1][1], 1)
+    assert all(np.isclose(r0[1], r1[0]) for r0, r1 in zip(ranges, ranges[1:]))
+
+
+def test_merge_grid():
+    from core.linked import grid_layout, merge_grid
+    from core.network import build_network
+    curves, f = _network_curves()
+    cells, _ = build_network(curves, tol=1e-3)
+    patches = []
+    for n, (i, j, net, o) in enumerate(cells):
+        if n % 2:  # lay some cells the other way round
+            net, o = net.transpose(1, 0, 2)[::-1], (o[1], o[0])
+        patches.append((net, o))
+    grid = grid_layout(patches, 1e-4)
+    assert len(grid) == 6
+    net, orders, err = merge_grid(grid)
+    assert err < 0.01, err
+    g = np.linspace(0, 1, 9)
+    pts = nurbs.eval_surface(net, orders, g, g).reshape(-1, 3)
+    assert np.abs(pts[:, 2] - f(pts[:, 0], pts[:, 1])).max() < 0.02
+    try:
+        grid_layout(patches[:3] + patches[4:5], 1e-4)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("an L shape is not a grid")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

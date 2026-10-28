@@ -16,6 +16,13 @@ class SS_Settings(bpy.types.PropertyGroup):
         name="Live Update", default=True,
         description="Rebuild dependent patches automatically when a source patch or curve changes")
     live_note: bpy.props.StringProperty(options={'HIDDEN'})
+    linked_edit: bpy.props.BoolProperty(
+        name="Linked Edit", default=False,
+        description=("When you edit a patch (edit mode, move), nearby patches follow and "
+                     "patches sharing an edge with it stay joined with their G0/G1/G2"))
+    link_falloff: bpy.props.FloatProperty(
+        name="Falloff", default=1.0, min=0.05, max=10.0, step=10,
+        description="How far edits spread, relative to the size of the edited patch")
     zebra_on: bpy.props.BoolProperty(options={'HIDDEN'})
     degree: bpy.props.IntProperty(
         name="Degree", default=5, min=2, max=5,
@@ -129,6 +136,12 @@ class SS_PT_group(_SubPanel, bpy.types.Panel):
         s = context.scene.spline_surface
         layout = self.layout
         layout.prop(s, "live_update")
+        row = layout.row(align=True)
+        row.prop(s, "linked_edit")
+        row.prop(s, "link_falloff")
+        row = layout.row(align=True)
+        row.operator("spline_surface.edge_chain", icon='CURVE_PATH')
+        row.operator("spline_surface.merge_patches", icon='SELECT_EXTEND', text="Merge")
         row = layout.row(align=True)
         row.operator("spline_surface.select_group", icon='RESTRICT_SELECT_OFF', text="Select")
         row.operator("spline_surface.regenerate_all", icon='FILE_REFRESH', text="Regenerate")

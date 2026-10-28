@@ -3,13 +3,13 @@
 車のような滑らかな曲面を、NURBS の慣れなしで作れるようにする Blender 5.x アドオン。
 最終出力はメッシュ。操作はボタンとクリック選択が基本で、ギズモは土台が固まってから。
 
-## できていること（〜 v0.20）
+## できていること（〜 v0.21）
 
 | 分類 | 機能 |
 |---|---|
 | 作る | Add Patch（Plane / Arc / Dome）、Coons（3〜4本のカーブから）、Loft、Curve Network、Snap Ends |
 | 伸ばす・つなぐ | Extend Edge、Match Edge（G0/G1/G2）、Corner Fill、Fill Hole（3辺以上、カーブ混在可）、Bridge Edges（面の辺どうし／面の辺→カーブ）、Split Patch、Offset Surface |
-| まとめて扱う | Patch Group（Live Update、Select Group、Regenerate Group）、Cage（Lattice で変形して G2 に戻す）、Mirror Group |
+| まとめて扱う | Patch Group（Live Update、Select Group、Regenerate Group）、Linked Edit、Edge Chain、Merge Patches、Cage（Lattice で変形して G2 に戻す）、Mirror Group |
 | 確認 | Zebra、Seam Colors、Check Continuity |
 | 出力 | To Mesh（溶接して1メッシュ） |
 | 基盤 | 複数スパンの NURBS、手で直した面の検出、面ごとの作り方の記録と Regenerate |
@@ -54,6 +54,11 @@
 - 不具合：輪郭がなめらかに一周する穴（筒の端のフタ）を4辺の格子で埋めると、存在しない「角」で面が潰れて、境目が 30〜65° 折れていた（ゼブラのずれ）
 - 対策：輪郭の角がない穴は Radial（辺ごとの面が中心に集まるドーム）で埋める。長い辺は分割して面の大きさを揃える。境目・面どうしとも G1（0.04°以下）
 - 格子の穴埋めも精度向上（4辺：0.025°→0.004°）。つなぎ目判定で潰れた辺（点）を無視
+
+### v0.21 まとめて操作・連動 ← 完了
+- Linked Edit：編集した面の変位を、なめらかに減衰する場で周りの面へ広げ、辺を共有していた面は元の継続性でつなぎ直す
+- Edge Chain：並んだ開いた辺を1本のカーブにまとめ、カーブの編集で全部の辺（と周り）を動かす
+- Merge Patches：格子状に並んだ面を1枚の NURBS に作り直す（近似、誤差を報告）
 
 ### その後の候補
 - 開口部（窓・ライト）用のトリム的な機能

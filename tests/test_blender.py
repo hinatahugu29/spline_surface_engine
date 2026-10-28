@@ -714,6 +714,70 @@ def run():
         raise AssertionError("one-row surface accepted")
     from spline_surface.operators import surface_edges
     assert not any(k[0] == curve_surf.name for k in surface_edges(bpy.context))
+    # ---- v0.21: Linked Edit, Edge Chain, Merge Patches
+    from spline_surface import linked
+    from spline_surface.core.continuity import find_shared_edge as fse, grade as grd, measure as msr
+    for o in list(bpy.data.objects):
+        bpy.data.objects.remove(o)
+    sc.live_update = False
+    bpy.context.scene.cursor.location = (0, 0, 0)
+    assert bpy.ops.spline_surface.add_patch(shape='DOME', points_u=6, points_v=6) == {'FINISHED'}
+    A = bpy.context.active_object
+    assert bpy.ops.spline_surface.extend_edge(source=A.name, edge='V1', continuity='G2') == {'FINISHED'}
+    B = bpy.context.active_object
+
+    def seam():
+        a, oa = world_net(A)
+        b, ob_ = world_net(B)
+        sh = fse(b, a, 1e-4, ob_, oa)
+        assert sh is not None, "seam opened"
+        return grd(msr(b, a, *sh[:3], ob_, oa))
+
+    assert seam() == 'G2'
+    sc.linked_edit = True
+    linked.reset()
+    vl.update()
+    linked.remember_all(bpy.context)
+    select([A])
+    sp = A.data.splines[0]
+    nu = sp.point_count_u
+    before_b = world_net(B)[0].copy()
+    for i, p in enumerate(sp.points):   # lift the row next to the shared edge (v = max)
+        if i // nu == sp.point_count_v - 2:
+            p.co.z += 0.3
+    A.data.update_tag()
+    vl.update()
+    linked.on_update({A.name}, bpy.context)  # the depsgraph handler may already have run it
+    assert seam() == 'G2', seam()
+    assert np.abs(world_net(B)[0] - before_b).max() > 0.01
+    # Edge chain along the side of A and B
+    from spline_surface.operators import surface_edges
+    edges = surface_edges(bpy.context)
+    side = next(e for e in ('U0', 'U1') if (A.name, e) in edges)
+    assert bpy.ops.spline_surface.edge_chain(source=A.name, edge=side) == {'FINISHED'}
+    cob = bpy.context.active_object
+    segs = json.loads(cob[linked.CHAIN_KEY])["segments"]
+    assert {s_["ob"] for s_ in segs} == {A.name, B.name}, segs
+    for p in cob.data.splines[0].points:
+        p.co.z += 0.2
+    cob.data.update_tag()
+    vl.update()
+    linked.on_update({cob.name}, bpy.context)
+    for o in (A, B):
+        e = next(s_["edge"] for s_ in segs if s_["ob"] == o.name)
+        pl = surface_edges(bpy.context, free_only=False)[(o.name, e)]
+        curve = linked.chain_samples(cob)
+        d = np.linalg.norm(pl[:, None] - curve[None], axis=2).min(1).max()
+        assert d < 0.03, (o.name, d)  # seam re-matching may pull the corner a little
+    assert seam() in ('G1', 'G2'), seam()
+    sc.linked_edit = False
+    # Merge
+    select([A, B])
+    assert bpy.ops.spline_surface.merge_patches() == {'FINISHED'}
+    M = bpy.context.active_object
+    assert M.name.startswith("Merged") and A.hide_get() and B.hide_get()
+    mnet, mo = world_net(M)
+    print("merged", mnet.shape, mo)
     spline_surface.unregister()
     print("ALL OK")
 
