@@ -1,0 +1,14 @@
+schema_version = "1.0.0"
+
+id = "spline_surface"
+version = "0.18.0"
+name = "Spline Surface"
+tagline = "Build smooth NURBS patches from boundary curves"
+maintainer = "hinata"
+type = "add-on"
+blender_version_min = "5.0.0"
+license = ["SPDX:GPL-3.0-or-later"]
+tags = ["Modeling", "Add Curve"]
+
+[build]
+paths_exclude_pattern = ["__pycache__/", "/.*"]
