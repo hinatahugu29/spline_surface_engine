@@ -1208,10 +1208,14 @@ def weld_mesh(name, surfaces, resolution, context=None):
 
     Patches built by this add-on share the parametrisation of the edges they
     join, so equal uniform sampling puts seam vertices on top of each other.
+    Returns (mesh, fallback_names): fallback_names lists patches that weren't
+    a clean control net and so used Blender's own tessellation instead, which
+    isn't guaranteed to line up at the seam with its neighbours' sampling.
     """
     import bmesh
     bm = bmesh.new()
     size = 0.0
+    fallback = []
     t = np.linspace(0.0, 1.0, resolution + 1)
     U, V = np.meshgrid(t, t, indexing="ij")
     for ob in surfaces:
@@ -1219,6 +1223,9 @@ def weld_mesh(name, surfaces, resolution, context=None):
             net, orders = world_net(ob)
         except ValueError:
             # Not a clean patch: fall back to Blender's own tessellation.
+            # Its vertex layout generally won't match a neighbour's uniform
+            # sampling, so this seam may not fully weld below.
+            fallback.append(ob.name)
             dg = (context or bpy.context).evaluated_depsgraph_get()
             me = bpy.data.meshes.new_from_object(ob.evaluated_get(dg))
             me.transform(ob.matrix_world)
@@ -1240,7 +1247,7 @@ def weld_mesh(name, surfaces, resolution, context=None):
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()
-    return me
+    return me, fallback
 
 
 class SS_OT_to_mesh(bpy.types.Operator):
@@ -1263,8 +1270,10 @@ class SS_OT_to_mesh(bpy.types.Operator):
         settings = context.scene.spline_surface
         surfaces = [o for o in context.selected_objects if o.type == 'SURFACE']
         created = []
+        weld_fallback = []
         if self.weld:
-            me = weld_mesh(surfaces[0].name + "_mesh", surfaces, settings.mesh_resolution, context)
+            me, weld_fallback = weld_mesh(surfaces[0].name + "_mesh", surfaces,
+                                          settings.mesh_resolution, context)
             for ob in surfaces:
                 for mat in zebra.real_materials(ob):
                     if mat is not None and mat.name not in me.materials:
@@ -1289,7 +1298,12 @@ class SS_OT_to_mesh(bpy.types.Operator):
         for mob in created:
             mob.select_set(True)
         context.view_layer.objects.active = created[-1]
-        self.report({'INFO'}, "Created %d mesh object(s)" % len(created))
+        msg = "Created %d mesh object(s)" % len(created)
+        if weld_fallback:
+            self.report({'WARNING'}, msg + "; not a clean patch, seam may not be welded: "
+                        + ", ".join(weld_fallback))
+        else:
+            self.report({'INFO'}, msg)
         return {'FINISHED'}
 
 
