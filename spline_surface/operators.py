@@ -10,6 +10,7 @@ from .core.coons import close_loop, coons_net, loop_to_sides, orient_loop, snap_
 from .core.blend import blend_curve_net, blend_net
 from .core.corner import corner_net
 from .core.fill import fill_patches, side_from_curve, side_from_patch
+from .core.fillet import fillet_net
 from .core.mirror import mirror_net, symmetrize
 from .core.network import build_network
 from .core.offset import offset_net
@@ -66,6 +67,13 @@ def compute_corner(sources, meta, settings):
     return corner_net(Pa, oa, meta["edges"][0], Pb, ob, meta["edges"][1],
                       meta["continuity"], meta.get("tension", 1.0),
                       tol=settings.gap_tolerance * 0.1 * size + 1e-6)
+
+
+def compute_fillet(sources, meta, settings):
+    (Pa, oa), (Pb, ob) = world_net(sources[0]), world_net(sources[1])
+    size = max(np.ptp(Pa.reshape(-1, 3), axis=0).max(), np.ptp(Pb.reshape(-1, 3), axis=0).max())
+    return fillet_net(Pa, oa, meta["edges"][0], Pb, ob, meta["edges"][1],
+                      meta["radius"], tol=settings.gap_tolerance * 0.1 * size + 1e-6)
 
 
 def compute_fill(meta, settings):
@@ -150,6 +158,9 @@ def compute_from_meta(meta, context):
     elif meta["method"] == "blend":
         net, orders, _ = compute_blend(sources, meta, settings)
         msg = meta["continuity"]
+    elif meta["method"] == "fillet":
+        net, orders, info = compute_fillet(sources, meta, settings)
+        msg = "fillet r=%.4g (reach %.3g-%.3g)" % (meta["radius"], info["reach"].min(), info["reach"].max())
     elif meta["method"] == "network":
         cells, info = compute_network(sources, meta, settings, context.evaluated_depsgraph_get())
         part = meta.get("part", 0)
@@ -659,6 +670,9 @@ class _EdgePairPicker(pick.ModalPicker):
     # loop; Corner Fill joins two patches meeting at a corner, where that
     # has no meaning, so it keeps the plain "different patch" rule.
     _allow_same_patch = False
+    # The wheel adjusts one scalar property; Fillet swaps tension for radius.
+    _wheel_attr, _wheel_label, _wheel_bounds = "tension", "tension", (0.05, 3.0)
+    _has_continuity = True
 
     def _candidates(self, context):
         return surface_edges(context)
@@ -684,9 +698,10 @@ class _EdgePairPicker(pick.ModalPicker):
 
     def _header(self, context):
         step = "click the first edge" if self._first is None else "click the second edge"
+        cont = "   C: %s" % self.continuity if self._has_continuity else ""
         context.area.header_text_set(
-            self._title + ": %s   C: %s   Wheel: tension %.2f   Esc/RMB: cancel"
-            % (step, self.continuity, self.tension))
+            self._title + ": %s%s   Wheel: %s %.3g   Esc/RMB: cancel"
+            % (step, cont, self._wheel_label, getattr(self, self._wheel_attr)))
 
     def _label(self):
         return pick.edge_label(self._hover, self._edges[self._hover]) if self._hover else None
@@ -731,10 +746,11 @@ class _EdgePairPicker(pick.ModalPicker):
                 self._update_preview(context)
         elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'} and event.value == 'PRESS':
             f = 1.1 if event.type == 'WHEELUPMOUSE' else 1 / 1.1
-            self.tension = min(3.0, max(0.05, self.tension * f))
+            lo, hi = self._wheel_bounds
+            setattr(self, self._wheel_attr, min(hi, max(lo, getattr(self, self._wheel_attr) * f)))
             self._header(context)
             self._update_preview(context)
-        elif event.type == 'C' and event.value == 'PRESS':
+        elif self._has_continuity and event.type == 'C' and event.value == 'PRESS':
             order = ['G0', 'G1', 'G2']
             self.continuity = order[(order.index(self.continuity) + 1) % 3]
             self._header(context)
@@ -893,6 +909,44 @@ class SS_OT_bridge_edges(_EdgePairPicker, bpy.types.Operator):
             self._update_preview(context)
             return {'RUNNING_MODAL'}
         return super().modal(context, event)
+
+
+class SS_OT_fillet(_EdgePairPicker, bpy.types.Operator):
+    bl_idname = "spline_surface.fillet"
+    bl_label = "Fillet"
+    bl_description = ("Round the crease between two coincident patch edges (same position, "
+                      "different surface tangents) with a given radius. Click the two edges "
+                      "in the viewport")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    source_a: bpy.props.StringProperty(name="Patch A")
+    edge_a: bpy.props.EnumProperty(name="Edge A", items=[(e, e, "") for e in EDGE_KEYS])
+    source_b: bpy.props.StringProperty(name="Patch B")
+    edge_b: bpy.props.EnumProperty(name="Edge B", items=[(e, e, "") for e in EDGE_KEYS])
+    radius: bpy.props.FloatProperty(
+        name="Radius", default=0.1, min=1e-4, max=1000.0,
+        description="Rolling-ball radius of the fillet")
+
+    _method, _suffix, _title = "fillet", "_fillet", "Fillet"
+    _wheel_attr, _wheel_label, _wheel_bounds = "radius", "radius", (1e-4, 1000.0)
+    _has_continuity = False
+
+    def _compute(self, sources, meta, settings):
+        net, orders, self._info = compute_fillet(sources, meta, settings)
+        return net, orders
+
+    def _meta(self):
+        return {"method": self._method, "sources": [self.source_a, self.source_b],
+                "edges": [self.edge_a, self.edge_b], "radius": self.radius}
+
+    def execute(self, context):
+        self._info = None
+        result = super().execute(context)
+        if result == {'FINISHED'} and self._info is not None:
+            self.report({'INFO'}, "fillet reach %.3g-%.3g, max dihedral angle %.1f deg"
+                        % (self._info["reach"].min(), self._info["reach"].max(),
+                           self._info["max_angle"]))
+        return result
 
 
 class SS_OT_fill_hole(pick.ModalPicker, bpy.types.Operator):
@@ -1370,7 +1424,7 @@ class SS_OT_add_patch(bpy.types.Operator):
 
 
 classes = (SS_OT_add_patch, SS_OT_coons, SS_OT_loft, SS_OT_snap_ends, SS_OT_regenerate,
-           SS_OT_extend_edge, SS_OT_corner_fill, SS_OT_bridge_edges,
+           SS_OT_extend_edge, SS_OT_corner_fill, SS_OT_bridge_edges, SS_OT_fillet,
            SS_OT_fill_hole, SS_OT_offset_surface, SS_OT_add_curve_grid,
            SS_OT_curve_network,
            SS_OT_match_edge, SS_OT_check_continuity, SS_OT_to_mesh)
