@@ -10,7 +10,7 @@ from .bridge.write_surface import build_surface_data
 from .core.continuity import find_shared_edge
 from .core.nurbs import eval_points
 from .core.split import iso_line, split_net
-from .operators import META_KEY, _make_active, replace_net, store_meta, world_net
+from .operators import META_KEY, _make_active, raw_meta, replace_net, store_meta, world_net
 
 # Which edges of the original end up on which piece, per cut direction.
 _EDGE_MAP = {'U': ({'U0': 'a', 'U1': 'b'}, ('V0', 'V1')),
@@ -24,8 +24,7 @@ def _meta(ob):
 def _freeze(ob, meta):
     """Turn a dependent into a stored net so it no longer reads a vanished edge."""
     net, orders = world_net(ob)
-    store_meta(ob, {"method": "raw", "sources": [], "net": net.tolist(),
-                    "orders": list(orders)})
+    store_meta(ob, raw_meta(net, orders))
 
 
 def retarget(source, piece_b, direction, net_a, orders_a, net_b, orders_b):
@@ -232,16 +231,14 @@ class SS_OT_split_patch(bpy.types.Operator):
         live._state["busy"] = True
         try:
             replace_net(source, A, settings, oa)
-            store_meta(source, {"method": "raw", "sources": [], "net": A.tolist(),
-                                "orders": list(oa)})
+            store_meta(source, raw_meta(A, oa))
             cu = build_surface_data(source.name + "_split", B, settings.resolution, ob_)
             for mat in zebra.real_materials(source):
                 cu.materials.append(mat)
             piece = bpy.data.objects.new(cu.name, cu)
             (source.users_collection[0] if source.users_collection
              else context.collection).objects.link(piece)
-            store_meta(piece, {"method": "raw", "sources": [], "net": B.tolist(),
-                               "orders": list(ob_)})
+            store_meta(piece, raw_meta(B, ob_))
             frozen = retarget(source, piece, self.direction, A, oa, B, ob_)
             for m in mirrors:
                 meta = dict(_meta(m), sources=[piece.name])

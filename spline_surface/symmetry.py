@@ -7,8 +7,8 @@ import numpy as np
 from . import live, zebra
 from .bridge.write_surface import build_surface_data
 from .core.mirror import edges_on_plane
-from .operators import (META_KEY, _make_active, compute_from_meta, hand_edited, replace_net,
-                        store_meta, world_net)
+from .operators import (META_KEY, _make_active, compute_from_meta, hand_edited, raw_meta,
+                        replace_net, store_meta, world_net)
 
 
 def _meta(ob):
@@ -72,8 +72,7 @@ class SS_OT_mirror_group(bpy.types.Operator):
                     meta = _meta(ob)
                     if meta is None or hand_edited(ob, meta):
                         old = meta.get("matches", []) if meta else []
-                        meta = {"method": "raw", "sources": [], "net": net.tolist(),
-                                "orders": list(orders), "matches": old}
+                        meta = raw_meta(net, orders, matches=old)
                     meta["symmetry"] = {"axis": self.axis, "offset": self.offset,
                                         "tol": self.tolerance}
                     try:

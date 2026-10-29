@@ -101,6 +101,15 @@ def store_meta(ob, meta):
     ob[META_KEY] = json.dumps(meta)
 
 
+def raw_meta(net, orders, **extra):
+    """A "raw" recipe: no sources, just the control net as stored. Used to
+    freeze a patch's current shape in place of whatever built it (e.g. a
+    dependent whose source edge vanished, or a hand-edited patch that's
+    about to gain an unrelated recipe field like a match or symmetry)."""
+    return {"method": "raw", "sources": [], "net": np.asarray(net).tolist(),
+           "orders": list(orders), **extra}
+
+
 def compute_extend(source, meta, settings):
     net, orders = world_net(source)
     return extend_net(net, meta["edge"], meta["length"], meta["continuity"],
@@ -463,8 +472,7 @@ class SS_OT_match_edge(bpy.types.Operator):
         if meta is None or hand_edited_net(meta, tnet, torders):
             # Keep the hand-made shape as the recipe so Regenerate does not undo it.
             old_matches = meta.get("matches", []) if meta else []
-            meta = {"method": "raw", "sources": [], "net": tnet.tolist(),
-                    "orders": list(torders), "matches": old_matches}
+            meta = raw_meta(tnet, torders, matches=old_matches)
         matches = [m for m in meta.get("matches", []) if m["ref"] != ref.name]
         matches.append({"ref": ref.name, "continuity": self.continuity})
         meta["matches"] = matches
@@ -1511,8 +1519,7 @@ class SS_OT_add_patch(bpy.types.Operator):
         cu = build_surface_data(name, net, settings.resolution, orders)
         ob = bpy.data.objects.new(name, cu)
         context.collection.objects.link(ob)
-        store_meta(ob, {"method": "raw", "sources": [], "net": net.tolist(),
-                        "orders": list(orders)})
+        store_meta(ob, raw_meta(net, orders))
         _make_active(context, ob)
         return {'FINISHED'}
 
