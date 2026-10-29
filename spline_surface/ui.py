@@ -210,7 +210,8 @@ class SS_PT_inspect(_SubPanel, bpy.types.Panel):
             rows = []
         col = layout.column(align=True)
         for r in rows:
-            col.label(text="%s | %s: %s" % (r["a"], r["b"], r["grade"]),
+            col.label(text="%s(%s) | %s(%s): %s" % (
+                          r["a"], r.get("edge_a", "?"), r["b"], r.get("edge_b", "?"), r["grade"]),
                       icon=GRADE_ICONS.get(r["grade"], 'QUESTION'))
             col.label(text="    angle %.3g°, curvature %.1f%%" % (r["angle"], 100 * r["curvature"]))
 

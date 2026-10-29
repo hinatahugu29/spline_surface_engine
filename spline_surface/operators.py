@@ -443,13 +443,16 @@ class SS_OT_check_continuity(bpy.types.Operator):
                 if shared is None:
                     continue
                 m = measure(Pa, Pb, *shared[:3], oa, ob_)
-                rows.append({"a": a, "b": b, "grade": grade(m), **m})
+                rows.append({"a": a, "b": b, "edge_a": shared[0], "edge_b": shared[1],
+                            "grade": grade(m), **m})
         settings.continuity_report = json.dumps(rows)
         if not rows:
             self.report({'WARNING'}, "No shared edges found between the selected patches")
         for r in rows:
-            self.report({'INFO'}, "%s | %s: %s (gap %.2g, angle %.3g deg, curvature %.1f%%)" % (
-                r["a"], r["b"], r["grade"], r["gap"], r["angle"], 100 * r["curvature"]))
+            self.report({'INFO'},
+                        "%s(%s) | %s(%s): %s (gap %.2g, angle %.3g deg, curvature %.1f%%)" % (
+                            r["a"], r["edge_a"], r["b"], r["edge_b"], r["grade"],
+                            r["gap"], r["angle"], 100 * r["curvature"]))
         return {'FINISHED'}
 
 
