@@ -62,9 +62,15 @@ def world_net(ob):
     return net @ M[:3, :3].T + M[:3, 3], orders
 
 
+# Decimal places for rounding control-point coordinates before hashing/fingerprinting,
+# shared by fingerprint() here and live.py's change-detection signature so hand-edit
+# and staleness detection can't quietly drift out of sync with each other.
+ROUND_DECIMALS = 6
+
+
 def fingerprint(net, orders):
     """Short hash of a patch, used to notice hand edits since we last wrote it."""
-    data = np.round(np.asarray(net, dtype=float), 6).tobytes() + bytes(orders)
+    data = np.round(np.asarray(net, dtype=float), ROUND_DECIMALS).tobytes() + bytes(orders)
     return hashlib.md5(data).hexdigest()[:16]
 
 
@@ -80,8 +86,17 @@ def hand_edited(ob, meta):
         return "fp" in meta
 
 
+# Recipe schema version: bump when a field's meaning changes incompatibly
+# (merely adding an optional field, read with meta.get(..., default), doesn't
+# need a bump). compute_from_meta() refuses to guess at a newer schema than
+# this add-on understands, rather than failing deep inside with a stray
+# KeyError.
+META_VERSION = 1
+
+
 def store_meta(ob, meta):
     """Save the recipe with a fingerprint of the patch as Blender stores it."""
+    meta.setdefault("ver", META_VERSION)
     meta["fp"] = fingerprint(*world_net(ob))
     ob[META_KEY] = json.dumps(meta)
 
@@ -148,6 +163,9 @@ def compute_network(sources, meta, settings, depsgraph):
 
 def compute_from_meta(meta, context):
     """Rebuild a patch from its stored recipe. Returns (net, orders, message)."""
+    if meta.get("ver", 1) > META_VERSION:
+        raise ValueError("this patch was built by a newer version of Spline Surface; "
+                         "update the add-on to rebuild it")
     settings = context.scene.spline_surface
     names = meta["sources"]
     missing = [n for n in names if n not in bpy.data.objects]

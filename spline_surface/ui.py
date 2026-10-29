@@ -19,7 +19,8 @@ class SS_Settings(bpy.types.PropertyGroup):
     linked_edit: bpy.props.BoolProperty(
         name="Linked Edit", default=False,
         description=("When you edit a patch (edit mode, move), nearby patches follow and "
-                     "patches sharing an edge with it stay joined with their G0/G1/G2"))
+                     "patches sharing an edge with it stay joined with their G0/G1/G2. "
+                     "Doesn't affect Edge Chain curves, which always follow"))
     link_falloff: bpy.props.FloatProperty(
         name="Falloff", default=1.0, min=0.05, max=10.0, step=10,
         description="How far edits spread, relative to the size of the edited patch")

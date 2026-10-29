@@ -105,6 +105,11 @@ class SS_OT_cage_add(bpy.types.Operator):
                 if bpy.data.objects[n].type in {'SURFACE', 'CURVE'}]
         P = np.concatenate([_points(o) for o in objs])
         lo, hi = P.min(axis=0), P.max(axis=0)
+        # Guard against a degenerate (flat, or near-point) bounding box: a
+        # lattice can't have zero extent on an axis. 1e-3 is an arbitrary but
+        # small floor relative to the group's own size (or an absolute 1e-3
+        # if the whole group is itself tiny), just enough to keep the cage
+        # usable rather than an exact physical tolerance.
         size = np.maximum(hi - lo, 1e-3 * max((hi - lo).max(), 1e-3))
         size *= 1.0 + 2.0 * self.margin
         lat = bpy.data.lattices.new("SS_Cage")

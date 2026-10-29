@@ -11,8 +11,8 @@ import traceback
 import bpy
 import numpy as np
 
-from .operators import (ADDON_WRITES, META_KEY, compute_from_meta, hand_edited, replace_net,
-                        store_meta, world_net)
+from .operators import (ADDON_WRITES, META_KEY, ROUND_DECIMALS, compute_from_meta, hand_edited,
+                        replace_net, store_meta, world_net)
 
 
 def _meta(ob):
@@ -156,7 +156,7 @@ def _signature(ob):
     try:
         if ob.type == 'SURFACE':
             net, _ = world_net(ob)
-            return hash(np.round(net, 6).tobytes())
+            return hash(np.round(net, ROUND_DECIMALS).tobytes())
         if ob.type == 'CURVE':
             pts = []
             for sp in ob.data.splines:
@@ -164,7 +164,8 @@ def _signature(ob):
                     pts += [*p.co, *p.handle_left, *p.handle_right]
                 for p in sp.points:
                     pts += [*p.co]
-            return hash((tuple(np.round(pts, 6)), tuple(np.round(np.array(ob.matrix_world), 6).ravel())))
+            return hash((tuple(np.round(pts, ROUND_DECIMALS)),
+                        tuple(np.round(np.array(ob.matrix_world), ROUND_DECIMALS).ravel())))
     except ValueError:
         return None
     return None

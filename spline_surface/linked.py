@@ -296,7 +296,8 @@ class SS_OT_edge_chain(bpy.types.Operator):
     bl_idname = "spline_surface.edge_chain"
     bl_label = "Edge Chain"
     bl_description = ("Click an open edge: the run of open edges joined to it becomes one "
-                      "curve. Edit that curve and all of those edges follow")
+                      "curve. Edit that curve and all of those edges follow, regardless of "
+                      "the Linked Edit toggle")
     bl_options = {'REGISTER', 'UNDO'}
 
     source: bpy.props.StringProperty(name="Patch")
