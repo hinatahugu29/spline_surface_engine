@@ -511,6 +511,19 @@ def run():
     for o in bpy.context.selected_objects:
         o.select_set(False)
     cbase.select_set(True)
+    # Cancel: the cage and its modifiers go away, geometry is untouched.
+    assert bpy.ops.spline_surface.cage_add() == {'FINISHED'}
+    cancel_cage_name = bpy.context.active_object.name
+    before_cancel = world_net(cbase)[0].copy()
+    assert bpy.ops.spline_surface.cage_cancel() == {'FINISHED'}
+    assert cancel_cage_name not in bpy.data.objects
+    assert not any(m.name == "SS_Cage" for m in cbase.modifiers)
+    assert np.allclose(world_net(cbase)[0], before_cancel)
+    print("cage cancel OK")
+
+    for o in bpy.context.selected_objects:
+        o.select_set(False)
+    cbase.select_set(True)
     assert bpy.ops.spline_surface.cage_add() == {'FINISHED'}
     cage = bpy.context.active_object
     assert cage.type == 'LATTICE' and all(
@@ -634,6 +647,27 @@ def run():
     piece.location.z += 0.3
     vl.update()
     assert seam(piece, far) == 'G2'
+    # Split Patch: direction='V' and snap=False (fitted at an arbitrary t,
+    # not a span boundary), both untested by the direction='U'/snap=True
+    # case above.
+    bpy.context.scene.cursor.location = (1, 600, 0)
+    bpy.ops.spline_surface.add_patch(shape='PLANE', points_u=6, points_v=9, order=5)
+    multi = bpy.context.active_object
+    net_multi, orders_multi = world_net(multi)
+    print("split source spans", orders_multi, net_multi.shape)
+    before_v = world_net(multi)[0].copy()
+    rv = bpy.ops.spline_surface.split_patch(
+        source=multi.name, direction='V', t=0.37, snap=False)
+    assert rv == {'FINISHED'}
+    piece_v = bpy.data.objects[multi.name + "_split"]
+    print("split V snap=False", seam(multi, piece_v))
+    assert seam(multi, piece_v) == 'G2'
+    # The source keeps its own control net span structure (not fitted away);
+    # only its V extent shrinks to the cut.
+    after_a, after_orders = world_net(multi)
+    assert after_orders[1] <= orders_multi[1]
+    assert not np.allclose(after_a[..., 1].max(), before_v[..., 1].max())
+
     # N-sided holes: 5 patch edges, and 2 patch edges + 1 curve (triangle)
     def ring(n_sides, at):
         f = lambda x, y: 0.15 * x * x - 0.1 * x * y + 0.12 * y * y
