@@ -953,6 +953,26 @@ def run():
     assert g2 == 'G2'
     assert bpy.ops.spline_surface.control_mesh_done() == {'FINISHED'}
     assert controlmesh._control_mesh_of(cp_ext) is None
+    # fair keeps the seam G2; refine keeps the shape
+    bpy.ops.object.select_all(action='DESELECT')
+    cp_ext.select_set(True)
+    bpy.context.view_layer.objects.active = cp_ext
+    before = world_net(cp_ext)[0]
+    assert bpy.ops.spline_surface.fair() == {'FINISHED'}
+    bpy.context.view_layer.update()
+    na, oa = world_net(cp_base)
+    nb, ob2 = world_net(cp_ext)
+    sh = find_shared_edge(na, nb, 1e-4, oa, ob2)
+    gf = grade(measure(na, nb, *sh[:3], oa, ob2))
+    print("fair seam", gf)
+    assert gf == 'G2'
+    pts_before = nurbs_eval(*world_net(cp_ext), np.linspace(0, 1, 15))
+    assert bpy.ops.spline_surface.refine(direction='BOTH') == {'FINISHED'}
+    after = world_net(cp_ext)
+    assert after[0].shape[0] > before.shape[0] and after[0].shape[1] > before.shape[1]
+    print("refine", before.shape, "->", after[0].shape, "max dist",
+          float(np.abs(nurbs_eval(*after, np.linspace(0, 1, 15)) - pts_before).max()))
+    assert np.abs(nurbs_eval(*after, np.linspace(0, 1, 15)) - pts_before).max() < 1e-5
     spline_surface.unregister()
     print("ALL OK")
 

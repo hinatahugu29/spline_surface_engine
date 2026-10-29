@@ -574,6 +574,41 @@ def test_soft_pull():
     assert np.allclose(q1 - q0, delta, atol=1e-9)
 
 
+def test_refine_keeps_shape():
+    from core.fair import refine_curve, refine_net
+    for n, k in ((4, 4), (6, 4), (8, 3), (9, 4)):
+        P = rng.normal(size=(n, 3))
+        Q = refine_curve(P, k)
+        spans = n - k + 1
+        assert len(Q) == n + spans
+        t = np.linspace(0, 1, 60)
+        assert np.abs(nurbs.eval_curve(P, k, t) - nurbs.eval_curve(Q, k, t)).max() < 1e-9
+    net = rng.normal(size=(6, 5, 3))
+    new, o = refine_net(net, (4, 5), 'BOTH')
+    assert new.shape == (6 + 3, 5 + 1, 3)
+    g = np.linspace(0, 1, 11)
+    assert np.abs(nurbs.eval_surface(net, (4, 5), g, g) - nurbs.eval_surface(new, o, g, g)).max() < 1e-9
+
+
+def test_fair_net():
+    from core.fair import fair_net
+    g = np.linspace(0, 1, 8)
+    flat = np.stack(np.meshgrid(g, g, indexing="ij") + [np.zeros((8, 8))], -1)
+    bumpy = flat.copy()
+    bumpy[3, 4, 2] += 0.5
+    bumpy[4, 2, 2] -= 0.3
+    fixed = np.zeros((8, 8), bool)
+    fixed[[0, -1]] = fixed[:, [0, -1]] = True
+    out = fair_net(bumpy, fixed)
+    assert np.allclose(out[fixed], bumpy[fixed])
+    assert np.abs(out[..., 2]).max() < 0.02  # the bumps are ironed out
+    half = fair_net(bumpy, fixed, 0.5)
+    assert np.abs(half[..., 2]).max() < np.abs(bumpy[..., 2]).max()
+    assert np.allclose(fair_net(bumpy, fixed, 0.0), bumpy)
+    # nothing fixed: still well defined, and a flat net stays flat
+    assert np.abs(fair_net(flat, np.zeros((8, 8), bool)) - flat).max() < 1e-6
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
