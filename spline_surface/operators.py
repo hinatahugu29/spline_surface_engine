@@ -138,17 +138,19 @@ def compute_fill(meta, settings):
 
 
 def compute_blend(sources, meta, settings):
+    """Returns (net, orders, curve_fit_error). curve_fit_error is None unless
+    the second side is a curve (meta["edges"][1] == 'CURVE')."""
     Pa, oa = world_net(sources[0])
     if meta["edges"][1] == 'CURVE':
         pts = read_polyline(sources[1], bpy.context.evaluated_depsgraph_get(), 96)
         net, orders, err = blend_curve_net(
             Pa, oa, meta["edges"][0], pts, meta["continuity"], meta.get("tension", 1.0),
             meta.get("flip", False), meta.get("curve_tangent", 'SMOOTH'))
-        compute_blend.curve_error = err
-        return net, orders
+        return net, orders, err
     Pb, ob = world_net(sources[1])
-    return blend_net(Pa, oa, meta["edges"][0], Pb, ob, meta["edges"][1],
-                     meta["continuity"], meta.get("tension", 1.0), meta.get("flip", False))
+    net, orders = blend_net(Pa, oa, meta["edges"][0], Pb, ob, meta["edges"][1],
+                            meta["continuity"], meta.get("tension", 1.0), meta.get("flip", False))
+    return net, orders, None
 
 
 def compute_network(sources, meta, settings, depsgraph):
@@ -193,7 +195,7 @@ def compute_from_meta(meta, context):
         net, orders = parts[part]
         msg = meta["continuity"]
     elif meta["method"] == "blend":
-        net, orders = compute_blend(sources, meta, settings)
+        net, orders, _ = compute_blend(sources, meta, settings)
         msg = meta["continuity"]
     elif meta["method"] == "network":
         cells, info = compute_network(sources, meta, settings, context.evaluated_depsgraph_get())
@@ -988,7 +990,8 @@ class SS_OT_bridge_edges(_EdgePairPicker, bpy.types.Operator):
     _allow_same_patch = True
 
     def _compute(self, sources, meta, settings):
-        return compute_blend(sources, meta, settings)
+        net, orders, self._curve_error = compute_blend(sources, meta, settings)
+        return net, orders
 
     def _candidates(self, context):
         lines = surface_edges(context)
@@ -1016,11 +1019,10 @@ class SS_OT_bridge_edges(_EdgePairPicker, bpy.types.Operator):
         if self.edge_a == 'CURVE':
             self.report({'ERROR'}, "Pick at least one patch edge (two curves make a Loft)")
             return {'CANCELLED'}
-        compute_blend.curve_error = None
+        self._curve_error = None
         result = super().execute(context)
-        err = compute_blend.curve_error
-        if result == {'FINISHED'} and err is not None:
-            self.report({'INFO'}, "Bridged to curve (max deviation %.3g)" % err)
+        if result == {'FINISHED'} and self._curve_error is not None:
+            self.report({'INFO'}, "Bridged to curve (max deviation %.3g)" % self._curve_error)
         return result
 
     def modal(self, context, event):
