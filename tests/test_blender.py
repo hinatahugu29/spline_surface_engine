@@ -911,6 +911,48 @@ def run():
     g = grade(measure(na, nb, *sh[:3], oa, ob2))
     print("soft pull seam", g)
     assert g == 'G2'
+    # control mesh: free vertices move the patch, pinned ones snap back, the seam stays G2
+    from spline_surface import controlmesh
+    cp = controlmesh.make_control_mesh(bpy.context, cp_ext)
+    n_u, n_v = nb.shape[:2]
+    mask = controlmesh._masks[cp.name]
+    assert len(cp.data.vertices) == n_u * n_v and cp.vertex_groups["Pinned"]
+    free = int(np.flatnonzero(~mask.ravel())[0])
+    pin = int(np.flatnonzero(mask.ravel())[0])
+    before = world_net(cp_ext)[0].copy()
+    pin_co = tuple(cp.data.vertices[pin].co)
+    cp.data.vertices[free].co.z += 0.4
+    cp.data.vertices[pin].co.z += 0.4
+    assert controlmesh.sync(bpy.context, cp) == "ok"
+    after = world_net(cp_ext)[0]
+    assert abs(after.reshape(-1, 3)[free, 2] - before.reshape(-1, 3)[free, 2] - 0.4) < 1e-5
+    assert np.allclose(after[mask], before[mask], atol=1e-6)
+    assert np.allclose(tuple(cp.data.vertices[pin].co), pin_co, atol=1e-6)  # snapped back
+    # the same through Edit Mode (what the user does)
+    bpy.ops.object.select_all(action='DESELECT')
+    cp.select_set(True)
+    bpy.context.view_layer.objects.active = cp
+    bpy.ops.object.mode_set(mode='EDIT')
+    import bmesh
+    bm = bmesh.from_edit_mesh(cp.data)
+    bm.verts.ensure_lookup_table()
+    bm.verts[free].co.z += 0.3
+    bm.verts[pin].co.z += 0.3
+    bmesh.update_edit_mesh(cp.data)
+    assert controlmesh.sync(bpy.context, cp) == "ok"
+    bm = bmesh.from_edit_mesh(cp.data)
+    bm.verts.ensure_lookup_table()
+    assert abs(bm.verts[pin].co.z - pin_co[2]) < 1e-5
+    bpy.ops.object.mode_set(mode='OBJECT')
+    assert abs(world_net(cp_ext)[0].reshape(-1, 3)[free, 2] - before.reshape(-1, 3)[free, 2] - 0.7) < 1e-5
+    na, oa = world_net(cp_base)
+    nb, ob2 = world_net(cp_ext)
+    sh = find_shared_edge(na, nb, 1e-4, oa, ob2)
+    g2 = grade(measure(na, nb, *sh[:3], oa, ob2))
+    print("control mesh seam", g2)
+    assert g2 == 'G2'
+    assert bpy.ops.spline_surface.control_mesh_done() == {'FINISHED'}
+    assert controlmesh._control_mesh_of(cp_ext) is None
     spline_surface.unregister()
     print("ALL OK")
 
