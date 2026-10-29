@@ -542,12 +542,24 @@ def _extend_far_edge(net0, orders0, edge, new_net, new_orders):
 
 def _solve_extend_length(net0, orders0, edge, continuity, degree, orders, target_pts,
                          lo=0.01, hi=5.0):
-    """Length in [lo, hi] whose extension's far edge comes closest to `target_pts`."""
+    """Length in [lo, hi] whose extension's far edge comes closest to `target_pts`.
+
+    Length is the extension's only free parameter -- its far edge's own shape
+    is fixed by the source's own tangent/curvature, it can't bend to follow a
+    curved target. Scored by the far edge's *average* gap to the target
+    (sampled along its length, each to its own nearest target point) rather
+    than just the gap at its centre, so a curved or offset target still picks
+    the length that fits it best overall instead of matching only the middle
+    and leaving the ends off.
+    """
     def far_dist(length):
         net, out_orders = extend_net(net0, edge, length, continuity, degree, orders)
         far = _extend_far_edge(net0, orders0, edge, net, out_orders)
-        centre = edge_polyline(net, out_orders, far, 16).mean(axis=0)
-        return float(np.linalg.norm(target_pts - centre, axis=1).min())
+        far_pts = edge_polyline(net, out_orders, far, 16)
+        # For each point along the far edge, distance to its own nearest
+        # target point (not one shared nearest point for all of them).
+        gaps = np.linalg.norm(far_pts[:, None, :] - target_pts[None, :, :], axis=2).min(axis=1)
+        return float(gaps.mean())
     xs = np.linspace(lo, hi, 16)
     ds = [far_dist(x) for x in xs]
     i = int(np.argmin(ds))
