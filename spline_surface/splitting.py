@@ -91,7 +91,7 @@ def _mirrors_of(name):
             if (_meta(o) or {}).get("method") == "mirror" and _meta(o)["sources"] == [name]]
 
 
-class SS_OT_split_patch(bpy.types.Operator):
+class SS_OT_split_patch(pick.ModalPicker, bpy.types.Operator):
     bl_idname = "spline_surface.split_patch"
     bl_label = "Split Patch"
     bl_description = ("Cut a patch in two along an iso-line. Click on the patch where to cut; "
@@ -184,11 +184,6 @@ class SS_OT_split_patch(bpy.types.Operator):
                 self._line = iso_line(net, orders, self.direction, t)
         context.area.tag_redraw()
 
-    def _finish(self, context):
-        self._picker.remove()
-        context.area.header_text_set(None)
-        context.area.tag_redraw()
-
     def modal(self, context, event):
         mouse = (event.mouse_region_x, event.mouse_region_y)
         if event.type == 'MOUSEMOVE':
@@ -209,12 +204,8 @@ class SS_OT_split_patch(bpy.types.Operator):
             self.t = u if self.direction == 'U' else v
             self._finish(context)
             return self.execute(context)
-        elif event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
-            self._finish(context)
-            return {'CANCELLED'}
-        elif event.type in {'MIDDLEMOUSE', 'NUMPAD_PERIOD'} or event.type.startswith('NDOF') \
-                or event.type.startswith('TRACKPAD'):
-            return {'PASS_THROUGH'}
+        elif self._common_modal(context, event):
+            return self._common_result
         return {'RUNNING_MODAL'}
 
     # -------------------------------------------------------------- execute

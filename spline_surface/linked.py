@@ -292,7 +292,7 @@ def remember_all(context):
 
 # ---------------------------------------------------------------- operators
 
-class SS_OT_edge_chain(bpy.types.Operator):
+class SS_OT_edge_chain(pick.ModalPicker, bpy.types.Operator):
     bl_idname = "spline_surface.edge_chain"
     bl_label = "Edge Chain"
     bl_description = ("Click an open edge: the run of open edges joined to it becomes one "
@@ -341,11 +341,6 @@ class SS_OT_edge_chain(bpy.types.Operator):
         lines += [(self._edges[k], pick.COLOR_HOVER, 4.0) for k in run]
         return lines
 
-    def _finish(self, context):
-        self._picker.remove()
-        context.area.header_text_set(None)
-        context.area.tag_redraw()
-
     def modal(self, context, event):
         if event.type == 'MOUSEMOVE':
             hover = pick.nearest_polyline(context, self._edges,
@@ -360,12 +355,8 @@ class SS_OT_edge_chain(bpy.types.Operator):
             self._finish(context)
             self.source, self.edge = self._hover
             return self.execute(context)
-        elif event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
-            self._finish(context)
-            return {'CANCELLED'}
-        elif event.type in {'MIDDLEMOUSE', 'NUMPAD_PERIOD'} or event.type.startswith('NDOF') \
-                or event.type.startswith('TRACKPAD'):
-            return {'PASS_THROUGH'}
+        elif self._common_modal(context, event):
+            return self._common_result
         return {'RUNNING_MODAL'}
 
     def execute(self, context):

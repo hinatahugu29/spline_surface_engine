@@ -488,7 +488,7 @@ def _solve_extend_length(net0, orders0, edge, continuity, degree, orders, target
     return float(np.clip((a + b) / 2, lo, hi))
 
 
-class SS_OT_extend_edge(bpy.types.Operator):
+class SS_OT_extend_edge(pick.ModalPicker, bpy.types.Operator):
     bl_idname = "spline_surface.extend_edge"
     bl_label = "Extend Edge"
     bl_description = ("Grow a new patch off an open edge of any visible patch (click it), "
@@ -592,11 +592,6 @@ class SS_OT_extend_edge(bpy.types.Operator):
         except Exception:
             pass  # keep whatever length was last set manually
 
-    def _finish(self, context):
-        self._picker.remove()
-        context.area.header_text_set(None)
-        context.area.tag_redraw()
-
     def modal(self, context, event):
         if event.type == 'MOUSEMOVE':
             hover = pick.nearest_polyline(context, self._edges,
@@ -630,12 +625,8 @@ class SS_OT_extend_edge(bpy.types.Operator):
             self._finish(context)
             self.source, self.edge = self._source
             return self.execute(context)
-        elif event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
-            self._finish(context)
-            return {'CANCELLED'}
-        elif (event.type in {'MIDDLEMOUSE', 'NUMPAD_PERIOD'}
-                or event.type.startswith('NDOF') or event.type.startswith('TRACKPAD')):
-            return {'PASS_THROUGH'}
+        elif self._common_modal(context, event):
+            return self._common_result
         return {'RUNNING_MODAL'}
 
     def execute(self, context):
@@ -661,7 +652,7 @@ class SS_OT_extend_edge(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class _EdgePairPicker:
+class _EdgePairPicker(pick.ModalPicker):
     """Modal two-edge picking shared by Corner Fill and Bridge Edges."""
 
     # Bridge Edges can close a single patch's two opposite edges into a
@@ -731,11 +722,6 @@ class _EdgePairPicker:
                 pass
         context.area.tag_redraw()
 
-    def _finish(self, context):
-        self._picker.remove()
-        context.area.header_text_set(None)
-        context.area.tag_redraw()
-
     def modal(self, context, event):
         if event.type == 'MOUSEMOVE':
             hover = pick.nearest_polyline(context, self._edges,
@@ -773,12 +759,8 @@ class _EdgePairPicker:
             self._set_pair(self._first, self._hover)
             self._finish(context)
             return self.execute(context)
-        elif event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
-            self._finish(context)
-            return {'CANCELLED'}
-        elif event.type in {'MIDDLEMOUSE', 'NUMPAD_PERIOD'} or event.type.startswith('NDOF') \
-                or event.type.startswith('TRACKPAD'):
-            return {'PASS_THROUGH'}
+        elif self._common_modal(context, event):
+            return self._common_result
         return {'RUNNING_MODAL'}
 
     def _meta(self):
@@ -913,7 +895,7 @@ class SS_OT_bridge_edges(_EdgePairPicker, bpy.types.Operator):
         return super().modal(context, event)
 
 
-class SS_OT_fill_hole(bpy.types.Operator):
+class SS_OT_fill_hole(pick.ModalPicker, bpy.types.Operator):
     bl_idname = "spline_surface.fill_hole"
     bl_label = "Fill Hole"
     bl_description = ("Fill a hole bounded by patch edges (and curves). Click the edges "
@@ -998,11 +980,6 @@ class SS_OT_fill_hole(bpy.types.Operator):
                 pass
         context.area.tag_redraw()
 
-    def _finish(self, context):
-        self._picker.remove()
-        context.area.header_text_set(None)
-        context.area.tag_redraw()
-
     def modal(self, context, event):
         if event.type == 'MOUSEMOVE':
             hover = pick.nearest_polyline(context, self._edges,
@@ -1036,12 +1013,8 @@ class SS_OT_fill_hole(bpy.types.Operator):
             self._set_picks(self._chosen)
             self._finish(context)
             return self.execute(context)
-        elif event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
-            self._finish(context)
-            return {'CANCELLED'}
-        elif event.type in {'MIDDLEMOUSE', 'NUMPAD_PERIOD'} or event.type.startswith('NDOF') \
-                or event.type.startswith('TRACKPAD'):
-            return {'PASS_THROUGH'}
+        elif self._common_modal(context, event):
+            return self._common_result
         return {'RUNNING_MODAL'}
 
     def _meta(self):

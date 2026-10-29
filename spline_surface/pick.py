@@ -77,6 +77,36 @@ class Overlay:
             self.text_handle = None
 
 
+class ModalPicker:
+    """Shared boilerplate for modal operators that run a pick.Overlay:
+    self._finish() and the Esc/RMB-cancel, middle-mouse/NDOF/trackpad
+    pass-through tail every one of them repeated identically. A subclass's
+    own modal() still owns its own hover/pick logic; it only needs to end
+    its elif chain with:
+        elif self._common_modal(context, event):
+            return self._common_result
+        return {'RUNNING_MODAL'}
+    """
+
+    def _finish(self, context):
+        self._picker.remove()
+        context.area.header_text_set(None)
+        context.area.tag_redraw()
+
+    def _common_modal(self, context, event):
+        """True (and sets self._common_result) if this event was the shared
+        cancel/pass-through case; the caller returns self._common_result."""
+        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            self._finish(context)
+            self._common_result = {'CANCELLED'}
+            return True
+        if event.type in {'MIDDLEMOUSE', 'NUMPAD_PERIOD'} or event.type.startswith('NDOF') \
+                or event.type.startswith('TRACKPAD'):
+            self._common_result = {'PASS_THROUGH'}
+            return True
+        return False
+
+
 EDGE_NAMES = {'U0': "U min", 'U1': "U max", 'V0': "V min", 'V1': "V max", 'CURVE': "curve"}
 
 
