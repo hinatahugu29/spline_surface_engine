@@ -7,8 +7,9 @@ import numpy as np
 from . import live, zebra
 from .bridge.write_surface import build_surface_data
 from .core.mirror import edges_on_plane
-from .operators import (META_KEY, _make_active, compute_from_meta, hand_edited, raw_meta,
-                        replace_net, store_meta, world_net)
+from .operators import compute_from_meta
+from .recipe import (META_KEY, _make_active, hand_edited, raw_meta, replace_net, store_meta,
+                     world_net)
 
 
 def _meta(ob):

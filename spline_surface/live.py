@@ -11,8 +11,9 @@ import traceback
 import bpy
 import numpy as np
 
-from .operators import (ADDON_WRITES, META_KEY, ROUND_DECIMALS, compute_from_meta, hand_edited,
-                        replace_net, store_meta, world_net)
+from .operators import compute_from_meta
+from .recipe import (ADDON_WRITES, META_KEY, ROUND_DECIMALS, hand_edited, replace_net,
+                     store_meta, world_net)
 
 
 def _meta(ob):

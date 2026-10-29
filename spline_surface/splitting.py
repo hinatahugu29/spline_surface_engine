@@ -10,7 +10,7 @@ from .bridge.write_surface import build_surface_data
 from .core.continuity import find_shared_edge
 from .core.nurbs import eval_points
 from .core.split import iso_line, split_net
-from .operators import META_KEY, _make_active, raw_meta, replace_net, store_meta, world_net
+from .recipe import META_KEY, _make_active, raw_meta, replace_net, store_meta, world_net
 
 # Which edges of the original end up on which piece, per cut direction.
 _EDGE_MAP = {'U': ({'U0': 'a', 'U1': 'b'}, ('V0', 'V1')),
@@ -71,6 +71,9 @@ def retarget(source, piece_b, direction, net_a, orders_a, net_b, orders_b):
             except ValueError:
                 continue
             for ref, rnet, rord in ((source, net_a, orders_a), (piece_b, net_b, orders_b)):
+                # Tighter than the usual ~1e-3 seam tolerance elsewhere: a
+                # match here should land on exactly the piece it used to
+                # reference, not loosely "close enough" after the split.
                 if find_shared_edge(tnet, rnet, 1e-4 * np.ptp(rnet.reshape(-1, 3), 0).max(),
                                     torders, rord):
                     matches.append(dict(m, ref=ref.name))

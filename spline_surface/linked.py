@@ -19,8 +19,8 @@ from .core.continuity import find_shared_edge, grade, match_net, measure
 from .core.linked import (chain_polyline, deform, edge_order, edge_row, falloff_field,
                           grid_layout, merge_grid, order_chain)
 from .core.nurbs import basis_matrix, fit_polyline
-from .operators import (ADDON_WRITES, META_KEY, _make_active, hand_edited, raw_meta,
-                        replace_net, store_meta, surface_edges, world_net)
+from .recipe import (ADDON_WRITES, META_KEY, _make_active, hand_edited, raw_meta,
+                     replace_net, store_meta, surface_edges, world_net)
 
 CHAIN_KEY = "spline_surface_chain"
 CHAIN_SAMPLES = 96

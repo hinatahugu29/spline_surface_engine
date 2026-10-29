@@ -12,7 +12,7 @@ import numpy as np
 from mathutils import Vector
 
 from . import live
-from .operators import META_KEY, hand_edited, store_meta, world_net
+from .recipe import META_KEY, hand_edited, store_meta, world_net
 
 MOD_NAME = "SS_Cage"
 CAGE_KEY = "spline_surface_cage"

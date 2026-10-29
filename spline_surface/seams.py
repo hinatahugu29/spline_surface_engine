@@ -9,7 +9,8 @@ import numpy as np
 from gpu_extras.batch import batch_for_shader
 
 from .core.continuity import find_shared_edge, grade, measure
-from .operators import _seam_tolerance, edge_polyline, world_net
+from .operators import _seam_tolerance
+from .recipe import edge_polyline, world_net
 
 COLORS = {'G2': (0.25, 0.9, 0.35, 1.0), 'G1': (1.0, 0.85, 0.2, 1.0),
           'G0': (1.0, 0.25, 0.2, 1.0), 'open': (0.9, 0.3, 0.9, 1.0)}
