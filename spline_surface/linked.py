@@ -186,7 +186,13 @@ def sync_chain(cob, context):
     radius = settings.link_falloff * data["size"]
     field = falloff_field(rest, disp, radius)
     flat = np.concatenate([rest, new])
-    moved = _deform_around(context, field, (flat.min(0), flat.max(0)), radius, set())
+    # The chain's own patches get their edge row snapped to the curve exactly
+    # below; skip them here so they aren't *also* smoothly falloff-deformed
+    # as if they were a nearby, unrelated patch. That double deformation
+    # doesn't cancel out on its own: fitting the exact edge row again after
+    # a round trip leaves the deformed interior control points drifted.
+    own = {seg["ob"] for seg in data["segments"]}
+    moved = _deform_around(context, field, (flat.min(0), flat.max(0)), radius, own)
     for seg in data["segments"]:
         ob = bpy.data.objects.get(seg["ob"])
         if ob is None:
