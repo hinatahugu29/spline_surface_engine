@@ -532,11 +532,38 @@ def iso_lines(net, orders, count=6, samples=32):
     return lines
 
 
+def _extend_far_edge(net0, orders0, edge, new_net, new_orders):
+    """Which edge key of the extension `new_net` is the new, far (tip) edge."""
+    src_pts = edge_polyline(net0, orders0, edge, 16)
+    shared = min(EDGE_KEYS, key=lambda k: np.linalg.norm(
+        edge_polyline(new_net, new_orders, k, 16) - src_pts, axis=1).max())
+    return OPPOSITE_EDGE[shared]
+
+
+def _solve_extend_length(net0, orders0, edge, continuity, degree, orders, target_pts,
+                         lo=0.01, hi=5.0):
+    """Length in [lo, hi] whose extension's far edge comes closest to `target_pts`."""
+    def far_dist(length):
+        net, out_orders = extend_net(net0, edge, length, continuity, degree, orders)
+        far = _extend_far_edge(net0, orders0, edge, net, out_orders)
+        centre = edge_polyline(net, out_orders, far, 16).mean(axis=0)
+        return float(np.linalg.norm(target_pts - centre, axis=1).min())
+    xs = np.linspace(lo, hi, 16)
+    ds = [far_dist(x) for x in xs]
+    i = int(np.argmin(ds))
+    a, b = xs[max(i - 1, 0)], xs[min(i + 1, len(xs) - 1)]
+    for _ in range(16):
+        m1, m2 = a + (b - a) / 3, b - (b - a) / 3
+        a, b = (a, m2) if far_dist(m1) < far_dist(m2) else (m1, b)
+    return float(np.clip((a + b) / 2, lo, hi))
+
+
 class SS_OT_extend_edge(bpy.types.Operator):
     bl_idname = "spline_surface.extend_edge"
     bl_label = "Extend Edge"
     bl_description = ("Grow a new patch off an open edge of any visible patch (click it), "
-                      "matching its tangent (G1) or tangent and curvature (G2)")
+                      "matching its tangent (G1) or tangent and curvature (G2). Then click a "
+                      "second edge to stretch the extension until it reaches it")
     bl_options = {'REGISTER', 'UNDO'}
 
     source: bpy.props.StringProperty(
@@ -567,6 +594,7 @@ class SS_OT_extend_edge(bpy.types.Operator):
             return {'CANCELLED'}
         self._nets = {}
         self._hover = None
+        self._source = None
         self._preview = []
         self._picker = pick.Overlay(context, self._draw_lines, self._label)
         context.window_manager.modal_handler_add(self)
@@ -574,35 +602,65 @@ class SS_OT_extend_edge(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def _header(self, context):
+        if self._source is None:
+            step = "click an edge"
+        else:
+            step = "click a target edge to reach it, or Enter/click again to confirm"
         context.area.header_text_set(
-            "Extend Edge: click an edge   Wheel: length %.2f   C: %s   Esc/RMB: cancel"
-            % (self.length, self.continuity))
+            "Extend Edge: %s   Wheel: length %.2f   C: %s   Esc/RMB: cancel"
+            % (step, self.length, self.continuity))
 
     def _label(self):
         return pick.edge_label(self._hover, self._edges[self._hover]) if self._hover else None
 
     def _draw_lines(self):
-        lines = [(pts, pick.COLOR_EDGE, 2.0) for e, pts in self._edges.items() if e != self._hover]
-        if self._hover:
+        lines = [(pts, pick.COLOR_EDGE, 2.0) for e, pts in self._edges.items()
+                 if e not in (self._hover, self._source)]
+        if self._source:
+            lines.append((self._edges[self._source], pick.COLOR_SELECTED, 4.0))
+        if self._hover and self._hover != self._source:
             lines.append((self._edges[self._hover], pick.COLOR_HOVER, 4.0))
-            lines += [(pts, pick.COLOR_PREVIEW, 1.0) for pts in self._preview]
+        lines += [(pts, pick.COLOR_PREVIEW, 1.0) for pts in self._preview]
         return lines
+
+    def _net(self, name):
+        if name not in self._nets:
+            self._nets[name] = world_net(bpy.data.objects[name])
+        return self._nets[name]
 
     def _update_preview(self, context):
         self._preview = []
-        if self._hover:
-            name, edge = self._hover
-            try:
-                if name not in self._nets:
-                    self._nets[name] = world_net(bpy.data.objects[name])
-                net, orders = extend_net(*self._nets[name][:1], edge, self.length,
-                                         self.continuity, context.scene.spline_surface.degree,
-                                         self._nets[name][1])
-                self._preview = iso_lines(net, orders)
-            except Exception:
-                # Preview-only: any geometry failure just means no preview.
-                pass
+        source = self._source or self._hover
+        if not source:
+            context.area.tag_redraw()
+            return
+        name, edge = source
+        try:
+            net0, orders0 = self._net(name)
+            length = self.length
+            target = self._hover if (self._source and self._hover
+                                     and self._hover != self._source) else None
+            if target:
+                length = _solve_extend_length(net0, orders0, edge, self.continuity,
+                                              context.scene.spline_surface.degree, orders0,
+                                              self._edges[target])
+            net, orders = extend_net(net0, edge, length, self.continuity,
+                                     context.scene.spline_surface.degree, orders0)
+            self._preview = iso_lines(net, orders)
+        except Exception:
+            # Preview-only: any geometry failure just means no preview.
+            pass
         context.area.tag_redraw()
+
+    def _solve_to_target(self, context, target):
+        name, edge = self._source
+        try:
+            net0, orders0 = self._net(name)
+            self.length = _solve_extend_length(
+                net0, orders0, edge, self.continuity, context.scene.spline_surface.degree,
+                orders0, self._edges[target])
+        except Exception:
+            pass  # keep whatever length was last set manually
 
     def _finish(self, context):
         self._picker.remove()
@@ -628,8 +686,19 @@ class SS_OT_extend_edge(bpy.types.Operator):
         elif event.type == 'LEFTMOUSE' and event.value == 'PRESS':
             if self._hover is None:
                 return {'RUNNING_MODAL'}
+            if self._source is None:
+                self._source = self._hover
+                self._header(context)
+                context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
+            if self._hover != self._source:
+                self._solve_to_target(context, self._hover)
             self._finish(context)
-            self.source, self.edge = self._hover
+            self.source, self.edge = self._source
+            return self.execute(context)
+        elif event.type in {'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS' and self._source:
+            self._finish(context)
+            self.source, self.edge = self._source
             return self.execute(context)
         elif event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
             self._finish(context)
