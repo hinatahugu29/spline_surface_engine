@@ -874,6 +874,27 @@ def run():
     assert M.name.startswith("Merged") and A.hide_get() and B.hide_get()
     mnet, mo = world_net(M)
     print("merged", mnet.shape, mo)
+    # control point overlay: G2 seam pins three rows on each side, the rest is free
+    from spline_surface import ctrlpoints
+    bpy.context.scene.cursor.location = (0, 200, 0)
+    bpy.ops.spline_surface.add_patch(shape='DOME')
+    cp_base = bpy.context.active_object
+    bpy.ops.spline_surface.extend_edge(edge='U1', continuity='G2')
+    cp_ext = bpy.context.active_object
+    bpy.ops.object.select_all(action='DESELECT')
+    cp_base.select_set(True)
+    cp_ext.select_set(True)
+    bpy.context.view_layer.update()
+    ctrlpoints.show(bpy.context, True)
+    pats = ctrlpoints.compute_patches(bpy.context)
+    assert len(pats) == 2
+    for net, mask in pats:
+        assert mask.shape == net.shape[:2] and 0 < mask.sum() < mask.size
+    free, locked = ctrlpoints.counts()
+    print("control points free/pinned", free, locked)
+    assert free > 0 and locked > 0
+    ctrlpoints.show(bpy.context, False)
+    assert ctrlpoints.counts() is None
     spline_surface.unregister()
     print("ALL OK")
 

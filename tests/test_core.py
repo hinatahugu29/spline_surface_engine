@@ -533,6 +533,19 @@ def test_merge_grid():
         raise AssertionError("an L shape is not a grid")
 
 
+def test_lock_mask():
+    from core.lock import lock_mask
+    m = lock_mask((7, 6), [('U1', 'G2')])
+    assert m[-3:].all() and not m[:-3].any()  # U1 = last u row, three deep
+    m = lock_mask((7, 6), [('V0', 'G1'), ('U0', 'G0'), ('V1', 'open')])
+    assert m[:, :2].all() and m[0].all()
+    assert m.sum() == 7 * 2 + 6 - 2  # V0 two columns plus the U0 row minus the overlap
+    assert not m[1:, -1].any()
+    m = lock_mask((4, 4), [('U0', 'G2'), ('U1', 'G2')])
+    assert m.all()  # opposite G2 seams on a 4-row patch pin everything
+    assert not lock_mask((5, 5), []).any()
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

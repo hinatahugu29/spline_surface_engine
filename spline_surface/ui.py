@@ -178,6 +178,13 @@ class SS_PT_inspect(_SubPanel, bpy.types.Panel):
                 if c.get(g):
                     row.label(text="%s %d" % (g, c[g]),
                               icon=GRADE_ICONS.get(g, 'QUESTION'))
+        from . import ctrlpoints
+        on = ctrlpoints._state["handle"] is not None
+        layout.operator("spline_surface.control_points", icon='PARTICLE_POINT', depress=on,
+                        text="Control Points: On" if on else "Control Points")
+        if on:
+            free, locked = ctrlpoints.counts()
+            layout.label(text="Free %d | Pinned %d" % (free, locked))
         layout.operator("spline_surface.check_continuity", icon='VIEWZOOM')
         try:
             rows = json.loads(s.continuity_report or "[]")

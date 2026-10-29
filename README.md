@@ -21,7 +21,7 @@
 | Create | Add Patch、Coons、Loft、Curve Network（＋ボタンで見本のカーブの網）、Snap Ends（カーブの端をくっつける）、Regenerate、Fit Settings |
 | Grow & Connect | Extend Edge、Bridge Edges、Match Edge、Corner Fill、Fill Hole、Split Patch、Offset Surface |
 | Group | Live Update、Linked Edit（＋Falloff）、Edge Chain、Merge、Select / Regenerate、Mirror Group、Cage（Add / Apply / ✕） |
-| Inspect | Zebra（表示中の全部の面に一括、On の間は新しい面にも自動）、Seam Colors（つなぎ目を継続性で色分け）、Check Continuity（結果の一覧） |
+| Inspect | Zebra（表示中の全部の面に一括、On の間は新しい面にも自動）、Seam Colors（つなぎ目を継続性で色分け）、Control Points（制御点を、つなぎ目で固定された点＝オレンジ／自由に動かせる内側＝水色で表示）、Check Continuity（結果の一覧） |
 | Output | Mesh Resolution、To Mesh |
 
 ## クリックで選ぶツールの操作

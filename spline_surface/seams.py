@@ -24,8 +24,11 @@ def _bbox_overlap(Pa, Pb, pad):
     return np.all(a.min(0) - pad <= b.max(0)) and np.all(b.min(0) - pad <= a.max(0))
 
 
-def compute_seams(context):
-    """[(grade, polyline, measure, (name_a, name_b))] for visible patches."""
+def shared_seams(context):
+    """[dict(a, b, edge_a, edge_b, grade, measure, polyline)] for visible patches.
+
+    `polyline` follows edge_a in world space.
+    """
     settings = context.scene.spline_surface
     nets = {}
     for ob in context.visible_objects:
@@ -47,8 +50,16 @@ def compute_seams(context):
             if shared is None:
                 continue
             m = measure(Pa, Pb, *shared[:3], oa, ob_)
-            seams.append((grade(m), edge_polyline(Pa, oa, shared[0], 48), m, (a, b)))
+            seams.append({"a": a, "b": b, "edge_a": shared[0], "edge_b": shared[1],
+                          "grade": grade(m), "measure": m,
+                          "polyline": edge_polyline(Pa, oa, shared[0], 48)})
     return seams
+
+
+def compute_seams(context):
+    """[(grade, polyline, measure, (name_a, name_b))] for visible patches."""
+    return [(s["grade"], s["polyline"], s["measure"], (s["a"], s["b"]))
+            for s in shared_seams(context)]
 
 
 def refresh(context):
