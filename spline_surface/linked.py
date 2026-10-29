@@ -193,6 +193,7 @@ def sync_chain(cob, context):
     # a round trip leaves the deformed interior control points drifted.
     own = {seg["ob"] for seg in data["segments"]}
     moved = _deform_around(context, field, (flat.min(0), flat.max(0)), radius, own)
+    overshoot = []
     for seg in data["segments"]:
         ob = bpy.data.objects.get(seg["ob"])
         if ob is None:
@@ -210,8 +211,23 @@ def sync_chain(cob, context):
         pts = _section(new, seg["t0"], seg["t1"])
         if seg["rev"]:
             pts = pts[::-1]
-        Nn[row] = fit_polyline(pts, n, k)[0]
+        new_row = fit_polyline(pts, n, k)[0]
+        # A tight bend fit through few control points (n close to k) can
+        # overshoot wildly *between* the sample points even though it still
+        # passes near them -- fit_polyline's own deviation won't catch that.
+        # Flag a row whose control points land well outside the target
+        # polyline's own extent.
+        lo, hi = pts.min(0), pts.max(0)
+        margin = 0.5 * max(np.ptp(pts, axis=0).max(), 1e-6)
+        beyond = np.maximum(lo - margin - new_row, 0) + np.maximum(new_row - (hi + margin), 0)
+        if beyond.max() > 0:
+            overshoot.append(ob.name)
+        Nn[row] = new_row
         moved[ob.name] = (N, Nn, orders)
+    if overshoot:
+        context.scene.spline_surface.live_note = (
+            "Edge Chain: %s overshot a sharp bend (too few control points for it); "
+            "raise Control Points on the chain" % ", ".join(sorted(set(overshoot))))
     before = {n: (v[0], v[2]) for n, v in moved.items()}
     after = {n: (v[1], v[2]) for n, v in moved.items()}
     # The chain's own patches first (in chain order), then everything else
