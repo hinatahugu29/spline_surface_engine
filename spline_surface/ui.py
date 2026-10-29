@@ -178,6 +178,7 @@ class SS_PT_inspect(_SubPanel, bpy.types.Panel):
                 if c.get(g):
                     row.label(text="%s %d" % (g, c[g]),
                               icon=GRADE_ICONS.get(g, 'QUESTION'))
+        layout.operator("spline_surface.soft_pull", icon='SMOOTHCURVE')
         from . import ctrlpoints
         on = ctrlpoints._state["handle"] is not None
         layout.operator("spline_surface.control_points", icon='PARTICLE_POINT', depress=on,

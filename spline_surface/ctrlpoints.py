@@ -21,24 +21,29 @@ NET = (0.7, 0.7, 0.7, 0.35)
 _state = {"handle": None, "patches": [], "dirty": False, "counts": (0, 0)}
 
 
-def compute_patches(context):
-    """[(world net, locked mask)] for the selected (else all visible) patches."""
-    visible = [ob for ob in context.visible_objects if ob.type == 'SURFACE']
-    chosen = [ob for ob in visible if ob.select_get()] or visible
-    pinned = {ob.name: [] for ob in chosen}
+def pin_masks(context, objects):
+    """{name: (world net, orders, pinned mask)} for `objects` (SURFACE patches)."""
+    pinned = {ob.name: [] for ob in objects}
     for s in shared_seams(context):
         if s["a"] in pinned:
             pinned[s["a"]].append((s["edge_a"], s["grade"]))
         if s["b"] in pinned:
             pinned[s["b"]].append((s["edge_b"], s["grade"]))
-    patches = []
-    for ob in chosen:
+    out = {}
+    for ob in objects:
         try:
-            net, _ = world_net(ob)
+            net, orders = world_net(ob)
         except ValueError:
             continue
-        patches.append((net, lock_mask(net.shape[:2], pinned[ob.name])))
-    return patches
+        out[ob.name] = (net, orders, lock_mask(net.shape[:2], pinned[ob.name]))
+    return out
+
+
+def compute_patches(context):
+    """[(world net, locked mask)] for the selected (else all visible) patches."""
+    visible = [ob for ob in context.visible_objects if ob.type == 'SURFACE']
+    chosen = [ob for ob in visible if ob.select_get()] or visible
+    return [(net, mask) for net, _, mask in pin_masks(context, chosen).values()]
 
 
 def refresh(context):

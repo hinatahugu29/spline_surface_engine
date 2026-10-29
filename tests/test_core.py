@@ -546,6 +546,34 @@ def test_lock_mask():
     assert not lock_mask((5, 5), []).any()
 
 
+def test_soft_pull():
+    from core.lock import lock_mask
+    from core.softpull import soft_pull
+    g = np.linspace(0, 1, 7)
+    net = np.stack(np.meshgrid(g, g, indexing="ij") + [np.zeros((7, 7))], -1)
+    orders = (7, 7)
+    mask = lock_mask((7, 7), [('U1', 'G2')])
+    delta = np.array([0.0, 0.0, 0.4])
+    new, gain = soft_pull(net, orders, mask, (0.4, 0.5), delta, 0.5)
+    assert gain > 0.3
+    assert np.allclose(new[mask], net[mask])  # pinned rows untouched
+    p0 = nurbs.eval_points(net, orders, [0.4], [0.5])[0]
+    p1 = nurbs.eval_points(new, orders, [0.4], [0.5])[0]
+    assert np.allclose(p1 - p0, delta, atol=1e-9), p1 - p0  # the anchor follows the cursor
+    far = np.linalg.norm(net[..., :2] - p0[:2], axis=-1) > 0.9
+    assert np.allclose(new[far], net[far])  # outside the radius nothing moves
+    # an anchor on the pinned edge cannot be pulled
+    same, gain = soft_pull(net, orders, mask, (1.0, 0.5), delta, 0.5)
+    assert gain == 0.0 and np.allclose(same, net)
+    # multispan NURBS: same contract
+    net2 = np.stack(np.meshgrid(np.linspace(0, 1, 9), np.linspace(0, 1, 9), indexing="ij")
+                    + [np.zeros((9, 9))], -1)
+    new2, _ = soft_pull(net2, (4, 4), np.zeros((9, 9), bool), (0.5, 0.5), delta, 0.4)
+    q0 = nurbs.eval_points(net2, (4, 4), [0.5], [0.5])[0]
+    q1 = nurbs.eval_points(new2, (4, 4), [0.5], [0.5])[0]
+    assert np.allclose(q1 - q0, delta, atol=1e-9)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

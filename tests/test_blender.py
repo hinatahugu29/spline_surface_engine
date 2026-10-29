@@ -895,6 +895,22 @@ def run():
     assert free > 0 and locked > 0
     ctrlpoints.show(bpy.context, False)
     assert ctrlpoints.counts() is None
+    # soft pull (the maths the modal runs): the pinned rows stay, so the seam stays G2
+    from spline_surface.core.softpull import soft_pull
+    from spline_surface.live import _write_in_place
+    masks = ctrlpoints.pin_masks(bpy.context, [cp_base, cp_ext])
+    net0, o0, mask0 = masks[cp_ext.name]
+    assert mask0.any() and not mask0.all()
+    new, gain = soft_pull(net0, o0, mask0, (0.5, 0.7), (0.0, 0.0, 0.3), 0.3 * np.ptp(net0.reshape(-1, 3), axis=0).max())
+    assert gain > 0 and np.abs(new - net0).max() > 0.05 and np.allclose(new[mask0], net0[mask0])
+    assert _write_in_place(cp_ext, new, o0)
+    bpy.context.view_layer.update()
+    na, oa = world_net(cp_base)
+    nb, ob2 = world_net(cp_ext)
+    sh = find_shared_edge(na, nb, 1e-4, oa, ob2)
+    g = grade(measure(na, nb, *sh[:3], oa, ob2))
+    print("soft pull seam", g)
+    assert g == 'G2'
     spline_surface.unregister()
     print("ALL OK")
 
