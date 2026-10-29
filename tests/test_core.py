@@ -609,6 +609,45 @@ def test_fair_net():
     assert np.abs(fair_net(flat, np.zeros((8, 8), bool)) - flat).max() < 1e-6
 
 
+def test_fillet_rounds_right_angle_corner():
+    from core.fillet import fillet_net
+    n = 6
+    g = np.linspace(0.0, 1.0, n)
+    # Patch A: the y = 0 wall, x in [0, 1], z in [0, 1]; edge U1 is x = 1.
+    A = np.zeros((n, n, 3))
+    A[..., 0] = g[:, None]
+    A[..., 2] = g[None, :]
+    # Patch B: the x = 1 wall, y in [0, 1], z in [0, 1]; edge U0 is y = 0,
+    # coincident with A's x = 1 edge.
+    B = np.zeros((n, n, 3))
+    B[..., 0] = 1.0
+    B[..., 1] = g[:, None]
+    B[..., 2] = g[None, :]
+
+    radius = 0.2
+    net, orders, info = fillet_net(A, (6, 6), 'U1', B, (6, 6), 'U0', radius)
+    assert info["fit_error"] < 1e-5  # degree 5 cannot reproduce a circular arc exactly
+    assert abs(info["max_angle"] - 90.0) < 1e-6
+    assert np.allclose(info["reach"], radius, atol=1e-9)  # tan(45 deg) == 1
+
+    gg = np.linspace(0.0, 1.0, 25)
+    surf = nurbs.eval_surface(net, orders, gg, gg)
+    # The crease ran along z, at x = 1, y = 0: this is a convex (outer) corner,
+    # so the ball rolls outward and every fillet point is `radius` from the
+    # line (1 + radius, -radius, z) parallel to z (the circle's axis).
+    axis = np.array([1.0 + radius, -radius, 0.0])
+    d = surf.copy()
+    d[..., 2] = 0.0
+    dist = np.linalg.norm(d - axis[None, None, :], axis=2)
+    assert np.abs(dist - radius).max() < 1e-5, np.abs(dist - radius).max()
+    # one edge sits on B's wall (x = 1); the other on A's wall (y = 0).
+    assert np.abs(surf[:, 0, 0] - 1.0).max() < 1e-9
+    assert np.abs(surf[:, -1, 1]).max() < 1e-9
+    # Both are inset from the original crease by exactly `radius`.
+    assert np.abs(surf[:, 0, 1] - (-radius)).max() < 1e-9
+    assert np.abs(surf[:, -1, 0] - (1.0 + radius)).max() < 1e-9
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
