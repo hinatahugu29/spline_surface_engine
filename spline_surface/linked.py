@@ -437,6 +437,16 @@ class SS_OT_merge_patches(bpy.types.Operator):
         except ValueError as e:
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
+        # err is only measured at merge_grid's own sample points; a fit with
+        # too few control points for how sharp the combined shape is can
+        # still overshoot wildly *between* them, landing control points well
+        # outside every source patch's own extent.
+        flat = np.concatenate([p.reshape(-1, 3) for p, _ in patches])
+        lo, hi = flat.min(0), flat.max(0)
+        margin = 0.5 * max(np.ptp(flat, axis=0).max(), 1e-6)
+        pts = net.reshape(-1, 3)
+        overshoot = float((np.maximum(lo - margin - pts, 0)
+                          + np.maximum(pts - (hi + margin), 0)).max())
         for mat in zebra.real_materials(obs[0]):
             cu.materials.append(mat)
         ob = bpy.data.objects.new("Merged", cu)
@@ -454,9 +464,11 @@ class SS_OT_merge_patches(bpy.types.Operator):
         ni = max(c[0] for c in grid) + 1
         nj = max(c[1] for c in grid) + 1
         msg = "Merged %dx%d patches, max deviation %.2g%%" % (ni, nj, 100 * err / size)
+        if overshoot > 0:
+            msg += "; the fit overshot beyond the patches' own extent (try a higher Detail)"
         if orphans:
             msg += "; still built from the originals: " + ", ".join(orphans)
-        self.report({'WARNING'} if orphans or err > 0.01 * size else {'INFO'}, msg)
+        self.report({'WARNING'} if orphans or overshoot > 0 or err > 0.01 * size else {'INFO'}, msg)
         return {'FINISHED'}
 
 
