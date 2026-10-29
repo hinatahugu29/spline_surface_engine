@@ -19,6 +19,8 @@ from .recipe import iso_lines, replace_net
 GRID = 33          # surface samples per direction used for picking
 PICK_PIXELS = 40.0
 DEFAULT_RADIUS = 0.25  # of the patch size
+AXES = {'X': (1.0, 0.0, 0.0), 'Y': (0.0, 1.0, 0.0), 'Z': (0.0, 0.0, 1.0)}
+MODE_NAMES = {'NORMAL': "normal", 'VIEW': "view plane", 'X': "X axis", 'Y': "Y axis", 'Z': "Z axis"}
 
 
 def _size(net):
@@ -35,7 +37,7 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
     bl_label = "Soft Pull"
     bl_description = ("Click a point on a patch and drag: the free control points around it "
                       "follow. Rows pinned by seams stay put, so G0/G1/G2 are kept. "
-                      "Wheel: radius, N: pull along the surface normal / in the view plane")
+                      "Wheel: radius, N: surface normal, X/Y/Z: that axis, V: view plane")
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -62,7 +64,7 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
         self._radius = DEFAULT_RADIUS * self._size
         self._hover = None   # (name, u, v, point)
         self._drag = None    # dict while the button is held
-        self._normal = True
+        self._mode = 'NORMAL'
         self._picker = pick.Overlay(context, self._lines)
         context.window_manager.modal_handler_add(self)
         self._header(context)
@@ -71,10 +73,10 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
     # ------------------------------------------------------------ helpers
 
     def _header(self, context, extra=""):
-        mode = "normal" if self._normal else "view plane"
         context.area.header_text_set(
-            "Soft Pull: drag a patch point   Wheel: radius %.3g   N: along %s   "
-            "Esc/RMB: cancel%s" % (self._radius, mode, extra))
+            "Soft Pull: drag a patch point   Move: %s   Wheel: radius %.3g   "
+            "N normal / X Y Z axis / V view   Esc/RMB: cancel%s"
+            % (MODE_NAMES[self._mode], self._radius, extra))
 
     def _view_axes(self, context):
         rot = context.region_data.view_rotation
@@ -115,8 +117,8 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
         o = region_2d_to_origin_3d(region, rv3d, pos)
         d = region_2d_to_vector_3d(region, rv3d, pos)
         a = Vector(self._drag["anchor"])
-        if self._normal:
-            n = Vector(self._drag["normal"])
+        if self._mode != 'VIEW':
+            n = Vector(self._drag["normal"] if self._mode == 'NORMAL' else AXES[self._mode])
             w = a - o
             b, dn, e = n.dot(d), n.dot(w), d.dot(w)
             den = 1.0 - b * b
@@ -184,8 +186,10 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
                 self._apply(context, event)
             self._header(context)
             context.area.tag_redraw()
-        elif event.type == 'N' and event.value == 'PRESS':
-            self._normal = not self._normal
+        elif event.type in {'N', 'V', 'X', 'Y', 'Z'} and event.value == 'PRESS':
+            key = {'N': 'NORMAL', 'V': 'VIEW'}.get(event.type, event.type)
+            # pressing the active axis again goes back to the surface normal
+            self._mode = 'NORMAL' if key == self._mode and key in AXES else key
             if self._drag:
                 self._apply(context, event)
             self._header(context)
