@@ -133,6 +133,68 @@ def run():
         select([patch])
         assert bpy.ops.spline_surface.extend_edge(edge=e, continuity='G1') == {'FINISHED'}
 
+    # Extend Edge's "click a second edge to reach it" length solver. Use a
+    # flat, axis-aligned patch of its own so the extension direction (+x off
+    # the U1 edge) is known, independent of the hood patch's own curvature.
+    from spline_surface.operators import (_solve_extend_length, _extend_far_edge,
+                                          edge_polyline)
+    from spline_surface.core.extend import extend_net
+    flat = [bezier_curve("fb", [(10, 0, 0), (11, 0, 0), (12, 0, 0)]),
+           bezier_curve("ft", [(10, 2, 0), (11, 2, 0), (12, 2, 0)]),
+           bezier_curve("fl", [(10, 0, 0), (10, 1, 0), (10, 2, 0)]),
+           bezier_curve("fr", [(12, 0, 0), (12, 1, 0), (12, 2, 0)])]
+    select(flat)
+    assert bpy.ops.spline_surface.coons() == {'FINISHED'}
+    flat_patch = bpy.context.active_object
+    net0, orders0 = world_net(flat_patch)
+    # Straight target directly ahead of the U1 edge: solved length should
+    # land the far edge flush on it.
+    far0 = edge_polyline(net0, orders0, 'U1', 16)
+    straight_target = far0 + np.array([2.0, 0.0, 0.0])
+    length = _solve_extend_length(net0, orders0, 'U1', 'G1', 5, orders0, straight_target)
+    def nearest_gap(pts, target):
+        # Polylines can be sampled in opposite parameter order, so match
+        # each point to its own nearest target point rather than by index.
+        return np.linalg.norm(pts[:, None, :] - target[None, :, :], axis=2).min(axis=1)
+
+    net, orders = extend_net(net0, 'U1', length, 'G1', 5, orders0)
+    far = _extend_far_edge(net0, orders0, 'U1', net, orders)
+    far_pts = edge_polyline(net, orders, far, 16)
+    gap = nearest_gap(far_pts, straight_target).max()
+    print("extend-to-target straight gap", gap)
+    assert gap < 0.05, gap
+    # Bowed target: solved length should settle inside the target's own
+    # extent (a balanced compromise), not snap to one end of it.
+    bow = far0 + np.array([2.0, 0.0, 0.0]) + 0.5 * np.sin(
+        np.linspace(0, np.pi, len(far0)))[:, None] * np.array([1.0, 0.0, 0.0])
+    length_bow = _solve_extend_length(net0, orders0, 'U1', 'G1', 5, orders0, bow)
+    net_bow, orders_bow = extend_net(net0, 'U1', length_bow, 'G1', 5, orders0)
+    far_bow = _extend_far_edge(net0, orders0, 'U1', net_bow, orders_bow)
+    far_bow_pts = edge_polyline(net_bow, orders_bow, far_bow, 16)
+    lo_x, hi_x = bow[:, 0].min(), bow[:, 0].max()
+    print("extend-to-target bowed far-edge x mean", far_bow_pts[:, 0].mean(),
+         "target x range", lo_x, hi_x)
+    assert lo_x - 0.1 <= far_bow_pts[:, 0].mean() <= hi_x + 0.1
+    # Target further than the length upper bound: solved length clamps to hi
+    # instead of raising or returning something out of range.
+    far_target = far0 + np.array([50.0, 0.0, 0.0])
+    length_far = _solve_extend_length(net0, orders0, 'U1', 'G1', 5, orders0, far_target,
+                                      lo=0.01, hi=5.0)
+    assert 0.01 <= length_far <= 5.0
+    # Target behind the source edge (wrong direction): solver should still
+    # return something within [lo, hi], never negative or unbounded.
+    behind_target = far0 - np.array([2.0, 0.0, 0.0])
+    length_behind = _solve_extend_length(net0, orders0, 'U1', 'G1', 5, orders0, behind_target,
+                                         lo=0.01, hi=5.0)
+    assert 0.01 <= length_behind <= 5.0
+    print("extend-to-target edge cases OK (far", length_far, "behind", length_behind, ")")
+
+    # The modal path: click source edge then a target edge in one call, as
+    # the "click again / click a different edge" confirm would do.
+    select([flat_patch])
+    assert bpy.ops.spline_surface.extend_edge(
+        source=flat_patch.name, edge='U1', length=length, continuity='G1') == {'FINISHED'}
+
     # Neighbouring Coons patch sharing the hood's top curve: only G0 at first.
     roof = [c[2],
             bezier_curve("r_right", [(4, 3, 0), (4.2, 4.5, 0.2), (4, 6, 0)]),

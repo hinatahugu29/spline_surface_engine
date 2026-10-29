@@ -533,10 +533,18 @@ def iso_lines(net, orders, count=6, samples=32):
 
 
 def _extend_far_edge(net0, orders0, edge, new_net, new_orders):
-    """Which edge key of the extension `new_net` is the new, far (tip) edge."""
-    src_pts = edge_polyline(net0, orders0, edge, 16)
+    """Which edge key of the extension `new_net` is the new, far (tip) edge.
+
+    Matched by centroid distance, not point-by-point distance: the new
+    patch's own parametrization can sample its shared edge in the opposite
+    order from `edge_polyline(net0, ...)`, which would make a point-by-point
+    comparison see a large (wrong) distance for the true shared edge on a
+    patch whose far edge happens to be geometrically no further away (e.g. a
+    short, flat, symmetric extension).
+    """
+    src_centre = edge_polyline(net0, orders0, edge, 16).mean(axis=0)
     shared = min(EDGE_KEYS, key=lambda k: np.linalg.norm(
-        edge_polyline(new_net, new_orders, k, 16) - src_pts, axis=1).max())
+        edge_polyline(new_net, new_orders, k, 16).mean(axis=0) - src_centre))
     return OPPOSITE_EDGE[shared]
 
 
