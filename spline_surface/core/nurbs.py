@@ -96,3 +96,42 @@ def fit_polyline(pts, n, k):
     mid = np.linalg.lstsq(inner, rhs, rcond=None)[0]
     P = np.vstack([pts[0], mid, pts[-1]])
     return P, float(np.linalg.norm(B @ P - pts, axis=1).max())
+
+
+def fit_polyline_tangent(pts, n, k):
+    """fit_polyline with the end directions of the polyline kept.
+
+    The second and second-to-last control points are forced onto the end
+    tangents (only their reach is fitted), so the curve leaves each end the
+    way the polyline does. A plain fit leaves the end tangent free, which can
+    tilt it far from the real curve.
+    """
+    pts = np.asarray(pts, float)
+    if n < 5 or len(pts) < 4:
+        return fit_polyline(pts, n, k)
+    seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+    t = np.concatenate([[0.0], np.cumsum(seg)]) / max(seg.sum(), 1e-12)
+    d0 = -3 * pts[0] + 4 * pts[1] - pts[2]
+    d1 = 3 * pts[-1] - 4 * pts[-2] + pts[-3]
+    d0 = d0 / max(np.linalg.norm(d0), 1e-12)
+    d1 = d1 / max(np.linalg.norm(d1), 1e-12)
+    B = basis_matrix(n, k, t)
+    # unknowns: reach a (CP1 = P0 + a d0), reach b (CPn-2 = Pn - b d1), CP2..CPn-3
+    rhs = (pts - np.outer(B[:, 0], pts[0]) - np.outer(B[:, -1], pts[-1])
+           - np.outer(B[:, 1], pts[0]) - np.outer(B[:, -2], pts[-1]))
+    # a and b multiply a direction, so the three axes are solved jointly
+    m = len(pts)
+    big = np.zeros((3 * m, 2 + 3 * (n - 4)))
+    for ax in range(3):
+        big[ax * m:(ax + 1) * m, 0] = B[:, 1] * d0[ax]
+        big[ax * m:(ax + 1) * m, 1] = -B[:, -2] * d1[ax]
+        for c in range(n - 4):
+            big[ax * m:(ax + 1) * m, 2 + 3 * c + ax] = B[:, 2 + c]
+    y = rhs.T.reshape(-1)
+    x = np.linalg.lstsq(big, y, rcond=None)[0]
+    P = np.zeros((n, 3))
+    P[0], P[-1] = pts[0], pts[-1]
+    P[1] = pts[0] + x[0] * d0
+    P[-2] = pts[-1] - x[1] * d1
+    P[2:-2] = x[2:].reshape(n - 4, 3)
+    return P, float(np.linalg.norm(B @ P - pts, axis=1).max())

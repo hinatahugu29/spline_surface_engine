@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "spline_surface"
-version = "0.40.2"
+version = "0.40.3"
 name = "Spline Surface"
 tagline = "Build smooth NURBS patches from boundary curves"
 maintainer = "hinata"

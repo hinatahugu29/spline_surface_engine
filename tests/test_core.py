@@ -1070,6 +1070,20 @@ def test_curvature_paraboloid():
     assert c[0, 2] > c[0, 0] and c[1, 1] > c[1, 0] and c[2, 0] > c[2, 2]
 
 
+def test_fit_polyline_keeps_end_tangents():
+    # An S-shaped curve: a plain least-squares fit lets the ends tilt; the
+    # tangent-keeping fit leaves each end along the polyline's own direction.
+    t = np.linspace(0, 1, 48)
+    pts = np.stack([t, 0.25 * np.sin(2 * np.pi * t), 0.4 * t * t], -1)
+    P, err = nurbs.fit_polyline_tangent(pts, 9, 6)
+    assert err < 0.02, err
+    d0 = -3 * pts[0] + 4 * pts[1] - pts[2]
+    d1 = 3 * pts[-1] - 4 * pts[-2] + pts[-3]
+    for want, got in ((d0, P[1] - P[0]), (d1, P[-1] - P[-2])):
+        cos = np.dot(want, got) / (np.linalg.norm(want) * np.linalg.norm(got))
+        assert cos > 0.9999, cos
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

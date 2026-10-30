@@ -13,7 +13,7 @@ import numpy as np
 
 from .corner import _refit, _side
 from .bezier import elevate_curve
-from .nurbs import basis_matrix, clamped_knots, fit_polyline
+from .nurbs import basis_matrix, clamped_knots, fit_polyline_tangent
 
 MIN_POINTS = 6  # three rows from each side for G2
 STAR_POINTS = 13  # corner quads of N-sided fills: finer, so corner averaging stays local
@@ -43,7 +43,7 @@ def side_from_patch(P, orders, edge):
 
 def side_from_curve(pts, spans=4, k=6):
     """A hole side on a free curve (position only). Returns (side, fit error)."""
-    E, err = fit_polyline(pts, spans + k - 1, k)
+    E, err = fit_polyline_tangent(pts, spans + k - 1, k)
     return ([E, None, None], k, 0.0), err
 
 

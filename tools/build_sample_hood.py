@@ -20,6 +20,7 @@ sys.path.insert(0, ROOT)
 import spline_surface  # noqa: E402
 from spline_surface.bridge.write_surface import build_surface_data  # noqa: E402
 from spline_surface.core.continuity import find_shared_edge, grade, measure  # noqa: E402
+from spline_surface.core.nurbs import eval_points  # noqa: E402
 from spline_surface.filleting import find_fillet_seams  # noqa: E402
 from spline_surface.operators import edge_polyline, store_meta, world_net  # noqa: E402
 from spline_surface.recipe import META_KEY  # noqa: E402
@@ -105,10 +106,32 @@ def _end(name, edge, last):
     return tuple(pl[-1] if last else pl[0])
 
 
-for bp, co in zip(sp.bezier_points, [_end("Fender", 'U1', True), (1.02, 1.75, -0.32),
-                                     _end("Hood_ext", 'U0', True)]):
-    bp.co = co
-    bp.handle_left_type = bp.handle_right_type = 'AUTO'
+def _normal(name, u, v):
+    net, orders = world_net(bpy.data.objects[name])
+    du = eval_points(net, orders, [u], [v], 1, 0)[0]
+    dv = eval_points(net, orders, [u], [v], 0, 1)[0]
+    n = np.cross(du, dv)
+    return n / np.linalg.norm(n)
+
+
+def _in_plane(d, n):
+    d = d - np.dot(d, n) * n
+    return d / np.linalg.norm(d)
+
+
+# The closing curve has to leave each end inside the neighbouring patch's
+# tangent plane, otherwise the fill cannot be tangent to that patch at the corner.
+F, B = np.array(_end("Fender", 'U1', True)), np.array(_end("Hood_ext", 'U0', True))
+M = np.array((1.02, 1.75, -0.32))
+reach = 0.35 * np.linalg.norm(B - F)
+dF = _in_plane(M - F, _normal("Fender", 1.0, 1.0))
+dB = _in_plane(M - B, _normal("Hood_ext", 0.0, 1.0))
+dM = (B - F) / np.linalg.norm(B - F)
+pts = [(F, F - dF * reach, F + dF * reach), (M, M - dM * reach, M + dM * reach),
+       (B, B + dB * reach, B - dB * reach)]
+for bp, (co, hl, hr) in zip(sp.bezier_points, pts):
+    bp.handle_left_type = bp.handle_right_type = 'FREE'
+    bp.co, bp.handle_left, bp.handle_right = co, hl, hr
 corner_edge = bpy.data.objects.new("CornerEdge", cu)
 bpy.context.collection.objects.link(corner_edge)
 vl.update()
