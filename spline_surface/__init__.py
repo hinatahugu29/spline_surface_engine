@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Spline Surface",
     "author": "hinata",
-    "version": (0, 36, 0),
+    "version": (0, 37, 0),
     "blender": (5, 0, 0),
     "location": "View3D > Sidebar > Spline Surface",
     "description": "Build smooth NURBS patches from boundary curves",
@@ -10,12 +10,12 @@ bl_info = {
 
 import bpy  # noqa: E402
 
-from . import cage, controlmesh, ctrlpoints, curvature, filleting, gizmos, linked, live, operators, pulling, seams, shaping, splitting, symmetry, ui, zebra  # noqa: E402
+from . import cage, controlmesh, ctrlpoints, curvature, filleting, gizmos, linked, live, netcheck, operators, pulling, seams, shaping, splitting, symmetry, ui, zebra  # noqa: E402
 
 classes = (ui.classes + operators.classes + filleting.classes + live.classes + linked.classes
            + cage.classes + symmetry.classes + splitting.classes + seams.classes + ctrlpoints.classes
-           + curvature.classes + pulling.classes + controlmesh.classes + shaping.classes + zebra.classes
-           + gizmos.classes)
+           + curvature.classes + netcheck.classes + pulling.classes + controlmesh.classes
+           + shaping.classes + zebra.classes + gizmos.classes)
 
 
 def _add_menu(self, context):
@@ -33,6 +33,7 @@ def register():
     seams.register()
     ctrlpoints.register()
     curvature.register()
+    netcheck.register()
     controlmesh.register()
     zebra.register()
 
@@ -40,6 +41,7 @@ def register():
 def unregister():
     zebra.unregister()
     controlmesh.unregister()
+    netcheck.unregister()
     curvature.unregister()
     ctrlpoints.unregister()
     seams.unregister()

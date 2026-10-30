@@ -113,14 +113,19 @@ def compute_blend(sources, meta, settings):
     return net, orders, None
 
 
+def network_tolerance(polys, settings):
+    """How far apart two curves may pass and still count as crossing."""
+    # A typical curve's size, not the whole selection's: one stray curve far
+    # away must not widen the tolerance until neighbouring curves "cross".
+    size = float(np.median([np.ptp(p, axis=0).max() for p in polys]))
+    # Curves are bent through the crossings, so allow generous misses (5% of size).
+    return settings.gap_tolerance * 0.5 * size + 1e-6
+
+
 def compute_network(sources, meta, settings, depsgraph):
     """All cells of a curve network: ([(i, j, net, orders)], info)."""
     polys = [read_polyline(o, depsgraph, 120) for o in sources]
-    pts = np.concatenate(polys)
-    size = np.ptp(pts, axis=0).max()
-    # Curves are bent through the crossings, so allow generous misses (5% of size).
-    return build_network(polys, settings.gap_tolerance * 0.5 * size + 1e-6,
-                         meta["continuity"])
+    return build_network(polys, network_tolerance(polys, settings), meta["continuity"])
 
 
 def compute_from_meta(meta, context):

@@ -83,9 +83,31 @@ def sheet_normal(polylines):
     return vt[-1]
 
 
-def _families(n, crosses):
-    """2-colour the crossing graph. Returns the colour of each curve."""
+def _find_crossings(curves, tol, normal):
+    """{(a, b): (t_a, t_b, 3D gap)} for every pair of curves that cross.
+
+    With `normal`, pairs that only cross when seen along it count too.
+    """
+    crosses = {}
+    for a in range(len(curves)):
+        for b in range(a + 1, len(curves)):
+            ta, tb, d = _closest(curves[a], curves[b])
+            if d > tol and normal is not None:
+                ta, tb, d2 = _closest(curves[a], curves[b], flat=normal)
+                if d2 > tol:
+                    continue
+                d = float(np.linalg.norm(curves[a](ta)[0] - curves[b](tb)[0]))
+            elif d > tol:
+                continue
+            crosses[(a, b)] = (ta, tb, d)
+            crosses[(b, a)] = (tb, ta, d)
+    return crosses
+
+
+def _colour(n, crosses):
+    """2-colour the crossing graph: (colour per curve, same-colour crossing pairs)."""
     colour = [None] * n
+    conflicts = set()
     for start in range(n):
         if colour[start] is not None:
             continue
@@ -99,8 +121,91 @@ def _families(n, crosses):
                         colour[d] = 1 - colour[c]
                         stack.append(d)
                     elif colour[d] == colour[c]:
-                        raise ValueError("curves of the same direction cross each other")
+                        conflicts.add((min(c, d), max(c, d)))
+    return colour, sorted(conflicts)
+
+
+def _families(n, crosses):
+    """2-colour the crossing graph. Returns the colour of each curve."""
+    colour, conflicts = _colour(n, crosses)
+    if conflicts:
+        raise ValueError("curves of the same direction cross each other")
     return colour
+
+
+def _order_families(curves, U, V, crosses):
+    """Order each family along the other and orient every curve to match.
+
+    Sorts U and V in place, reverses curves (and their crossing parameters)
+    as needed. Returns the curves whose crossings are out of order.
+    """
+    U.sort(key=lambda u: crosses[(V[0], u)][0])
+    V.sort(key=lambda v: crosses[(U[0], v)][0])
+    tangled = []
+    for fam, other in ((U, V), (V, U)):
+        for c in fam:
+            ts = [crosses[(c, o)][0] for o in other]
+            if ts[0] > ts[-1]:
+                curves[c].reverse()
+                for o in other:
+                    ta, tb, d = crosses[(c, o)]
+                    crosses[(c, o)] = (1.0 - ta, tb, d)
+                    crosses[(o, c)] = (tb, 1.0 - ta, d)
+                ts = [crosses[(c, o)][0] for o in other]
+            if np.any(np.diff(ts) <= 0):
+                tangled.append(c)
+    return tangled
+
+
+def diagnose_network(polylines, tol, flat=True):
+    """What build_network would make of these curves, without stopping at
+    the first problem. Returns a dict:
+
+    family: 0 / 1 per curve (None: crosses nothing); crossings: [(a, b,
+    point, gap)]; conflicts: [(a, b, point)] same-direction crossings;
+    missing: [(u, v, point_u, point_v, distance)] other-direction pairs that
+    don't cross, with their closest points; alone: curves crossing nothing;
+    tangled: curves whose crossings are out of order; ok: buildable.
+    """
+    curves = [Curve(p) for p in polylines]
+    n = len(curves)
+    normal = sheet_normal(polylines) if flat else None
+    crosses = _find_crossings(curves, tol, normal)
+    colour, conflicts = _colour(n, crosses)
+    alone = [c for c in range(n) if not any((c, d) in crosses for d in range(n))]
+    for c in alone:
+        colour[c] = None
+    point = lambda a, b: 0.5 * (curves[a](crosses[(a, b)][0])[0]
+                                + curves[b](crosses[(a, b)][1])[0])
+    crossings = [(a, b, point(a, b), crosses[(a, b)][2])
+                 for (a, b) in crosses if a < b]
+    U = [c for c in range(n) if colour[c] == 0]
+    V = [c for c in range(n) if colour[c] == 1]
+    missing = []
+    if not conflicts:
+        for u in U:
+            for v in V:
+                if (u, v) in crosses:
+                    continue
+                ta, tb, d = _closest(curves[u], curves[v])
+                if normal is not None:
+                    fa, fb, fd = _closest(curves[u], curves[v], flat=normal)
+                    if fd < d:
+                        ta, tb, d = fa, fb, fd
+                missing.append((u, v, curves[u](ta)[0], curves[v](tb)[0], d))
+    tangled = []
+    if not conflicts and not missing and len(U) >= 2 and len(V) >= 2:
+        tangled = _order_families(curves, U, V, crosses)
+    return {
+        "family": colour,
+        "crossings": crossings,
+        "conflicts": [(a, b, point(a, b)) for a, b in conflicts],
+        "missing": missing,
+        "alone": alone,
+        "tangled": tangled,
+        "counts": (len(U), len(V)),
+        "ok": (len(U) >= 2 and len(V) >= 2 and not (conflicts or missing or alone or tangled)),
+    }
 
 
 def build_network(polylines, tol, continuity='G2', flat=True):
@@ -117,19 +222,7 @@ def build_network(polylines, tol, continuity='G2', flat=True):
     curves = [Curve(p) for p in polylines]
     n = len(curves)
     normal = sheet_normal(polylines) if flat else None
-    crosses = {}
-    for a in range(n):
-        for b in range(a + 1, n):
-            ta, tb, d = _closest(curves[a], curves[b])
-            if d > tol and normal is not None:
-                ta, tb, d2 = _closest(curves[a], curves[b], flat=normal)
-                if d2 > tol:
-                    continue
-                d = float(np.linalg.norm(curves[a](ta)[0] - curves[b](tb)[0]))
-            elif d > tol:
-                continue
-            crosses[(a, b)] = (ta, tb, d)
-            crosses[(b, a)] = (tb, ta, d)
+    crosses = _find_crossings(curves, tol, normal)
     colour = _families(n, crosses)
     U = [c for c in range(n) if colour[c] == 0]
     V = [c for c in range(n) if colour[c] == 1]
@@ -139,22 +232,8 @@ def build_network(polylines, tol, continuity='G2', flat=True):
     if missing:
         raise ValueError("every curve must cross every curve of the other direction "
                          "(%d crossing(s) missing)" % len(missing))
-
-    # Order each family along the other, and orient every curve to match.
-    U.sort(key=lambda u: crosses[(V[0], u)][0])
-    V.sort(key=lambda v: crosses[(U[0], v)][0])
-    for fam, other in ((U, V), (V, U)):
-        for c in fam:
-            ts = [crosses[(c, o)][0] for o in other]
-            if ts[0] > ts[-1]:
-                curves[c].reverse()
-                for o in other:
-                    ta, tb, d = crosses[(c, o)]
-                    crosses[(c, o)] = (1.0 - ta, tb, d)
-                    crosses[(o, c)] = (tb, 1.0 - ta, d)
-                ts = [crosses[(c, o)][0] for o in other]
-            if np.any(np.diff(ts) <= 0):
-                raise ValueError("the curves cross in a tangled order")
+    if _order_families(curves, U, V, crosses):
+        raise ValueError("the curves cross in a tangled order")
 
     nu, nv = len(U), len(V)
     # node[i][j]: crossing of v-curve V[i] (varying along u-index i) and u-curve U[j]

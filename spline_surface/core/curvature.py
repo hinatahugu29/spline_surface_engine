@@ -32,6 +32,48 @@ def comb(net, orders, direction, count=7, samples=40):
     return P.reshape(count, samples, 3), kvec.reshape(count, samples, 3)
 
 
+def _kvec(d1, d2):
+    speed2 = np.einsum("ij,ij->i", d1, d1)[:, None]
+    tangential = np.einsum("ij,ij->i", d2, d1)[:, None] * d1 / np.maximum(speed2, 1e-24)
+    return (d2 - tangential) / np.maximum(speed2, 1e-24)
+
+
+def bezier_comb(segments, samples=24):
+    """Curvature along a chain of cubic Bezier segments [(p0, h0, h1, p1)], exact.
+
+    Returns (points, kvec) per segment, each (samples + 1, 3): a join where
+    the curvature jumps shows as two different teeth at the same point.
+    """
+    t = np.linspace(0.0, 1.0, samples + 1)[:, None]
+    out = []
+    for seg in segments:
+        P0, P1, P2, P3 = (np.asarray(p, float) for p in seg)
+        pts = ((1 - t) ** 3 * P0 + 3 * (1 - t) ** 2 * t * P1
+               + 3 * (1 - t) * t ** 2 * P2 + t ** 3 * P3)
+        d1 = 3 * ((1 - t) ** 2 * (P1 - P0) + 2 * (1 - t) * t * (P2 - P1) + t ** 2 * (P3 - P2))
+        d2 = 6 * ((1 - t) * (P2 - 2 * P1 + P0) + t * (P3 - 2 * P2 + P1))
+        out.append((pts, _kvec(d1, d2)))
+    return out
+
+
+def polyline_comb(pts):
+    """Curvature vectors of a polyline from the circle through each point and
+    its neighbours (ends copy their neighbour). Returns (points, kvec)."""
+    P = np.asarray(pts, float)
+    k = np.zeros_like(P)
+    u, w = P[:-2] - P[1:-1], P[2:] - P[1:-1]
+    n = np.cross(u, w)
+    n2 = np.einsum("ij,ij->i", n, n)[:, None]
+    uu = np.einsum("ij,ij->i", u, u)[:, None]
+    ww = np.einsum("ij,ij->i", w, w)[:, None]
+    centre = (uu * np.cross(w, n) + ww * np.cross(n, u)) / np.maximum(2 * n2, 1e-30)
+    c2 = np.einsum("ij,ij->i", centre, centre)[:, None]
+    k[1:-1] = np.where(n2 > 1e-24, centre / np.maximum(c2, 1e-30), 0.0)
+    if len(P) > 2:
+        k[0], k[-1] = k[1], k[-2]
+    return P, k
+
+
 def surface_curvature(net, orders, samples=24):
     """Points, unit normals, Gaussian and mean curvature on a samples x samples grid.
 

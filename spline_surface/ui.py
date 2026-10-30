@@ -108,6 +108,13 @@ class SS_PT_create(_SubPanel, bpy.types.Panel):
         row = col.row(align=True)
         row.operator("spline_surface.curve_network", icon='MESH_GRID')
         row.operator("spline_surface.add_curve_grid", icon='ADD', text="")
+        from . import netcheck
+        on = netcheck._state["handle"] is not None
+        col.operator("spline_surface.network_check", icon='VIEWZOOM', depress=on,
+                     text="Network Check: On" if on else "Network Check")
+        for i, line in enumerate(netcheck.summary()):
+            col.label(text=line, icon='CHECKMARK' if line.endswith("ready") else
+                      ('NONE' if i == 0 else 'ERROR'))
         row = layout.row(align=True)
         row.prop(s, "gap_tolerance")
         row.operator("spline_surface.snap_ends", icon='SNAP_ON', text="")

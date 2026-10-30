@@ -428,6 +428,35 @@ def _network_curves():
     return curves, f
 
 
+def test_diagnose_network():
+    from core.network import diagnose_network
+    curves, f = _network_curves()   # 3 curves along x (0-2), 4 along y (3-6)
+    d = diagnose_network(curves, 1e-3)
+    assert d["ok"] and sorted(d["counts"]) == [3, 4] and len(d["crossings"]) == 12
+    assert d["family"][0] == d["family"][1] == d["family"][2] != d["family"][3]
+    assert all(np.linalg.norm(p[:2] - [x, y]) < 1e-3   # crossings land on the grid
+               for (_, _, p, _), (x, y) in zip(
+                   sorted(d["crossings"], key=lambda c: tuple(np.round(c[2][:2], 3))),
+                   sorted((x, y) for x in (0.0, 1.0, 1.7, 3.0) for y in (0.0, 1.0, 2.0))))
+    # Curve 6 (x = 3) cut short so it stops before reaching y = 2: one crossing
+    # missing, reported with how far apart the two curves come.
+    short = [c.copy() for c in curves]
+    short[6] = short[6][short[6][:, 1] < 1.6]
+    d = diagnose_network(short, 1e-3)
+    assert not d["ok"] and [(u, v) for u, v, *_ in d["missing"]] in ([(2, 6)], [(6, 2)])
+    gap = d["missing"][0][4]
+    assert 0.3 < gap < 0.5, gap   # it ends at y = 1.6, the y = 2 curve is 0.4 away
+    # A diagonal crosses curves of both directions: same-direction crossings.
+    diag = curves + [np.stack([np.linspace(-0.3, 3.3, 120), np.linspace(-0.2, 2.2, 120),
+                               np.zeros(120)], 1)]
+    d = diagnose_network(diag, 1e-3)
+    assert not d["ok"] and d["conflicts"]
+    # A stray curve far away crosses nothing.
+    stray = curves + [curves[0] + [0.0, 10.0, 0.0]]
+    d = diagnose_network(stray, 1e-3)
+    assert not d["ok"] and d["alone"] == [7] and d["family"][7] is None
+
+
 def test_curve_network():
     from core.network import build_network
     curves, f = _network_curves()
@@ -949,6 +978,27 @@ def test_fillet_corner_patch():
     # One fillet alone ends on open boundaries: nothing to fill.
     _, one, _ = multi_fillet(patches, seams[:1], 0.2)
     assert corner_loops([(n, bo) for n, bo, _ in one]) == []
+
+
+def test_curve_comb():
+    from core.curvature import bezier_comb, polyline_comb
+    R, c = 2.0, 0.5522847498  # the usual cubic quarter circle
+    quarter = [(R, 0, 0), (R, R * c, 0), (R * c, R, 0), (0, R, 0)]
+    (pts, k), = bezier_comb([quarter])
+    assert np.abs(np.linalg.norm(k, axis=1) * R - 1).max() < 0.03   # ~1/R, a cubic is not exact
+    # it points at the centre
+    assert all(np.dot(kv, -p) > 0 for kv, p in zip(k, pts))
+    # a straight segment has none; a jump at a join shows as two teeth there
+    line = [(0, 0, 0), (1, 0, 0), (2, 0, 0), (3, 0, 0)]
+    (p0, k0), (p1, k1) = bezier_comb([line, [(3, 0, 0), (4, 0, 0), (5, 1, 0), (6, 3, 0)]])
+    assert np.abs(k0).max() < 1e-12 and np.linalg.norm(k1[0]) > 0.1
+    assert np.allclose(p0[-1], p1[0])
+    # polyline: points on a circle give 1 / R towards the centre
+    a = np.linspace(0, np.pi, 50)
+    circle = np.stack([R * np.cos(a), R * np.sin(a), 0 * a], 1)
+    P, kp = polyline_comb(circle)
+    assert np.abs(np.linalg.norm(kp, axis=1) * R - 1).max() < 1e-9
+    assert np.abs(polyline_comb(np.stack([a, 0 * a, 0 * a], 1))[1]).max() == 0.0
 
 
 def test_curvature_paraboloid():

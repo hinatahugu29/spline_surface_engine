@@ -1126,6 +1126,32 @@ def run():
         a, b = json.loads(br[META_KEY])["sources"]
         assert graded(bpy.data.objects[a], br) == 'G2' and graded(bpy.data.objects[b], br) == 'G2'
 
+    # ---- v0.37: Network Check and curvature combs on curves
+    from spline_surface import netcheck
+    bpy.ops.object.select_all(action='DESELECT')
+    bpy.context.scene.cursor.location = (0, 700, 0)
+    assert bpy.ops.spline_surface.add_curve_grid() == {'FINISHED'}  # 3 + 4 curves
+    grid_curves = list(bpy.context.selected_objects)
+    assert bpy.ops.spline_surface.network_check() == {'FINISHED'}
+    print("network check", netcheck.summary())
+    assert netcheck.summary()[0].startswith("4 x 3") or netcheck.summary()[0].startswith("3 x 4")
+    assert netcheck.summary()[0].endswith("ready")
+    grid_curves[0].location.y += 50.0  # out of the grid: crosses nothing, crossings missing
+    vl.update()
+    netcheck.refresh(bpy.context)
+    print("network check, one curve moved away", netcheck.summary())
+    # the rest is still a clean grid; only the stray curve is reported
+    assert not netcheck.summary()[0].endswith("ready")
+    assert netcheck.summary()[1:] == ["1 curve(s) cross nothing (grey)"]
+    grid_curves[0].location.y -= 50.0
+    vl.update()
+    assert bpy.ops.spline_surface.network_check() == {'FINISHED'}
+    assert netcheck.summary() == [] and netcheck._state["handle"] is None
+    assert bpy.ops.spline_surface.curvature_comb() == {'FINISHED'}
+    print("curve combs", len(curv._state["envelopes"]))
+    assert len(curv._state["envelopes"]) == 7 * 4  # one per Bezier segment
+    assert bpy.ops.spline_surface.curvature_comb() == {'FINISHED'}
+
     spline_surface.unregister()
     print("ALL OK")
 

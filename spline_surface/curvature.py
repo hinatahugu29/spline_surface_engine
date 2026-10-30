@@ -1,16 +1,20 @@
-"""Curvature display: combs along iso-curves and a Gaussian / mean colour map.
+"""Curvature display: combs along iso-curves and curves, and a Gaussian / mean
+colour map.
 
-Shown for the selected patches, or every visible patch if none is selected,
-and recomputed shortly after any patch changes. Display only. Comb teeth
-point away from the centre of curvature; their length is scaled so the
-largest curvature on screen gets a fixed fraction of the scene size.
+Shown for the selected patches and curves, or everything visible if nothing
+is selected, and recomputed shortly after any change. Display only. Comb
+teeth point away from the centre of curvature; their length is scaled so
+the largest curvature on screen gets a fixed fraction of the scene size.
+Bezier curves are measured exactly from their handles (a jump at a control
+point shows as two teeth there); other curves from their tessellation.
 """
 import bpy
 import gpu
 import numpy as np
 from gpu_extras.batch import batch_for_shader
 
-from .core.curvature import color_ramp, comb, surface_curvature
+from .bridge.read_curves import read_polyline
+from .core.curvature import bezier_comb, color_ramp, comb, polyline_comb, surface_curvature
 from .recipe import world_net
 
 TOOTH = (0.75, 0.75, 0.8, 0.7)
@@ -20,15 +24,41 @@ _state = {"handle": None, "comb": False, "map": False, "dirty": False,
           "teeth": [], "envelopes": [], "tris": None, "kmax": 0.0, "limit": 0.0}
 
 
-def _patches(context):
-    visible = [ob for ob in context.visible_objects if ob.type == 'SURFACE']
-    chosen = [ob for ob in visible if ob.select_get()] or visible
+def _chosen(context):
+    visible = [ob for ob in context.visible_objects if ob.type in {'SURFACE', 'CURVE'}]
+    return [ob for ob in visible if ob.select_get()] or visible
+
+
+def _patches(obs):
     out = []
-    for ob in chosen:
-        try:
-            out.append(world_net(ob))
-        except ValueError:
-            pass
+    for ob in obs:
+        if ob.type == 'SURFACE':
+            try:
+                out.append(world_net(ob))
+            except ValueError:
+                pass
+    return out
+
+
+def _curve_combs(obs, depsgraph):
+    """[(points, kvec)] for every curve object among `obs`, in world space."""
+    out = []
+    for ob in obs:
+        if ob.type != 'CURVE':
+            continue
+        M = np.array(ob.matrix_world)
+        world = lambda v: np.array(v) @ M[:3, :3].T + M[:3, 3]
+        beziers = [sp for sp in ob.data.splines if sp.type == 'BEZIER']
+        for sp in beziers:
+            bp = sp.bezier_points
+            pairs = list(zip(bp[:-1], bp[1:])) + ([(bp[-1], bp[0])] if sp.use_cyclic_u else [])
+            out += bezier_comb([tuple(world(p) for p in (a.co, a.handle_right, b.handle_left, b.co))
+                                for a, b in pairs])
+        if not beziers:
+            try:
+                out.append(polyline_comb(read_polyline(ob, depsgraph, 24)))
+            except ValueError:
+                pass
     return out
 
 
@@ -39,13 +69,17 @@ def _robust_max(values):
 
 def refresh(context):
     s = context.scene.spline_surface
-    patches = _patches(context)
-    pts = np.concatenate([n.reshape(-1, 3) for n, _ in patches]) if patches else np.zeros((1, 3))
+    obs = _chosen(context)
+    patches = _patches(obs)
+    curve_combs = _curve_combs(obs, context.evaluated_depsgraph_get()) if _state["comb"] else []
+    pts = [n.reshape(-1, 3) for n, _ in patches] + [P for P, _ in curve_combs]
+    pts = np.concatenate(pts) if pts else np.zeros((1, 3))
     size = float(np.linalg.norm(np.ptp(pts, axis=0))) or 1.0
     _state["teeth"], _state["envelopes"], _state["tris"] = [], [], None
-    if _state["comb"] and patches:
+    if _state["comb"] and (patches or curve_combs):
         dirs = ('U', 'V') if s.comb_direction == 'BOTH' else (s.comb_direction,)
         combs = [comb(n, o, d, s.comb_count) for n, o in patches for d in dirs]
+        combs += [(P[None], k[None]) for P, k in curve_combs]
         kmax = _robust_max([np.linalg.norm(k, axis=2) for _, k in combs])
         _state["kmax"] = kmax
         scale = s.comb_scale * 0.15 * size / max(kmax, 1e-12)
@@ -152,9 +186,10 @@ def limit():
 class SS_OT_curvature_comb(bpy.types.Operator):
     bl_idname = "spline_surface.curvature_comb"
     bl_label = "Curvature Comb"
-    bl_description = ("Show curvature combs along iso-curves: the teeth point away from the "
-                      "centre of curvature, longer means more curved. A smooth envelope "
-                      "means smooth curvature; jumps at a seam mean G1 or worse")
+    bl_description = ("Show curvature combs along patch iso-curves and along curves: the teeth "
+                      "point away from the centre of curvature, longer means more curved. A "
+                      "smooth envelope means smooth curvature; a jump at a seam or a curve's "
+                      "control point means G1 or worse there")
     bl_options = {'REGISTER'}
 
     def execute(self, context):
