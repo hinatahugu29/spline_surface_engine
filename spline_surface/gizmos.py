@@ -2,19 +2,23 @@
 
 Extend Length: with an Extend patch active, an arrow sits mid-way along the
 edge it grew from. Offset Distance: with an Offset patch active, an arrow
-stands on the middle of the source along its normal. Dragging rewrites the
-recipe value and rebuilds the patch (dependents follow through Live Update).
-Hand-edited patches get no arrow, since rebuilding would throw the edits away.
+stands on the middle of the source along its normal. Fillet Radius: with a
+fillet bridge active, an arrow runs from the old crease to the bridge's
+middle. Dragging rewrites the recipe value and rebuilds (dependents follow
+through Live Update). Hand-edited patches get no arrow, since rebuilding
+would throw the edits away.
 """
 import json
 
 import bpy
+import numpy as np
 from mathutils import Matrix, Vector
 
 from . import live
 from .core.extend import length_handle
+from .core.nurbs import eval_points
 from .core.offset import distance_handle
-from .recipe import META_KEY, hand_edited, world_net
+from .recipe import META_KEY, edge_polyline, hand_edited, world_net
 
 MIN_LENGTH = 0.02
 MIN_DISTANCE = 1e-4
@@ -139,4 +143,64 @@ class SS_GGT_offset_distance(_RecipeArrow, bpy.types.GizmoGroup):
         return MIN_DISTANCE if value >= 0 else -MIN_DISTANCE
 
 
-classes = (SS_GGT_extend_length, SS_GGT_offset_distance)
+def _fillet_bridge(ob):
+    """(bridge recipe, recipe of its first trimmed patch) for an untouched
+    fillet bridge, else None."""
+    if ob is None or ob.type != 'SURFACE' or META_KEY not in ob:
+        return None
+    try:
+        meta = json.loads(ob[META_KEY])
+    except ValueError:
+        return None
+    if meta.get("method") != "blend" or "fillet" not in meta or hand_edited(ob, meta):
+        return None
+    side = bpy.data.objects.get(meta["sources"][0])
+    if side is None or META_KEY not in side:
+        return None
+    side_meta = json.loads(side[META_KEY])
+    if side_meta.get("method") != "fillet_trim" or side_meta["fillet"]["id"] != meta["fillet"]:
+        return None
+    return meta, side_meta
+
+
+class SS_GGT_fillet_radius(_RecipeArrow, bpy.types.GizmoGroup):
+    bl_idname = "SS_GGT_fillet_radius"
+    bl_label = "Fillet Radius"
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and _fillet_bridge(context.active_object) is not None
+
+    def _place(self, context):
+        found = _fillet_bridge(context.active_object)
+        if found is None:
+            return
+        from .operators import compute_from_meta, fillet_base
+        meta, side_meta = found
+        base, base_orders, _ = compute_from_meta(fillet_base(side_meta, meta["fillet"]), context)
+        crease = edge_polyline(base, base_orders, meta["edges"][0], 3)[1]
+        net, orders = world_net(context.active_object)
+        offset = eval_points(net, orders, [0.5], [0.5])[0] - crease
+        reach = float(np.linalg.norm(offset))
+        # The bridge's middle moves away from the old crease in proportion to the radius.
+        self.handle_scale = reach / max(side_meta["fillet"]["radius"], 1e-12)
+        rot = Vector(offset / max(reach, 1e-12)).to_track_quat('Z', 'Y').to_matrix().to_4x4()
+        self.arrow.matrix_basis = Matrix.Translation(Vector(crease)) @ rot
+
+    def _get(self):
+        found = _fillet_bridge(bpy.context.active_object)
+        return found[1]["fillet"]["radius"] * self.handle_scale if found else 0.0
+
+    def _set(self, value):
+        found = _fillet_bridge(bpy.context.active_object)
+        if found is None:
+            return
+        from .filleting import set_fillet_radius
+        try:
+            set_fillet_radius(bpy.context, found[0]["fillet"],
+                              max(1e-4, value / max(self.handle_scale, 1e-12)))
+        except ValueError:
+            pass  # e.g. the radius no longer fits: keep the last good one
+
+
+classes = (SS_GGT_extend_length, SS_GGT_offset_distance, SS_GGT_fillet_radius)

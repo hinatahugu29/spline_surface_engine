@@ -10,7 +10,7 @@ from .core.coons import close_loop, coons_net, loop_to_sides, orient_loop, snap_
 from .core.blend import blend_curve_net, blend_net
 from .core.corner import corner_net
 from .core.fill import fill_patches, side_from_curve, side_from_patch
-from .core.fillet import fillet_net
+from .core.fillet import fillet_net, multi_fillet
 from .core.meshing import segment_counts, t_junctions
 from .core.mirror import mirror_net, symmetrize
 from .core.network import build_network
@@ -113,6 +113,40 @@ def compute_blend(sources, meta, settings):
     return net, orders, None
 
 
+def fillet_base(meta, fillet_id):
+    """The recipe a patch had before fillet `fillet_id` trimmed it.
+
+    A patch filleted again keeps its earlier trim as the base of the later
+    one, so walk down the chain to the right fillet.
+    """
+    m = meta
+    while m.get("method") == "fillet_trim":
+        if m["fillet"]["id"] == fillet_id:
+            return m["base"]
+        m = m["base"]
+    raise ValueError("this patch is no longer part of the fillet")
+
+
+def compute_fillet_trim(meta, context):
+    """A fillet member's trimmed net: rebuild every member's untrimmed shape
+    from its base recipe and fillet them all again (each reach depends on
+    both sides of its seam). Returns (net, orders)."""
+    fs = meta["fillet"]
+    patches = {}
+    for name in fs["members"]:
+        ob = bpy.data.objects.get(name)
+        if ob is None or META_KEY not in ob:
+            raise ValueError("Fillet patch missing: %s" % name)
+        member = meta if name == meta["member"] else json.loads(ob[META_KEY])
+        net, orders, _ = compute_from_meta(fillet_base(member, fs["id"]), context)
+        patches[name] = (net, orders)
+    seams = [tuple(s) for s in fs["seams"]]
+    tol = max(_seam_tolerance(patches[a][0], patches[b][0], context.scene.spline_surface)
+              for a, _, b, _ in seams)
+    trimmed, _, _ = multi_fillet(patches, seams, fs["radius"], fs["continuity"], tol)
+    return trimmed[meta["member"]]
+
+
 def network_tolerance(polys, settings):
     """How far apart two curves may pass and still count as crossing."""
     # A typical curve's size, not the whole selection's: one stray curve far
@@ -165,6 +199,9 @@ def compute_from_meta(meta, context):
     elif meta["method"] == "fillet":
         net, orders, info = compute_fillet(sources, meta, settings)
         msg = "fillet r=%.4g (reach %.3g-%.3g)" % (meta["radius"], info["reach"].min(), info["reach"].max())
+    elif meta["method"] == "fillet_trim":
+        net, orders = compute_fillet_trim(meta, context)
+        msg = "trimmed by a r=%.4g fillet" % meta["fillet"]["radius"]
     elif meta["method"] == "network":
         cells, info = compute_network(sources, meta, settings, context.evaluated_depsgraph_get())
         part = meta.get("part", 0)

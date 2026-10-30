@@ -3,8 +3,15 @@
 Pick one or more seams, set the radius; the patches are trimmed back, the
 cut edges bridged, and the holes where fillets meet filled with corner
 patches. The geometry lives in core.fillet.
+
+Each trimmed patch is saved as a "fillet_trim" recipe holding its untrimmed
+recipe (base) and the fillet's seams and radius, so the trim is redone when
+a base's sources move or the radius changes (set_fillet_radius, the radius
+arrow on a fillet bridge). Bridges and corner patches follow through Live
+Update as Bridge Edges / Fill Hole recipes tagged with the fillet's id.
 """
 import json
+import uuid
 
 import bpy
 import numpy as np
@@ -14,9 +21,53 @@ from .bridge.write_surface import build_surface_data
 from .core.continuity import find_shared_edge
 from .core.fill import fill_patches, side_from_patch
 from .core.fillet import corner_loops, multi_fillet
-from .operators import _seam_tolerance, compute_fill
-from .recipe import (META_KEY, edge_polyline, iso_lines, raw_meta, replace_net, store_meta,
-                     world_net)
+from .operators import _seam_tolerance, compute_fill, compute_fillet_trim
+from .recipe import (META_KEY, edge_polyline, hand_edited, hand_edited_net, iso_lines, raw_meta,
+                     replace_net, store_meta, world_net)
+
+
+def fillet_members(fillet_id):
+    """[(object, recipe)] of the patches trimmed by fillet `fillet_id`."""
+    out = []
+    for ob in bpy.data.objects:
+        if META_KEY not in ob:
+            continue
+        try:
+            meta = json.loads(ob[META_KEY])
+        except ValueError:
+            continue
+        if meta.get("method") == "fillet_trim" and meta["fillet"]["id"] == fillet_id:
+            out.append((ob, meta))
+    return out
+
+
+def set_fillet_radius(context, fillet_id, radius):
+    """Redo fillet `fillet_id` with a new radius; its bridges and corner
+    patches follow. Nothing changes if any member can't be redone (e.g. the
+    radius no longer fits) or was edited by hand since."""
+    from . import live  # live imports operators, which this module imports
+    members = fillet_members(fillet_id)
+    if not members:
+        raise ValueError("fillet not found")
+    edited = [ob.name for ob, m in members if hand_edited(ob, m)]
+    if edited:
+        raise ValueError("edited by hand since the fillet (Regenerate first): " + ", ".join(edited))
+    redone = []
+    for ob, meta in members:
+        meta = dict(meta, fillet=dict(meta["fillet"], radius=radius))
+        redone.append((ob, meta, compute_fillet_trim(meta, context)))
+    settings = context.scene.spline_surface
+    live._state["busy"] = True
+    try:
+        for ob, meta, (net, orders) in redone:
+            if not live._write_in_place(ob, net, orders):
+                replace_net(ob, net, settings, orders)
+            context.view_layer.update()
+            store_meta(ob, meta)
+        live.update_chain([ob.name for ob, _ in members], context)
+    finally:
+        live._state["busy"] = False
+        live._reset()
 
 
 def compute_multi_fillet(seams, radius, continuity, settings):
@@ -229,17 +280,34 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
             partners.setdefault(a, set()).add(b)
             partners.setdefault(b, set()).add(a)
         from . import live  # live imports this module
+        # Each trimmed patch keeps the recipe it had before (or its shape, if
+        # it was edited by hand), so the fillet can be redone: a new radius,
+        # or a base whose own sources moved.
+        bases = {}
+        for name in trimmed:
+            src = bpy.data.objects[name]
+            net0, orders0 = world_net(src)
+            old = json.loads(src[META_KEY]) if META_KEY in src else None
+            if old is None or hand_edited_net(old, net0, orders0):
+                old = raw_meta(net0, orders0, matches=(old or {}).get("matches", []))
+            base = {k: v for k, v in old.items() if k != "fp"}
+            # Patches filleted together used to meet at the crease (e.g.
+            # matched G0); re-applying that match would snap them back.
+            if "matches" in base:
+                base["matches"] = [m for m in base["matches"] if m["ref"] not in partners[name]]
+            bases[name] = base
+        external = sorted({n for b in bases.values() for n in live._inputs(b)} - set(trimmed))
+        fillet_id = uuid.uuid4().hex[:8]
+        record = {"id": fillet_id, "seams": seams, "radius": self.radius,
+                  "continuity": self.continuity, "members": sorted(trimmed)}
         live._state["busy"] = True
         made = []
         try:
             for name, (P, o) in trimmed.items():
                 src = bpy.data.objects[name]
-                old = json.loads(src[META_KEY]) if META_KEY in src else {}
-                # Patches filleted together used to meet at the crease (e.g.
-                # matched G0); after the trim that match would snap them back.
-                matches = [m for m in old.get("matches", []) if m["ref"] not in partners[name]]
                 replace_net(src, P, settings, o)
-                store_meta(src, raw_meta(P, o, matches=matches))
+                store_meta(src, {"method": "fillet_trim", "member": name, "base": bases[name],
+                                 "fillet": record, "sources": external})
             for (a, ea, b, eb), (net, orders, tension) in zip(seams, bridges):
                 cu = build_surface_data(a + "_fillet", net, settings.resolution, orders)
                 for mat in zebra.real_materials(bpy.data.objects[a]):
@@ -250,7 +318,7 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
                 # and Regenerate keep it following both patches.
                 store_meta(ob, {"method": "blend", "sources": [a, b], "edges": [ea, eb],
                                 "continuity": self.continuity, "tension": tension,
-                                "flip": False})
+                                "flip": False, "fillet": fillet_id})
                 made.append(ob)
             context.view_layer.update()
             corner_count = corner_failed = 0
@@ -260,7 +328,7 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
                     # Saved as a Fill Hole between the bridges, so it follows them.
                     meta = {"method": "fill", "sources": [names[i] for i, _ in loop],
                             "edges": [e for _, e in loop], "continuity": self.continuity,
-                            "tension": 1.0, "layout": 'AUTO'}
+                            "tension": 1.0, "layout": 'AUTO', "fillet": fillet_id}
                     try:
                         parts = compute_fill(meta, settings)
                     except ValueError:

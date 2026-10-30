@@ -1113,6 +1113,41 @@ def run():
         covered = max(np.mean([np.linalg.norm(rims - q, axis=1).min() < 1e-3
                                for q in edge_polyline(bn, bo, e, 21)]) for e in ('U0', 'U1'))
         assert covered > 0.9, (br.name, covered)
+    # v0.38: the trimmed patches keep their untrimmed recipe, so the fillet can be redone
+    from spline_surface.filleting import fillet_members, set_fillet_radius
+    floor_meta = json.loads(box["BoxF"][META_KEY])
+    assert floor_meta["method"] == "fillet_trim" and floor_meta["base"]["method"] == "raw"
+    fid = floor_meta["fillet"]["id"]
+    assert sorted(ob.name for ob, _ in fillet_members(fid)) == sorted(names)
+    assert all(json.loads(o[META_KEY]).get("fillet") == fid for o in bridges + corner_parts)
+    vl.update()
+    set_fillet_radius(bpy.context, fid, 0.3)
+    vl.update()
+    fx = world_net(box["BoxF"])[0]
+    print("radius 0.3: floor reaches", fx[..., 0].max(), fx[..., 1].max())
+    assert abs(fx[..., 0].max() - 0.7) < 1e-4 and abs(fx[..., 1].max() - 0.7) < 1e-4
+    for br in bridges:
+        a, b = json.loads(br[META_KEY])["sources"]
+        assert graded(bpy.data.objects[a], br) == 'G2' and graded(bpy.data.objects[b], br) == 'G2'
+    rims = np.concatenate([edge_polyline(*world_net(p), e, 400)
+                           for p in corner_parts for e in ('U0', 'U1', 'V0', 'V1')])
+    for br in bridges:
+        bn, bo = world_net(br)
+        assert max(np.mean([np.linalg.norm(rims - q, axis=1).min() < 1e-3
+                            for q in edge_polyline(bn, bo, e, 21)]) for e in ('U0', 'U1')) > 0.9
+    # Regenerate gives the same trimmed shape back
+    assert live_mod.rebuild(box["BoxF"], bpy.context)[0] == "ok"
+    assert np.abs(world_net(box["BoxF"])[0] - fx).max() < 1e-9
+    # a radius that doesn't fit is refused and changes nothing
+    try:
+        set_fillet_radius(bpy.context, fid, 5.0)
+    except ValueError as e:
+        print("radius 5.0 refused:", e)
+    else:
+        raise AssertionError("an oversized radius must be refused")
+    assert np.abs(world_net(box["BoxF"])[0] - fx).max() < 1e-12
+    assert json.loads(box["BoxF"][META_KEY])["fillet"]["radius"] == 0.3
+
     # the trimmed floor moves: its bridges follow and stay G2. One evaluation
     # first, as the UI does after an operator, so Live Update has seen the floor.
     vl.update()
