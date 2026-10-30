@@ -653,6 +653,47 @@ def test_fillet_rounds_right_angle_corner():
     assert np.all(mid[:, 0] > 1.0 - radius) and np.all(mid[:, 1] < radius)
 
 
+def test_trimmed_fillet():
+    from core.fillet import trim_net, trimmed_fillet
+    n = 6
+    g = np.linspace(0.0, 1.0, n)
+    A = np.zeros((n, n, 3))
+    A[..., 0] = g[:, None]
+    A[..., 2] = g[None, :]
+    B = np.zeros((n, n, 3))
+    B[..., 0] = 1.0
+    B[..., 1] = g[:, None]
+    B[..., 2] = g[None, :]
+
+    # trim_net measures along the surface and keeps the far side
+    T, ot, _, err = trim_net(A, (6, 6), 'U1', 0.3)
+    assert err < 1e-9 and np.abs(T[..., 0].max() - 0.7) < 1e-6
+    T, ot, _, err = trim_net(B, (6, 6), 'U0', 0.3)
+    assert np.abs(T[..., 1].min() - 0.3) < 1e-6
+
+    radius = 0.2
+    (TA, oa), (TB, ob), (net, orders), info = trimmed_fillet(
+        A, (6, 6), 'U1', B, (6, 6), 'U0', radius)
+    assert abs(info["trim"] - radius) < 1e-9  # right angle: reach == radius
+    assert np.abs(TA[..., 0].max() - (1 - radius)) < 1e-6
+    assert np.abs(TB[..., 1].min() - radius) < 1e-6
+    for P, o in ((TA, oa), (TB, ob)):
+        sh = find_shared_edge(P, net, 1e-6, o, orders)
+        assert sh is not None
+        assert grade(measure(P, net, *sh[:3], o, orders)) == 'G2'
+    # The bridge rounds the corner: its middle is near the r = 0.2 arc
+    # around (0.8, 0.2), well inside the old sharp corner.
+    mid = nurbs.eval_surface(net, orders, np.linspace(0, 1, 7), [0.5])[:, 0]
+    r = np.linalg.norm(mid[:, :2] - [1 - radius, radius], axis=1)
+    assert np.abs(r - radius).max() < 0.15 * radius, r
+    try:
+        trimmed_fillet(A, (6, 6), 'U1', B, (6, 6), 'U0', 2.0)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a radius larger than the patch must be refused")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

@@ -19,7 +19,7 @@
 | 欄 | 内容 |
 |---|---|
 | Create | Add Patch、Coons、Loft、Curve Network（＋ボタンで見本のカーブの網）、Snap Ends（カーブの端をくっつける）、Regenerate、Fit Settings |
-| Grow & Connect | Extend Edge、Bridge Edges、Match Edge、Corner Fill、Fill Hole、Split Patch、Offset Surface |
+| Grow & Connect | Extend Edge、Bridge Edges、Match Edge、Corner Fill、Fill Hole、Fillet（ぴったり接して折れているつなぎ目をクリック→ホイールで半径、C で G1/G2。両側の面を半径分トリムしてつなぐ）、Split Patch、Offset Surface |
 | Group | Live Update、Linked Edit（＋Falloff）、Edge Chain、Merge、Select / Regenerate、Mirror Group、Cage（Add / Apply / ✕） |
 | Inspect | Zebra（表示中の全部の面に一括、On の間は新しい面にも自動）、Seam Colors（つなぎ目を継続性で色分け）、Soft Pull（面上の点をドラッグして形を整える。つなぎ目で固定された点は動かないので G0/G1/G2 を保つ。ホイール＝範囲、N＝法線方向、X/Y/Z＝その軸方向、V＝画面平面）、Fair（内側をならす。固定された点と外周は動かさない）、Refine（形を変えずに制御点を増やす）、Control Mesh（制御点をメッシュにして編集モードで G/R/S。固定された点は元に戻り、Done で消す）、Control Points（制御点を、つなぎ目で固定された点＝オレンジ／自由に動かせる内側＝水色で表示）、Check Continuity（結果の一覧） |
 | Output | Mesh Resolution、To Mesh |

@@ -10,7 +10,7 @@ from .core.coons import close_loop, coons_net, loop_to_sides, orient_loop, snap_
 from .core.blend import blend_curve_net, blend_net
 from .core.corner import corner_net
 from .core.fill import fill_patches, side_from_curve, side_from_patch
-from .core.fillet import fillet_net
+from .core.fillet import fillet_net, trimmed_fillet
 from .core.mirror import mirror_net, symmetrize
 from .core.network import build_network
 from .core.offset import offset_net
@@ -73,6 +73,13 @@ def compute_fillet(sources, meta, settings):
     (Pa, oa), (Pb, ob) = world_net(sources[0]), world_net(sources[1])
     return fillet_net(Pa, oa, meta["edges"][0], Pb, ob, meta["edges"][1],
                       meta["radius"], tol=_seam_tolerance(Pa, Pb, settings))
+
+
+def compute_trimmed_fillet(sources, meta, settings):
+    (Pa, oa), (Pb, ob) = world_net(sources[0]), world_net(sources[1])
+    return trimmed_fillet(Pa, oa, meta["edges"][0], Pb, ob, meta["edges"][1],
+                          meta["radius"], meta["continuity"],
+                          tol=_seam_tolerance(Pa, Pb, settings))
 
 
 def find_fillet_seams(context, settings):
@@ -940,7 +947,8 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
     bl_idname = "spline_surface.fillet"
     bl_label = "Fillet"
     bl_description = ("Round the crease at a seam where two patch edges already coincide "
-                      "(e.g. after Match Edge). Click the seam, then set the radius")
+                      "(e.g. after Match Edge): both patches are trimmed back and bridged. "
+                      "Click the seam, then set the radius")
     bl_options = {'REGISTER', 'UNDO'}
 
     source_a: bpy.props.StringProperty(name="Patch A")
@@ -949,7 +957,11 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
     edge_b: bpy.props.EnumProperty(name="Edge B", items=[(e, e, "") for e in EDGE_KEYS])
     radius: bpy.props.FloatProperty(
         name="Radius", default=0.1, min=1e-4, max=1000.0,
-        description="Rolling-ball radius of the fillet")
+        description="Rolling-ball radius: sets how far both patches are trimmed back")
+    continuity: bpy.props.EnumProperty(
+        name="Continuity", default='G2',
+        items=[('G1', "G1", "Tangent match at the trimmed edges; closest to a true arc"),
+               ('G2', "G2", "Tangent and curvature match at the trimmed edges")])
 
     @classmethod
     def poll(cls, context):
@@ -979,8 +991,8 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
                 "Fillet: click the seam to round   Esc/RMB: cancel")
         else:
             context.area.header_text_set(
-                "Fillet: Wheel: radius %.4g   Enter/click: confirm   Esc/RMB: cancel"
-                % self.radius)
+                "Fillet: Wheel: radius %.4g   C: %s   Enter/click: confirm   Esc/RMB: cancel"
+                % (self.radius, self.continuity))
 
     def _label(self):
         if self._picked is None and self._hover is not None:
@@ -1000,17 +1012,19 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
         return lines
 
     def _meta(self):
-        return {"method": "fillet", "sources": [self.source_a, self.source_b],
-                "edges": [self.edge_a, self.edge_b], "radius": self.radius}
+        return {"sources": [self.source_a, self.source_b],
+                "edges": [self.edge_a, self.edge_b], "radius": self.radius,
+                "continuity": self.continuity}
 
     def _update_preview(self, context):
         self._preview = []
         if self._picked is not None:
             try:
-                net, orders, self._info = compute_fillet(
+                (A, oa), (B, ob), (net, orders), _ = compute_trimmed_fillet(
                     [bpy.data.objects[self.source_a], bpy.data.objects[self.source_b]],
                     self._meta(), context.scene.spline_surface)
-                self._preview = iso_lines(net, orders)
+                self._preview = iso_lines(net, orders) + [
+                    edge_polyline(A, oa, self.edge_a, 24), edge_polyline(B, ob, self.edge_b, 24)]
             except Exception:
                 pass  # preview-only
         context.area.tag_redraw()
@@ -1041,6 +1055,10 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
                 self.radius = min(1000.0, max(1e-4, self.radius * f))
                 self._header(context)
                 self._update_preview(context)
+            elif event.type == 'C' and event.value == 'PRESS':
+                self.continuity = 'G1' if self.continuity == 'G2' else 'G2'
+                self._header(context)
+                self._update_preview(context)
             elif event.type in {'LEFTMOUSE', 'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS':
                 self._finish(context)
                 return self.execute(context)
@@ -1057,20 +1075,41 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
             self.report({'ERROR'}, "Pick a seam first")
             return {'CANCELLED'}
         try:
-            net, orders, info = compute_fillet(sources, meta, settings)
-            name = sources[0].name + "_fillet"
-            cu = build_surface_data(name, net, settings.resolution, orders)
+            (A, oa), (B, ob_), (net, orders), info = compute_trimmed_fillet(
+                sources, meta, settings)
         except ValueError as e:
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
-        for mat in zebra.real_materials(sources[0]):
-            cu.materials.append(mat)
-        ob = bpy.data.objects.new(name, cu)
-        context.collection.objects.link(ob)
-        store_meta(ob, meta)
+        from . import live  # live imports this module
+        live._state["busy"] = True
+        try:
+            for src, P, o, other in ((sources[0], A, oa, sources[1].name),
+                                     (sources[1], B, ob_, sources[0].name)):
+                old = json.loads(src[META_KEY]) if META_KEY in src else {}
+                # The two used to meet at the crease (e.g. matched G0 to each
+                # other); after the trim that match would snap them back.
+                matches = [m for m in old.get("matches", []) if m["ref"] != other]
+                replace_net(src, P, settings, o)
+                store_meta(src, raw_meta(P, o, matches=matches))
+            name = sources[0].name + "_fillet"
+            cu = build_surface_data(name, net, settings.resolution, orders)
+            for mat in zebra.real_materials(sources[0]):
+                cu.materials.append(mat)
+            ob = bpy.data.objects.new(name, cu)
+            context.collection.objects.link(ob)
+            # Stored as a bridge between the trimmed edges, so Live Update and
+            # Regenerate keep it following both patches.
+            store_meta(ob, {"method": "blend", "sources": meta["sources"],
+                            "edges": meta["edges"], "continuity": self.continuity,
+                            "tension": info["tension"], "flip": False})
+            context.view_layer.update()
+            live.update_chain(meta["sources"], context)
+        finally:
+            live._state["busy"] = False
+            live._reset()
         _make_active(context, ob)
-        self.report({'INFO'}, "fillet reach %.3g-%.3g, max dihedral angle %.1f deg"
-                    % (info["reach"].min(), info["reach"].max(), info["max_angle"]))
+        self.report({'INFO'}, "fillet: trimmed %.3g off both patches, angle %.1f deg"
+                    % (info["trim"], info["mean_angle"]))
         return {'FINISHED'}
 
 

@@ -10,13 +10,16 @@ is G1 (tangent-plane continuous) with each surface, not G2 - a true radius
 fillet generally has different normal curvature than the surfaces it joins.
 
 The fillet's own two edges are the circle's tangent points, set back from the
-original crease by the "reach" the radius demands; the source patches are
-left untouched; trimming them back to the tangent points is a separate step.
+original crease by the "reach" the radius demands. `fillet_net` leaves the
+source patches untouched; `trimmed_fillet` cuts them back by that reach and
+bridges the new edges, so the result is one smooth chain of patches.
 """
 import numpy as np
 
+from .blend import blend_net
 from .corner import _refit, _side, common_structure
-from .nurbs import basis_matrix, eval_curve
+from .nurbs import basis_matrix, eval_curve, eval_points
+from .split import split_net
 
 DEGREE = 5  # across the fillet; enough rows to fit an arc with good accuracy
 
@@ -102,6 +105,52 @@ def fillet_net(Pa, orders_a, edge_a, Pb, orders_b, edge_b, radius, tol=1e-3, fli
     info = {
         "reach": reach[:, 0],
         "max_angle": float(np.degrees(phi.max())),
+        "mean_angle": float(np.degrees(phi.mean())),
         "fit_error": fit_error,
     }
     return net, (k, d + 1), info
+
+
+def trim_net(net, orders, edge, distance, samples=200):
+    """Cut `distance` off the patch at `edge`, measured along the surface
+    (averaged over the edge). The cut boundary keeps the key `edge`.
+
+    Returns (net, orders, t_used, max_fit_error).
+    """
+    P = np.asarray(net, float)
+    direction, at_end = edge[0], edge[1] == '1'
+    s, w = np.linspace(0.0, 1.0, samples), np.linspace(0.0, 1.0, 9)
+    S, W = (a.ravel() for a in np.meshgrid(s, w, indexing="ij"))
+    u, v = (S, W) if direction == 'U' else (W, S)
+    pts = eval_points(P, orders, u, v).reshape(samples, len(w), 3)
+    step = np.linalg.norm(np.diff(pts, axis=0), axis=2).mean(axis=1)
+    cum = np.concatenate([[0.0], np.cumsum(step)])
+    total = cum[-1]
+    if distance >= 0.95 * total:
+        raise ValueError("the radius is too large: needs %.3g of a patch only %.3g across"
+                         % (distance, total))
+    t = float(np.interp(total - distance if at_end else distance, cum, s))
+    A, B, oa, ob, t, err = split_net(P, orders, direction, t, snap=False)
+    return (A, oa, t, err) if at_end else (B, ob, t, err)
+
+
+def trimmed_fillet(Pa, orders_a, edge_a, Pb, orders_b, edge_b, radius,
+                   continuity='G2', tol=1e-3):
+    """Trim both patches back from their shared edge and bridge the gap.
+
+    The trim distance is the rolling ball's reach, so the new edges sit
+    where a `radius` fillet would touch the surfaces; the bridge's handles
+    are sized so a G1 bridge between flat surfaces approximates that arc.
+    Returns ((net_a, orders_a), (net_b, orders_b), (net, orders), info).
+    """
+    _, _, info = fillet_net(Pa, orders_a, edge_a, Pb, orders_b, edge_b, radius, tol)
+    reach = float(info["reach"].mean())
+    A, oa, _, err_a = trim_net(Pa, orders_a, edge_a, reach)
+    B, ob, _, err_b = trim_net(Pb, orders_b, edge_b, reach)
+    # Degree-5 handle of a circular arc of sweep alpha is 3/5 of the cubic's
+    # (4/3) tan(alpha/4) r; over the chord 2 r sin(alpha/2) that is this tension.
+    alpha = np.pi - np.radians(info["mean_angle"])
+    tension = float(2.0 * np.tan(alpha / 4.0) / np.sin(alpha / 2.0))
+    net, orders = blend_net(A, oa, edge_a, B, ob, edge_b, continuity, tension)
+    info.update(trim=reach, tension=tension, trim_error=max(err_a, err_b))
+    return (A, oa), (B, ob), (net, orders), info
