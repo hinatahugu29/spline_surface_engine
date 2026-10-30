@@ -640,6 +640,32 @@ def test_pull_profiles():
         assert np.allclose(a1 - a0, delta, atol=1e-9), p
 
 
+def test_point_pull():
+    from core.lock import lock_mask
+    from core.softpull import grid_weights, point_pull
+    g = np.linspace(0, 1, 9)
+    net = np.stack(list(np.meshgrid(g, g, indexing="ij")) + [np.zeros((9, 9))], -1)
+    mask = lock_mask((9, 9), [('U1', 'G2')])
+    delta = np.array([0.0, 0.0, 0.3])
+    new, gain = point_pull(net, mask, 3, 4, delta, 2.0, 1.0)
+    assert gain == 1.0
+    assert np.allclose(new[3, 4] - net[3, 4], delta)  # the grabbed point follows exactly
+    moved = np.any(new != net, axis=-1)
+    # 2 rows along u, 1 along v: an ellipse in the grid, not a circle
+    assert moved[2, 4] and moved[4, 4] and not moved[1, 4] and not moved[5, 4]
+    assert not moved[3, 3] and not moved[3, 5]
+    assert np.allclose(new[mask], net[mask])
+    # rows below 1 move just the point itself
+    new, _ = point_pull(net, mask, 3, 4, delta, 0.5, 0.5)
+    assert np.argwhere(np.any(new != net, axis=-1)).tolist() == [[3, 4]]
+    # a pinned point cannot be grabbed
+    same, gain = point_pull(net, mask, 8, 4, delta, 2.0, 2.0)
+    assert gain == 0.0 and np.allclose(same, net)
+    # Constant moves the whole ellipse rigidly
+    w = grid_weights((9, 9), np.zeros((9, 9), bool), 4, 4, 2.0, 2.0, 'CONSTANT')
+    assert w[4, 4] == w[3, 4] == w[4, 3] == w[3, 3] == 1.0 and w[2, 4] == 0.0
+
+
 def test_refine_keeps_shape():
     from core.fair import refine_curve, refine_net
     for n, k in ((4, 4), (6, 4), (8, 3), (9, 4)):

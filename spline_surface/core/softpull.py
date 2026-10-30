@@ -94,6 +94,28 @@ def line_pull(net, orders, mask, direction, t0, along, delta, width, taper=False
     return net + (w / max(gain, GAIN_FLOOR))[..., None] * np.asarray(delta, float), gain
 
 
+def grid_weights(shape, mask, i0, j0, rows_u, rows_v, profile='SMOOTH'):
+    """Falloff weight (nu, nv) around control point (i0, j0), measured in rows:
+    the region reaches `rows_u` rows along u and `rows_v` along v (an ellipse
+    in the control grid)."""
+    i = np.arange(shape[0])[:, None]
+    j = np.arange(shape[1])[None, :]
+    s = np.hypot((i - i0) / max(rows_u, 1e-9), (j - j0) / max(rows_v, 1e-9))
+    w = falloff(s, profile)
+    w[np.asarray(mask, bool)] = 0.0
+    return w
+
+
+def point_pull(net, mask, i0, j0, delta, rows_u, rows_v, profile='SMOOTH'):
+    """Move control point (i0, j0) by exactly `delta`, its neighbours by their
+    grid falloff. Returns (new net, gain); gain is 0 if the point is pinned."""
+    net = np.asarray(net, float)
+    if np.asarray(mask, bool)[i0, j0]:
+        return net.copy(), 0.0
+    w = grid_weights(net.shape[:2], mask, i0, j0, rows_u, rows_v, profile)
+    return net + w[..., None] * np.asarray(delta, float), 1.0
+
+
 def soft_pull(net, orders, mask, uv, delta, radius, profile='SMOOTH'):
     """Move the surface point at `uv` by `delta`. Returns (new net, gain).
 
