@@ -548,8 +548,24 @@ def run():
     assert bpy.ops.spline_surface.to_mesh(weld=True) == {'FINISHED'}
     wm = bpy.context.active_object
     print("weld verts", len(wm.data.vertices), len(wm.data.polygons))
-    assert len(wm.data.vertices) == 3 * 25 * 25 - 2 * 25
-    assert len(wm.data.polygons) == 3 * 24 * 24
+    def expected_mesh(objs, res=24):
+        """(verts, faces) To Mesh should give: each patch cut in proportion to
+        its size (the longest side gets `res`), coincident points welded."""
+        from spline_surface.core.meshing import segment_counts
+        nets = [world_net(o) for o in objs]
+        counts = segment_counts(nets, res)
+        assert max(max(c) for c in counts) == res
+        pts = []
+        for (net, o), (nu, nv) in zip(nets, counts):
+            U, V = np.meshgrid(np.linspace(0, 1, nu + 1), np.linspace(0, 1, nv + 1), indexing="ij")
+            pts.append(nurbs.eval_points(net, o, U.ravel(), V.ravel()))
+        pts = np.concatenate(pts)
+        unique = np.unique(np.round(pts / np.ptp(pts, axis=0).max(), 4), axis=0)
+        return len(unique), sum(nu * nv for nu, nv in counts)
+
+    verts, faces = expected_mesh((cbase, c1, c2))
+    print("weld expected", verts, faces)
+    assert len(wm.data.vertices) == verts and len(wm.data.polygons) == faces
     # extend by name, independent of selection / active object
     for o in bpy.context.selected_objects:
         o.select_set(False)
@@ -617,7 +633,7 @@ def run():
         o.select_set(True)
     assert bpy.ops.spline_surface.to_mesh(weld=True) == {'FINISHED'}
     print("mirror weld", len(bpy.context.active_object.data.vertices))
-    assert len(bpy.context.active_object.data.vertices) == 4 * 625 - 4 * 25 + 1
+    assert len(bpy.context.active_object.data.vertices) == expected_mesh((half, hext, mh, me_))[0]
     # split: cut a mirrored patch with extensions; links follow the pieces
     bpy.context.scene.cursor.location = (1, 400, 0)
     bpy.ops.spline_surface.add_patch(shape='DOME')
@@ -973,6 +989,143 @@ def run():
     print("refine", before.shape, "->", after[0].shape, "max dist",
           float(np.abs(nurbs_eval(*after, np.linspace(0, 1, 15)) - pts_before).max()))
     assert np.abs(nurbs_eval(*after, np.linspace(0, 1, 15)) - pts_before).max() < 1e-5
+
+    def graded(a, b):
+        """Continuity grade of the seam between two patch objects (None if apart)."""
+        na, oa = world_net(a)
+        nb, ob_ = world_net(b)
+        sh = find_shared_edge(na, nb, 1e-4, oa, ob_)
+        return None if sh is None else grade(measure(na, nb, *sh[:3], oa, ob_))
+
+    # ---- v0.30-v0.32: Soft Pull from a line and from a control point keeps the seam G2
+    from spline_surface.core.softpull import line_pull, point_pull
+    masks = ctrlpoints.pin_masks(bpy.context, [cp_base, cp_ext])
+    net0, o0, mask0 = masks[cp_ext.name]
+    reach = 0.3 * np.ptp(net0.reshape(-1, 3), axis=0).max()
+    i, j = np.argwhere(~mask0)[len(np.argwhere(~mask0)) // 2]
+    for label, (new, gain) in (
+            ("line", line_pull(net0, o0, mask0, 'U', 0.7, 0.5, (0.0, 0.0, 0.2), reach)),
+            ("point", point_pull(net0, mask0, i, j, (0.0, 0.0, 0.2), 2.0, 2.0))):
+        assert gain > 0 and np.allclose(new[mask0], net0[mask0]), label
+        assert _write_in_place(cp_ext, new, o0)
+        vl.update()
+        print("soft pull", label, "seam", graded(cp_base, cp_ext))
+        assert graded(cp_base, cp_ext) == 'G2', label
+    assert _write_in_place(cp_ext, net0, o0)
+    vl.update()
+
+    # ---- v0.29: curvature comb and map switch on and off
+    from spline_surface import curvature as curv
+    bpy.ops.object.select_all(action='DESELECT')
+    cp_ext.select_set(True)
+    assert bpy.ops.spline_surface.curvature_comb() == {'FINISHED'}
+    assert bpy.ops.spline_surface.curvature_map() == {'FINISHED'}
+    assert curv._state["teeth"] and curv._state["tris"] is not None and curv.limit() > 0
+    assert bpy.ops.spline_surface.curvature_comb() == {'FINISHED'}
+    assert bpy.ops.spline_surface.curvature_map() == {'FINISHED'}
+    assert curv._state["handle"] is None
+    print("curvature overlays OK")
+
+    # ---- v0.33: what the Extend arrow does - rewrite the length, rebuild in place
+    from spline_surface.core.extend import length_handle
+    from spline_surface.recipe import META_KEY
+    from spline_surface import live as live_mod
+    bpy.context.scene.cursor.location = (0, 320, 0)
+    bpy.ops.spline_surface.add_patch(shape='DOME')
+    gb = bpy.context.active_object
+    assert bpy.ops.spline_surface.extend_edge(edge='U1', length=0.3, continuity='G1') == {'FINISHED'}
+    ge = bpy.context.active_object
+    meta = json.loads(ge[META_KEY])
+    src_net, src_orders = world_net(gb)
+    base, direction, scale = length_handle(src_net, meta["edge"], src_orders)
+    meta["length"] = 0.6
+    ge[META_KEY] = json.dumps(meta)
+    assert live_mod.rebuild(ge, bpy.context)[0] == "ok"
+    gn, go = world_net(ge)
+    mids = [nurbs.eval_points(gn, go, [a], [b])[0]
+            for a, b in ((0.5, 0), (0.5, 1), (0, 0.5), (1, 0.5))]
+    tip = base + 0.6 * scale * direction
+    print("extend arrow tip error", min(np.linalg.norm(m - tip) for m in mids))
+    assert min(np.linalg.norm(m - tip) for m in mids) < 1e-4
+    assert graded(gb, ge) in ('G1', 'G2')
+
+    # ---- v0.33.2-3: To Mesh closes the seams around an N-sided fill (T-junctions)
+    five = ring(5, (0, 540, 0))
+    assert bpy.ops.spline_surface.fill_hole(picks=";".join("%s:V0" % o.name for o in five)) \
+        == {'FINISHED'}
+    parts5 = list(bpy.context.selected_objects)
+    bpy.ops.object.select_all(action='DESELECT')
+    for o in five + parts5:
+        o.select_set(True)
+    vl.objects.active = five[0]
+    assert bpy.ops.spline_surface.to_mesh(weld=True) == {'FINISHED'}
+    tm = bpy.context.active_object
+    bm = bmesh.new()
+    bm.from_mesh(tm.data)
+    # Along the hole's rim (each ring patch's V0, corners left out) every mesh
+    # vertex must be welded inside; a boundary vertex there is a crack.
+    rim = np.concatenate([edge_polyline(*world_net(o), 'V0', 400)[8:-8] for o in five])
+    cracked = sum(1 for v in bm.verts
+                  if v.is_boundary and np.linalg.norm(rim - np.array(v.co), axis=1).min() < 1e-3)
+    print("to mesh five-sided fill: open vertices on the seams", cracked, "faces", len(bm.faces))
+    bm.free()
+    assert cracked == 0
+
+    # ---- v0.28-v0.35: Fillet three seams of a box corner, with a corner patch
+    from spline_surface.filleting import find_fillet_seams
+    sc.live_update = True  # the v0.21 section switched it off
+    g6 = np.linspace(0, 1, 6)
+    U6, V6 = g6[:, None] + 0 * g6, 0 * g6[:, None] + g6
+    box = {}
+    for name, net in (("BoxF", np.stack([U6, V6, 0 * U6], -1)),     # floor z = 0
+                      ("BoxW1", np.stack([1 + 0 * U6, V6, U6], -1)),  # wall x = 1
+                      ("BoxW2", np.stack([V6, 1 + 0 * U6, U6], -1))):  # wall y = 1
+        net = net + np.array([0.0, 0.0, 300.0])  # clear of the rest of the scene
+        cu = build_surface_data(name, net, 12, (6, 6))
+        ob = bpy.data.objects.new(cu.name, cu)
+        bpy.context.collection.objects.link(ob)
+        store_meta(ob, {"method": "raw", "sources": [], "net": net.tolist(), "orders": [6, 6]})
+        box[name] = ob
+    vl.update()
+    names = {o.name for o in box.values()}
+    pairs = {k: v for k, v in find_fillet_seams(bpy.context, bpy.context.scene.spline_surface).items()
+             if set(k) <= names}
+    print("box corner seams", sorted(pairs))
+    assert len(pairs) == 3
+    picked = json.dumps([[a, v[0], b, v[1]] for (a, b), v in pairs.items()])
+    assert bpy.ops.spline_surface.fillet(seams=picked, radius=0.2, continuity='G2',
+                                         corners=True) == {'FINISHED'}
+    made = list(bpy.context.selected_objects)
+    bridges = [o for o in made if json.loads(o[META_KEY])["method"] == "blend"]
+    corner_parts = [o for o in made if json.loads(o[META_KEY])["method"] == "fill"]
+    print("fillet bridges", len(bridges), "corner parts", len(corner_parts))
+    assert len(bridges) == 3 and corner_parts
+    for br in bridges:
+        a, b = json.loads(br[META_KEY])["sources"]
+        assert graded(bpy.data.objects[a], br) == 'G2' and graded(bpy.data.objects[b], br) == 'G2'
+    # Each bridge's end at the corner is closed off by the corner patch's rim
+    # (a corner part covers part of an end, so this checks coverage, not a
+    # whole shared edge; the angle there is covered by test_core).
+    rims = np.concatenate([edge_polyline(*world_net(p), e, 400)
+                           for p in corner_parts for e in ('U0', 'U1', 'V0', 'V1')])
+    for br in bridges:
+        bn, bo = world_net(br)
+        covered = max(np.mean([np.linalg.norm(rims - q, axis=1).min() < 1e-3
+                               for q in edge_polyline(bn, bo, e, 21)]) for e in ('U0', 'U1'))
+        assert covered > 0.9, (br.name, covered)
+    # the trimmed floor moves: its bridges follow and stay G2. One evaluation
+    # first, as the UI does after an operator, so Live Update has seen the floor.
+    vl.update()
+    before = [world_net(o)[0].copy() for o in bridges]
+    box["BoxF"].location.z += 0.05
+    vl.update()
+    moved = [float(np.abs(world_net(o)[0] - b).max()) for o, b in zip(bridges, before)]
+    print("fillet bridges follow the floor", np.round(moved, 3))
+    assert max(moved) > 0.01
+    for br in bridges:
+        a, b = json.loads(br[META_KEY])["sources"]
+        assert graded(bpy.data.objects[a], br) == 'G2' and graded(bpy.data.objects[b], br) == 'G2'
+
     spline_surface.unregister()
     print("ALL OK")
 
