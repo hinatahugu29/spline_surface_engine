@@ -14,13 +14,34 @@ MIN_GAIN = 1e-3
 GAIN_FLOOR = 0.3
 
 
+PROFILES = ('SMOOTH', 'SPHERE', 'LINEAR', 'SHARP', 'CONSTANT')
+
+
+def falloff(s, profile='SMOOTH'):
+    """Weight for normalised distance s in [0, 1]: 1 at the origin, 0 at the rim.
+
+    Same shapes as Blender's proportional editing; CONSTANT moves everything
+    inside the rim as one piece.
+    """
+    s = np.clip(s, 0.0, 1.0)
+    if profile == 'SPHERE':
+        return np.sqrt(1.0 - s * s)
+    if profile == 'LINEAR':
+        return 1.0 - s
+    if profile == 'SHARP':
+        return (1.0 - s) ** 2
+    if profile == 'CONSTANT':
+        return (s < 1.0).astype(float)
+    return (1.0 - s * s) ** 3
+
+
 def greville(n, k):
     """Parameter at which each control point of a clamped uniform B-spline peaks."""
     U = clamped_knots(n, k)
     return np.array([U[i + 1:i + k].mean() for i in range(n)])
 
 
-def pull_weights(net, orders, mask, anchor, radius):
+def pull_weights(net, orders, mask, anchor, radius, profile='SMOOTH'):
     """Falloff weight (nu, nv) of every control point; 0 for pinned ones.
 
     Distance is measured from the anchor to the surface point each control
@@ -30,13 +51,12 @@ def pull_weights(net, orders, mask, anchor, radius):
     net = np.asarray(net, float)
     pos = eval_surface(net, orders, greville(net.shape[0], orders[0]),
                        greville(net.shape[1], orders[1]))
-    s = np.clip(np.linalg.norm(pos - anchor, axis=-1) / max(radius, 1e-9), 0.0, 1.0)
-    w = (1.0 - s * s) ** 3
+    w = falloff(np.linalg.norm(pos - anchor, axis=-1) / max(radius, 1e-9), profile)
     w[np.asarray(mask, bool)] = 0.0
     return w
 
 
-def line_weights(net, orders, mask, direction, t0, width, taper=False):
+def line_weights(net, orders, mask, direction, t0, width, taper=False, profile='SMOOTH'):
     """Falloff weight (nu, nv) of every control point around an iso-line.
 
     The line is u = t0 ('U', running along v) or v = t0 ('V', along u). Each
@@ -53,19 +73,19 @@ def line_weights(net, orders, mask, direction, t0, width, taper=False):
     else:
         line = eval_surface(net, orders, gu, [t0])[:, 0][:, None, :]
         along = gu[:, None]
-    s = np.clip(np.linalg.norm(pos - line, axis=-1) / max(width, 1e-9), 0.0, 1.0)
-    w = (1.0 - s * s) ** 3
+    w = falloff(np.linalg.norm(pos - line, axis=-1) / max(width, 1e-9), profile)
     if taper:
         w = w * (4.0 * along * (1.0 - along))
     w[np.asarray(mask, bool)] = 0.0
     return w
 
 
-def line_pull(net, orders, mask, direction, t0, along, delta, width, taper=False):
+def line_pull(net, orders, mask, direction, t0, along, delta, width, taper=False,
+              profile='SMOOTH'):
     """Move the iso-line (see line_weights) so its point at `along` moves by
     `delta`. Returns (new net, gain) like soft_pull."""
     net = np.asarray(net, float)
-    w = line_weights(net, orders, mask, direction, t0, width, taper)
+    w = line_weights(net, orders, mask, direction, t0, width, taper, profile)
     u, v = (t0, along) if direction == 'U' else (along, t0)
     gain = float(basis_matrix(net.shape[0], orders[0], [u])[0]
                  @ w @ basis_matrix(net.shape[1], orders[1], [v])[0])
@@ -74,7 +94,7 @@ def line_pull(net, orders, mask, direction, t0, along, delta, width, taper=False
     return net + (w / max(gain, GAIN_FLOOR))[..., None] * np.asarray(delta, float), gain
 
 
-def soft_pull(net, orders, mask, uv, delta, radius):
+def soft_pull(net, orders, mask, uv, delta, radius, profile='SMOOTH'):
     """Move the surface point at `uv` by `delta`. Returns (new net, gain).
 
     `gain` is how much of the pull the anchor can follow (0: it is pinned and
@@ -83,7 +103,7 @@ def soft_pull(net, orders, mask, uv, delta, radius):
     net = np.asarray(net, float)
     u, v = uv
     anchor = eval_points(net, orders, [u], [v])[0]
-    w = pull_weights(net, orders, mask, anchor, radius)
+    w = pull_weights(net, orders, mask, anchor, radius, profile)
     gain = float(basis_matrix(net.shape[0], orders[0], [u])[0]
                  @ w @ basis_matrix(net.shape[1], orders[1], [v])[0])
     if gain < MIN_GAIN:

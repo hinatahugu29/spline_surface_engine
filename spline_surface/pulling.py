@@ -18,7 +18,7 @@ from mathutils.geometry import intersect_line_plane
 
 from . import pick
 from .core.nurbs import eval_points, eval_surface
-from .core.softpull import line_pull, soft_pull
+from .core.softpull import PROFILES, line_pull, soft_pull
 from .core.split import iso_line
 from .ctrlpoints import pin_masks
 from .live import _write_in_place
@@ -47,7 +47,7 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
     bl_description = ("Click a point on a patch and drag: the free control points around it "
                       "follow. Rows pinned by seams stay put, so G0/G1/G2 are kept. "
                       "Wheel: radius, N: surface normal, X/Y/Z: that axis, V: view plane, "
-                      "L: pull a whole line (D: direction, T: taper)")
+                      "L: pull a whole line (D: direction, T: taper), F: falloff shape")
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -78,6 +78,7 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
         self._line = False   # origin: a point, or the iso-line through it
         self._dir = 'U'      # line u = const ('U') or v = const ('V')
         self._taper = False
+        self._profile = 'SMOOTH'
         self._picker = pick.Overlay(context, self._lines)
         context.window_manager.modal_handler_add(self)
         self._header(context)
@@ -92,9 +93,9 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
         else:
             origin = "L point   Wheel: radius %.3g" % self._radius
         context.area.header_text_set(
-            "Soft Pull: drag (%d strokes)   Origin: %s   Move: %s   N / X Y Z / V   "
-            "Ctrl+Z: undo stroke   Enter/Space: done   Esc: cancel all%s"
-            % (len(self._history), origin, MODE_NAMES[self._mode], extra))
+            "Soft Pull: drag (%d strokes)   Origin: %s   F falloff: %s   Move: %s   "
+            "N / X Y Z / V   Ctrl+Z: undo stroke   Enter/Space: done   Esc: cancel all%s"
+            % (len(self._history), origin, self._profile.lower(), MODE_NAMES[self._mode], extra))
 
     def _sample(self, name):
         net, orders, _ = self._patches[name]
@@ -208,9 +209,10 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
         d["delta"] = self._delta(context, event)
         if "t0" in d:
             d["net"], d["gain"] = line_pull(net, orders, mask, d["dir"], d["t0"], d["along"],
-                                            d["delta"], self._radius, self._taper)
+                                            d["delta"], self._radius, self._taper, self._profile)
         else:
-            d["net"], d["gain"] = soft_pull(net, orders, mask, d["uv"], d["delta"], self._radius)
+            d["net"], d["gain"] = soft_pull(net, orders, mask, d["uv"], d["delta"],
+                                            self._radius, self._profile)
         ob = bpy.data.objects.get(d["name"])
         if ob is not None:
             self._write(context, ob, d["net"], orders)
@@ -282,8 +284,11 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
                 self._dir = 'V' if self._dir == 'U' else 'U'
             self._header(context)
             context.area.tag_redraw()
-        elif event.type == 'T' and event.value == 'PRESS':
-            self._taper = not self._taper
+        elif event.type in {'T', 'F'} and event.value == 'PRESS':
+            if event.type == 'T':
+                self._taper = not self._taper
+            else:
+                self._profile = PROFILES[(PROFILES.index(self._profile) + 1) % len(PROFILES)]
             if self._drag:
                 self._apply(context, event)
             self._header(context)

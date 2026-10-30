@@ -611,6 +611,35 @@ def test_line_pull():
     assert np.allclose(l1 - l0, delta, atol=1e-9)
 
 
+def test_pull_profiles():
+    from core.softpull import PROFILES, falloff, soft_pull
+    s = np.array([0.0, 0.5, 1.0])
+    for p in PROFILES:
+        w = falloff(s, p)
+        assert w[0] == 1.0 and w[2] == 0.0, p
+    mid = {p: falloff(np.array([0.5]), p)[0] for p in PROFILES}
+    expect = {'CONSTANT': 1.0, 'SPHERE': 0.75 ** 0.5, 'LINEAR': 0.5,
+              'SMOOTH': 0.75 ** 3, 'SHARP': 0.25}
+    assert all(abs(mid[p] - expect[p]) < 1e-12 for p in PROFILES), mid
+    g = np.linspace(0, 1, 9)
+    net = np.stack(list(np.meshgrid(g, g, indexing="ij")) + [np.zeros((9, 9))], -1)
+    delta = np.array([0.0, 0.0, 0.2])
+    free = np.zeros((9, 9), bool)
+    # Constant lifts everything inside the radius by exactly delta, nothing else.
+    new, gain = soft_pull(net, (4, 4), free, (0.5, 0.5), delta, 0.3, 'CONSTANT')
+    inside = np.linalg.norm(net[..., :2] - 0.5, axis=-1) < 0.25
+    outside = np.linalg.norm(net[..., :2] - 0.5, axis=-1) > 0.35
+    assert gain > 0.99
+    assert np.allclose(new[inside] - net[inside], delta)
+    assert np.allclose(new[outside], net[outside])
+    # Every profile still makes the anchor follow the cursor.
+    for p in PROFILES:
+        new, _ = soft_pull(net, (4, 4), free, (0.5, 0.5), delta, 0.3, p)
+        a0 = nurbs.eval_points(net, (4, 4), [0.5], [0.5])[0]
+        a1 = nurbs.eval_points(new, (4, 4), [0.5], [0.5])[0]
+        assert np.allclose(a1 - a0, delta, atol=1e-9), p
+
+
 def test_refine_keeps_shape():
     from core.fair import refine_curve, refine_net
     for n, k in ((4, 4), (6, 4), (8, 3), (9, 4)):
