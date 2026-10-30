@@ -122,6 +122,7 @@ Inspect 欄の **Control Points** で、固定された点（オレンジ）と�
 | 機能 | 内容 |
 |---|---|
 | **Add Patch** | 3D カーソルの位置にパッチを出します。Shape（Plane＝平ら / Arc＝一方向に曲がる / Dome＝二方向に曲がる）、大きさ、Bulge（膨らみの高さ）、制御点の数、Order（次数＋1）を調整パネルで変えられます |
+| **Body panel presets**（Hood／Roof／Door／Hood + Fender） | 3D カーソルの位置に、車体パネルの出発点になる形を置きます。座標は x＝車幅方向（中心線が x=0）、y＝前後、z＝上下。Hood と Roof は上に反った（クラウン付きの）パネル、Door は外へふくらんで上が内に倒れた縦のパネル。**Hood + Fender** は右半分のボンネットとフェンダーの壁を作り、肩を Fillet で丸めます（Mirror Group で反対側へ）。大きさ・クラウン・肩の半径は調整パネルで変えられます。置かれるのはふつうのパッチなので、Soft Pull や Extend などでそのまま整えられます |
 | **Line** | 3D カーソルの位置に、境界として使いやすい直線をベジェで追加します（Add Boundary Curve、Shape=Line）。調整パネルで Length を変えられます |
 | **Arc** | 3D カーソルの位置に、境界として使いやすい円弧をベジェで追加します（Add Boundary Curve、Shape=Arc）。Radius・Angle（180 で半円）・Segments（角度が大きいときに増やす）を調整パネルで変えられます。AUTO ハンドルの近似ではなく、厳密な円弧の形になります |
 | **Coons** | 選んだ 3〜4 本のカーブ（境界）で囲まれた面を張ります。カーブの向きや順番はばらばらで構いません |

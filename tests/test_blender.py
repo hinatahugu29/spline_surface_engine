@@ -1319,6 +1319,26 @@ def run():
     for o in hidden:
         o.hide_set(False)
 
+    # ---- v0.43: Presets drop in starting panels
+    for kind in ('HOOD', 'ROOF', 'DOOR'):
+        bpy.context.scene.cursor.location = (0, 900, 0)
+        before = {o.name for o in bpy.data.objects}
+        assert bpy.ops.spline_surface.add_preset(kind=kind) == {'FINISHED'}
+        new = [o for o in bpy.data.objects if o.name not in before]
+        assert len(new) == 1 and new[0].type == 'SURFACE', (kind, new)
+        assert world_net(new[0])[0].shape == (6, 6, 3)
+    bpy.context.scene.cursor.location = (0, 920, 0)
+    before = {o.name for o in bpy.data.objects}
+    assert bpy.ops.spline_surface.add_preset(kind='HOOD_FENDER', radius=0.08) == {'FINISHED'}
+    new = [o for o in bpy.data.objects if o.name not in before]
+    methods = sorted(json.loads(o[spline_surface.operators.META_KEY])["method"] for o in new)
+    print("preset hood+fender", methods)
+    assert methods == ["blend", "fillet_trim", "fillet_trim"], methods
+    bpy.context.scene.cursor.location = (0, 940, 0)
+    before = {o.name for o in bpy.data.objects}
+    assert bpy.ops.spline_surface.add_preset(kind='HOOD_FENDER', radius=0.0) == {'FINISHED'}
+    assert len([o for o in bpy.data.objects if o.name not in before]) == 2
+
     spline_surface.unregister()
     print("ALL OK")
 

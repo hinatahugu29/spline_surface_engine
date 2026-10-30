@@ -2,7 +2,7 @@ import json
 
 import bpy
 
-from . import zebra
+from . import presetting, zebra
 
 GRADE_ICONS = {"G2": 'CHECKMARK', "G1": 'INFO', "G0": 'ERROR', "open": 'CANCEL'}
 
@@ -116,6 +116,11 @@ class SS_PT_create(_SubPanel, bpy.types.Panel):
         s = context.scene.spline_surface
         layout = self.layout
         layout.operator("spline_surface.add_patch", icon='SURFACE_NSURFACE')
+        col = layout.column(align=True)
+        col.label(text="Body panel presets:")
+        grid = col.grid_flow(row_major=True, columns=2, align=True)
+        for kind, label, _ in presetting.KIND_ITEMS:
+            grid.operator("spline_surface.add_preset", text=label).kind = kind
         col = layout.column(align=True)
         col.label(text="Boundary curves:")
         row = col.row(align=True)

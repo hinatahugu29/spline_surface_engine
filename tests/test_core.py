@@ -1152,6 +1152,23 @@ def test_panel_gap():
     assert np.allclose(np.abs(N[:, 2]), 1.0)
 
 
+def test_presets():
+    from core.presets import KINDS, POINTS, build
+    for kind in KINDS:
+        for name, net in build(kind):
+            assert net.shape == (POINTS, POINTS, 3) and np.isfinite(net).all(), (kind, name)
+    (_, hood), = build('HOOD', length=2.0, width=1.0, crown=0.1)
+    assert abs(np.ptp(hood[..., 1]) - 2.0) < 1e-9 and abs(np.ptp(hood[..., 0]) - 1.0) < 1e-9
+    assert 0.10 < hood[..., 2].max() <= 0.13 and hood[:, 0, 2].max() <= 0.031   # crowned: edges lower
+    (_, half), = build('HOOD', width=1.0, half=True)
+    assert abs(half[..., 0].min()) < 1e-9 and abs(half[..., 0].max() - 0.5) < 1e-9
+    (_, d), = build('DOOR', length=1.0, height=0.8)
+    assert abs(np.ptp(d[..., 2]) - 0.8) < 1e-9
+    (_, h), (_, f) = build('HOOD_FENDER', depth=0.4, bulge=0.0)
+    # the fender wall starts exactly on the hood's side edge and drops by `depth`
+    assert np.allclose(f[:, 0], h[:, -1]) and abs((f[:, -1, 2] - f[:, 0, 2]).mean() + 0.4) < 1e-9
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
