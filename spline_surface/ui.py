@@ -43,7 +43,8 @@ class SS_Settings(bpy.types.PropertyGroup):
         name="Preview Resolution", default=12, min=1, max=64)
     mesh_resolution: bpy.props.IntProperty(
         name="Mesh Resolution", default=24, min=1, max=256,
-        description="Surface resolution used by To Mesh")
+        description="To Mesh: segments along the longest patch side; the other patches get "
+                    "the same density (unwelded To Mesh: segments per patch)")
     zebra_frequency: bpy.props.FloatProperty(
         name="Stripes", default=40.0, min=1.0, max=500.0, update=_zebra_update)
     zebra_axis: bpy.props.EnumProperty(

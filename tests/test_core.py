@@ -709,6 +709,33 @@ def test_t_junctions():
     assert hits == {}
 
 
+def test_segment_counts():
+    from core.meshing import segment_counts
+
+    def rect(x0, x1, y0, y1):
+        g = np.linspace(0, 1, 3)
+        X = x0 + (x1 - x0) * g[:, None] + 0 * g
+        Y = y0 + 0 * g[:, None] + (y1 - y0) * g
+        return np.stack([X, Y, np.zeros((3, 3))], -1), (3, 3)
+
+    A = rect(0, 2, 0, 1)       # big: 2 x 1
+    B = rect(2, 3, 0, 1)       # shares A's x = 2 edge (runs along v in both)
+    C = rect(5, 5.5, 0, 0.5)   # on its own, small
+    (au, av), (bu, bv), (cu, cv) = segment_counts([A, B, C], 8)
+    assert (au, av) == (8, 4)  # longest side gets the resolution, the rest the same density
+    assert bu == 4 and bv == av  # equal counts along the shared edge
+    assert (cu, cv) == (2, 2)
+    # A shared edge takes the finer side's count: the trapezoid T is 3 tall
+    # on its far side but meets the square S along a 1-long edge at x = 1.
+    g = np.linspace(0, 1, 3)
+    X = g[:, None] + 0 * g
+    Y = (-1 + g[:, None]) + (3 - 2 * g[:, None]) * g     # v-lines from 3 long to 1 long
+    T = (np.stack([X, Y, np.zeros((3, 3))], -1), (3, 3))
+    S = rect(1, 2, 0, 1)
+    (tu, tv), (su, sv) = segment_counts([T, S], 6)
+    assert tv > 3 and sv == tv  # the square follows the trapezoid's finer count
+
+
 def test_refine_keeps_shape():
     from core.fair import refine_curve, refine_net
     for n, k in ((4, 4), (6, 4), (8, 3), (9, 4)):

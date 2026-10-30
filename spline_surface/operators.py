@@ -11,7 +11,7 @@ from .core.blend import blend_curve_net, blend_net
 from .core.corner import corner_net
 from .core.fill import fill_patches, side_from_curve, side_from_patch
 from .core.fillet import fillet_net, trimmed_fillet
-from .core.meshing import t_junctions
+from .core.meshing import segment_counts, t_junctions
 from .core.mirror import mirror_net, symmetrize
 from .core.network import build_network
 from .core.offset import offset_net
@@ -1304,8 +1304,10 @@ def _stitch_t_junctions(bm, dist):
 def weld_mesh(name, surfaces, resolution, context=None):
     """One mesh of all patches, sampled uniformly and welded along shared edges.
 
-    Patches that share a whole edge share its parametrisation, so equal
-    uniform sampling puts their seam vertices on top of each other. Where a
+    Each patch gets segments in proportion to its size (the longest side
+    gets `resolution`), so the density is even across big and small patches.
+    Patches that share a whole edge get the same count along it and share
+    its parametrisation, so their seam vertices meet. Where a
     long edge meets two shorter patches (Fill Hole around a centre, a split
     neighbour), the short side's extra vertices are stitched into the long
     side's edges so the seam still closes.
@@ -1316,11 +1318,10 @@ def weld_mesh(name, surfaces, resolution, context=None):
     bm = bmesh.new()
     size = 0.0
     fallback = []
-    t = np.linspace(0.0, 1.0, resolution + 1)
-    U, V = np.meshgrid(t, t, indexing="ij")
+    patches = []
     for ob in surfaces:
         try:
-            net, orders = world_net(ob)
+            patches.append(world_net(ob))
         except ValueError:
             # Not a clean patch: fall back to Blender's own tessellation.
             # Its vertex layout generally won't match a neighbour's uniform
@@ -1331,13 +1332,14 @@ def weld_mesh(name, surfaces, resolution, context=None):
             me.transform(ob.matrix_world)
             bm.from_mesh(me)
             bpy.data.meshes.remove(me)
-            continue
+    for (net, orders), (nu, nv) in zip(patches, segment_counts(patches, resolution)):
         size = max(size, np.ptp(net.reshape(-1, 3), axis=0).max())
-        pts = eval_points(net, orders, U.ravel(), V.ravel()).reshape(resolution + 1,
-                                                                     resolution + 1, 3)
+        U, V = np.meshgrid(np.linspace(0.0, 1.0, nu + 1), np.linspace(0.0, 1.0, nv + 1),
+                           indexing="ij")
+        pts = eval_points(net, orders, U.ravel(), V.ravel()).reshape(nu + 1, nv + 1, 3)
         verts = [[bm.verts.new(p) for p in row] for row in pts]
-        for i in range(resolution):
-            for j in range(resolution):
+        for i in range(nu):
+            for j in range(nv):
                 bm.faces.new((verts[i][j], verts[i + 1][j], verts[i + 1][j + 1], verts[i][j + 1]))
     dist = 1e-4 * max(size, 1e-3)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=dist)
