@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Spline Surface",
     "author": "hinata",
-    "version": (0, 38, 0),
+    "version": (0, 39, 0),
     "blender": (5, 0, 0),
     "location": "View3D > Sidebar > Spline Surface",
     "description": "Build smooth NURBS patches from boundary curves",
@@ -10,11 +10,11 @@ bl_info = {
 
 import bpy  # noqa: E402
 
-from . import cage, controlmesh, ctrlpoints, curvature, filleting, gizmos, linked, live, netcheck, operators, pulling, seams, shaping, splitting, symmetry, ui, zebra  # noqa: E402
+from . import cage, controlmesh, ctrlpoints, curvature, curvetools, filleting, gizmos, linked, live, netcheck, operators, pulling, seams, shaping, splitting, symmetry, ui, zebra  # noqa: E402
 
 classes = (ui.classes + operators.classes + filleting.classes + live.classes + linked.classes
            + cage.classes + symmetry.classes + splitting.classes + seams.classes + ctrlpoints.classes
-           + curvature.classes + netcheck.classes + pulling.classes + controlmesh.classes
+           + curvature.classes + netcheck.classes + curvetools.classes + pulling.classes + controlmesh.classes
            + shaping.classes + zebra.classes + gizmos.classes)
 
 

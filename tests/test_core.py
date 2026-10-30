@@ -457,6 +457,51 @@ def test_diagnose_network():
     assert not d["ok"] and d["alone"] == [7] and d["family"][7] is None
 
 
+def _wavy_chain(n=7, amp=0.0):
+    """A Bezier chain along x with handles a third of the way, z = amp * wave."""
+    x = np.arange(n, dtype=float)
+    A = np.stack([x, 0 * x, amp * np.sin(2.6 * x)], 1)
+    tangent = np.gradient(A, axis=0)
+    return A, A - tangent / 3.0, A + tangent / 3.0
+
+
+def test_pull_chain():
+    from core.curveedit import chain_point, nearest_param, pull_chain
+    A, L, R = _wavy_chain(7, 0.2)
+    t, fixed = 3.2, (1.5, 5.0)
+    delta = np.array([0.0, 0.3, 0.5])
+    before = chain_point(A, L, R, [t] + list(fixed))
+    A2, L2, R2 = pull_chain(A, L, R, t, delta, fixed)
+    after = chain_point(A2, L2, R2, [t] + list(fixed))
+    assert np.allclose(after[0] - before[0], delta, atol=1e-9)  # grabbed point follows exactly
+    assert np.allclose(after[1:], before[1:], atol=1e-9)         # other crossings stay
+    assert np.allclose(R2 - A2, R - A) and np.allclose(L2 - A2, L - A)  # handles ride along (G1 kept)
+    assert np.allclose(A2[0], A[0], atol=1e-3) and np.allclose(A2[-1], A[-1], atol=1e-3)  # local
+    # nearest_param finds a point's parameter back
+    p = chain_point(A, L, R, [2.37])[0]
+    assert abs(nearest_param(A, L, R, p) - 2.37) < 1e-3
+
+
+def test_fair_chain():
+    from core.curveedit import chain_point, fair_chain
+    A, L, R = _wavy_chain(9, 0.15)
+    fixed = (4.0,)
+    keep = chain_point(A, L, R, list(fixed))
+    A2, L2, R2 = fair_chain(A, L, R, fixed, strength=1.0)
+    t = np.linspace(0, 8, 400)
+    z0, z1 = chain_point(A, L, R, t)[:, 2], chain_point(A2, L2, R2, t)[:, 2]
+    bend = lambda z: np.abs(np.diff(z, 2)).sum()
+    print("fair chain: wiggle", bend(z0), "->", bend(z1))
+    assert bend(z1) < 0.3 * bend(z0)                               # the waves are ironed out
+    assert np.allclose(chain_point(A2, L2, R2, list(fixed)), keep, atol=1e-6)  # crossing kept
+    assert np.allclose(A2[[0, -1]], A[[0, -1]]) and np.allclose(R2[0], R[0]) and np.allclose(L2[-1], L[-1])
+    for i in range(1, 8):  # handles line up through their anchor (G1)
+        c = np.cross(L2[i] - A2[i], R2[i] - A2[i])
+        assert np.linalg.norm(c) < 1e-9
+    A3, L3, R3 = fair_chain(A, L, R, fixed, strength=0.0)
+    assert np.allclose(A3, A, atol=1e-6)
+
+
 def test_curve_network():
     from core.network import build_network
     curves, f = _network_curves()

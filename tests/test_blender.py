@@ -1187,6 +1187,52 @@ def run():
     assert len(curv._state["envelopes"]) == 7 * 4  # one per Bezier segment
     assert bpy.ops.spline_surface.curvature_comb() == {'FINISHED'}
 
+    # ---- v0.39: Move Crossing (what each drag does) and Fair Curves
+    from spline_surface import curvetools as ct
+    from spline_surface.core.curveedit import nearest_param, pull_chain
+    bpy.ops.object.select_all(action='DESELECT')
+    for o in grid_curves:
+        o.select_set(True)
+    vl.update()
+    found = ct.crossings(bpy.context, grid_curves)
+    assert len(found) == 12
+    a, b, p = found[0]
+    delta = np.array([0.0, 0.0, 0.3])
+    for ob in (a, b):
+        chain = ct.read_chain(ob)
+        ct.write_chain(ob, *pull_chain(*chain, nearest_param(*chain, p), delta,
+                                       ct._fixed_params(ob, chain, found, skip=p)))
+    vl.update()
+    after = ct.crossings(bpy.context, grid_curves)
+    reached = min(np.linalg.norm(q - (p + delta)) for _, _, q in after)
+    others = max(min(np.linalg.norm(q - r) for _, _, q in after) for _, _, r in found[1:])
+    print("move crossing: off target", reached, "other crossings moved", others)
+    assert len(after) == 12 and reached < 1e-2 and others < 1e-2
+    assert all(pt.handle_left_type == 'ALIGNED' for pt in a.data.splines[0].bezier_points)
+    netcheck.show(bpy.context, True)
+    assert netcheck.summary()[0].endswith("ready")
+    netcheck.show(bpy.context, False)
+    # a bump between crossings, then Fair Curves: the crossings stay
+    cv = grid_curves[1]
+    mid = cv.data.splines[0].bezier_points[2]
+    for attr in ("co", "handle_left", "handle_right"):
+        v = getattr(mid, attr)
+        v.z += 0.3
+        setattr(mid, attr, v)
+    vl.update()
+    bumped = [q for x, y, q in ct.crossings(bpy.context, grid_curves) if cv in (x, y)]
+    shape = ct.read_chain(cv)[0].copy()
+    bpy.ops.object.select_all(action='DESELECT')
+    cv.select_set(True)
+    vl.objects.active = cv
+    assert bpy.ops.spline_surface.fair_curves(strength=1.0) == {'FINISHED'}
+    vl.update()
+    faired = [q for x, y, q in ct.crossings(bpy.context, grid_curves) if cv in (x, y)]
+    drift = max(min(np.linalg.norm(q - r) for q in faired) for r in bumped)
+    changed = float(np.abs(ct.read_chain(cv)[0] - shape).max())
+    print("fair curves: shape changed", changed, "crossings drifted", drift)
+    assert changed > 1e-3 and drift < 2e-2 and len(faired) == len(bumped)
+
     spline_surface.unregister()
     print("ALL OK")
 

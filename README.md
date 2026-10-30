@@ -18,7 +18,7 @@
 ## パネル
 | 欄 | 内容 |
 |---|---|
-| Create | Add Patch、Coons、Loft、Curve Network（＋ボタンで見本のカーブの網）、Network Check（Curve Network がカーブをどう見るかを表示）、Snap Ends（カーブの端をくっつける）、Regenerate、Fit Settings |
+| Create | Add Patch、Coons、Loft、Curve Network（＋ボタンで見本のカーブの網）、Network Check（Curve Network がカーブをどう見るかを表示）、Move Crossing（交点をつまんで動かす）、Fair Curves（カーブのうねりを取る）、Snap Ends（カーブの端をくっつける）、Regenerate、Fit Settings |
 | Grow & Connect | Extend Edge、Bridge Edges、Match Edge、Corner Fill、Fill Hole、Fillet（ぴったり接して折れているつなぎ目をクリック（複数可、もう一度クリックで外す）→ Enter → ホイールで半径、C で G1/G2、Backspace で選び直し。両側の面を半径分トリムしてつなぐ。フィレット同士が出会う角（箱の角を3辺とも丸めた所など）は、コーナーパッチで自動的に埋める。V でオン／オフ）、Split Patch、Offset Surface |
 | Group | Live Update、Linked Edit（＋Falloff）、Edge Chain、Merge、Select / Regenerate、Mirror Group、Cage（Add / Apply / ✕） |
 | Inspect | Zebra（表示中の全部の面に一括、On の間は新しい面にも自動）、Seam Colors（つなぎ目を継続性で色分け）、Curvature Comb（面の等パラメータ線とカーブに曲率の櫛を表示。歯は曲率の中心と反対側、長いほど強く曲がる。包絡線が滑らかなら曲率も滑らか、面のつなぎ目やカーブの制御点で段差があれば G1 以下）、Curvature Map（曲率で面を色分け。Gaussian：赤＝ドーム、緑＝平ら・円筒、青＝鞍型／Mean：法線側に曲がると赤）、Soft Pull（面上の点をドラッグして形を整える。つなぎ目で固定された点は動かないので G0/G1/G2 を保つ。ホイール＝範囲、N＝法線方向、X/Y/Z＝その軸方向、V＝画面平面。L で起点を 面上の点 → 線 → 制御点 と切り替え。線：線ごと引く、D＝縦横の切り替え、T＝両端を細らせる、外周の近くでは開いた辺に吸着。制御点：制御点をつかんで引く、範囲は格子の行数でホイール＝U方向・Shift+ホイール＝V方向、動く点に印が出る。F で減衰の形を Smooth → Sphere → Linear → Sharp → Constant と切り替え（Constant は範囲内をまとめて平行移動）。何度でも引ける：Ctrl+Z＝直前の1ストロークを戻す、Enter/Space＝確定、Esc＝全部取り消し、右クリック＝ドラッグ中のストロークだけ取り消し）、Fair（内側をならす。固定された点と外周は動かさない）、Refine（形を変えずに制御点を増やす）、Control Mesh（制御点をメッシュにして編集モードで G/R/S。固定された点は元に戻り、Done で消す）、Control Points（制御点を、つなぎ目で固定された点＝オレンジ／自由に動かせる内側＝水色で表示）、Check Continuity（結果の一覧） |
@@ -52,6 +52,12 @@ Extend Edge で作った面は、選ぶと元の辺の中央にオレンジの�
 まずは Curve Network の横の **＋**（Add Curve Grid）で見本の網を出し、点を動かして形を変えるのが一番簡単です。
 
 **Network Check** をオンにすると、選んだカーブ（何も選んでいなければ表示中の全部）を Curve Network がどう見るかが、編集に合わせて表示されます：方向ごとに青／緑、交点に白い印。問題は、足りない交点＝2本が一番近づく所を結ぶ赤い線、同じ方向どうしの交差＝赤い印、どこにも交わらないカーブ＝灰色、交わる順番が絡んでいるカーブ＝オレンジ。パネルに要約が出て、全部そろうと「ready」になります。カーブのうねりは Inspect の Curvature Comb でも見られます。
+
+網の形を整えるとき（ベジェカーブのみ）：
+- **Move Crossing**：交点をドラッグすると、そこを通る縦横2本のカーブが一緒に動きます。同じカーブのほかの交点は動きません。制御点はハンドルごと動くので、カーブは滑らかなまま。X/Y/Z でその軸方向、V で画面平面。Soft Pull と同じく何度でも引けて、Ctrl+Z＝1回戻す、Enter/Space＝確定、Esc＝全部取り消し
+- **Fair Curves**：選んだカーブのうねりを取ります。端点・端の向き・ほかのカーブとの交点は動かしません（Strength で効き具合）
+- どちらも、動かしたカーブのハンドルは「Aligned」になります（「Auto」のままだと Blender が位置を計算し直して編集が消えるため）
+- 左右対称の網は、片側の網から面を作ってから Mirror Group で反転してください（横方向のカーブは中心線をまたいで1本につながっている必要があるため、カーブを半分ずつミラーすると網になりません）
 
 自分で描く場合のルール：
 1. **2方向に分けて描く**：横方向（例：X 方向に走るカーブ）を何本か、縦方向（Y 方向）を何本か。最低 2本×2本
