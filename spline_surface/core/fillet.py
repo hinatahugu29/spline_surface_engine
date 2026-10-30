@@ -16,7 +16,7 @@ left untouched; trimming them back to the tangent points is a separate step.
 import numpy as np
 
 from .corner import _refit, _side, common_structure
-from .nurbs import basis_matrix
+from .nurbs import basis_matrix, eval_curve
 
 DEGREE = 5  # across the fillet; enough rows to fit an arc with good accuracy
 
@@ -42,19 +42,27 @@ def fillet_net(Pa, orders_a, edge_a, Pb, orders_b, edge_b, radius, tol=1e-3, fli
     sb, kb, _ = _side(np.asarray(Pb, float), orders_b, edge_b)
     Ea, Ta, Aa = sa
     Eb, Tb, Ab = sb
-    straight = np.linalg.norm(Ea[0] - Eb[0]) + np.linalg.norm(Ea[-1] - Eb[-1])
-    crossed = np.linalg.norm(Ea[0] - Eb[-1]) + np.linalg.norm(Ea[-1] - Eb[0])
+
+    # Compare the curves as point sets (sampled), not their control points:
+    # two differently-built nets can trace the same curve with control points
+    # that never coincide index-for-index (different point counts, spans,
+    # or fitting history) - this is exactly what Check Continuity already
+    # validated, so match its method here instead of a raw control-net diff.
+    t = np.linspace(0.0, 1.0, 32)
+    ca, cb = eval_curve(Ea, ka, t), eval_curve(Eb, kb, t)
+    straight = np.linalg.norm(ca[0] - cb[0]) + np.linalg.norm(ca[-1] - cb[-1])
+    crossed = np.linalg.norm(ca[0] - cb[-1]) + np.linalg.norm(ca[-1] - cb[0])
     if (crossed < straight) != bool(flip):
-        Eb, Tb, Ab = Eb[::-1], Tb[::-1], Ab[::-1]
+        Eb, Tb, Ab, cb = Eb[::-1], Tb[::-1], Ab[::-1], cb[::-1]
+
+    gap = np.linalg.norm(ca - cb, axis=1).max()
+    if gap > tol:
+        raise ValueError("the edges are not coincident (max gap %.4g); use Bridge Edges instead" % gap)
 
     na, nb = len(Ea), len(Eb)
     n, k = common_structure(na, ka, nb, kb)
     (Ea, Ta, Aa) = _refit((Ea, Ta, Aa), na, ka, n, k)
     (Eb, Tb, Ab) = _refit((Eb, Tb, Ab), nb, kb, n, k)
-
-    gap = np.linalg.norm(Ea - Eb, axis=1).max()
-    if gap > tol:
-        raise ValueError("the edges are not coincident (max gap %.4g); use Bridge Edges instead" % gap)
     C = 0.5 * (Ea + Eb)
 
     ta, tb = _unit(Ta), _unit(Tb)
