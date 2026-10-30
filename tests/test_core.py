@@ -694,6 +694,21 @@ def test_offset_distance_handle():
         assert np.linalg.norm(mid - (base + d * normal)) < max(2 * err, 1e-6), (d, err)
 
 
+def test_t_junctions():
+    from core.meshing import t_junctions
+    # A coarse edge 0-1 (along x, on a slight arc) meets a fine side whose
+    # middle vertex 2 sits on the curve, a little off the coarse chord.
+    P = np.array([[0, 0, 0], [1, 0, 0], [0.5, 0.02, 0],   # 0, 1: coarse; 2: fine middle
+                  [0.25, 0.0, 0], [0.5, 0.3, 0]], float)  # 3: endpoint-ish; 4: far away
+    E = np.array([[0, 1]])
+    hits = t_junctions(P, E, [0, 1, 2, 3, 4], abs_tol=1e-4)
+    assert [v for _, v in hits[0]] == [3, 2]  # sorted along the edge, far vertex ignored
+    assert abs(hits[0][1][0] - 0.5) < 1e-12
+    # Endpoints never hit their own edge; tighter rel_tol drops the off-chord one.
+    hits = t_junctions(P, E, [0, 1, 2], abs_tol=1e-4, rel_tol=0.01)
+    assert hits == {}
+
+
 def test_refine_keeps_shape():
     from core.fair import refine_curve, refine_net
     for n, k in ((4, 4), (6, 4), (8, 3), (9, 4)):

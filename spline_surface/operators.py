@@ -11,6 +11,7 @@ from .core.blend import blend_curve_net, blend_net
 from .core.corner import corner_net
 from .core.fill import fill_patches, side_from_curve, side_from_patch
 from .core.fillet import fillet_net, trimmed_fillet
+from .core.meshing import t_junctions
 from .core.mirror import mirror_net, symmetrize
 from .core.network import build_network
 from .core.offset import offset_net
@@ -1274,14 +1275,42 @@ class SS_OT_fill_hole(pick.ModalPicker, bpy.types.Operator):
         return {'FINISHED'}
 
 
+def _stitch_t_junctions(bm, dist):
+    """Split boundary edges where another patch's boundary vertex sits on them,
+    so the following merge closes the seam. Returns the number of splits."""
+    import bmesh
+    bm.verts.index_update()
+    verts = list(bm.verts)
+    boundary = [e for e in bm.edges if e.is_boundary]
+    if not boundary:
+        return 0
+    P = np.array([v.co for v in verts])
+    E = np.array([[e.verts[0].index, e.verts[1].index] for e in boundary])
+    candidates = sorted({v.index for e in boundary for v in e.verts})
+    count = 0
+    for row, items in t_junctions(P, E, candidates, dist).items():
+        start, end = boundary[row].verts
+        edge = boundary[row]
+        prev = 0.0
+        for f, vi in items:
+            _, new = bmesh.utils.edge_split(edge, start, (f - prev) / (1.0 - prev))
+            new.co = verts[vi].co
+            edge = next(e for e in new.link_edges if end in e.verts)
+            start, prev = new, f
+            count += 1
+    return count
+
+
 def weld_mesh(name, surfaces, resolution, context=None):
     """One mesh of all patches, sampled uniformly and welded along shared edges.
 
-    Patches built by this add-on share the parametrisation of the edges they
-    join, so equal uniform sampling puts seam vertices on top of each other.
+    Patches that share a whole edge share its parametrisation, so equal
+    uniform sampling puts their seam vertices on top of each other. Where a
+    long edge meets two shorter patches (Fill Hole around a centre, a split
+    neighbour), the short side's extra vertices are stitched into the long
+    side's edges so the seam still closes.
     Returns (mesh, fallback_names): fallback_names lists patches that weren't
-    a clean control net and so used Blender's own tessellation instead, which
-    isn't guaranteed to line up at the seam with its neighbours' sampling.
+    a clean control net and so used Blender's own tessellation instead.
     """
     import bmesh
     bm = bmesh.new()
@@ -1312,6 +1341,8 @@ def weld_mesh(name, surfaces, resolution, context=None):
                 bm.faces.new((verts[i][j], verts[i + 1][j], verts[i + 1][j + 1], verts[i][j + 1]))
     dist = 1e-4 * max(size, 1e-3)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=dist)
+    if _stitch_t_junctions(bm, dist):
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=dist)
     bmesh.ops.dissolve_degenerate(bm, dist=dist, edges=bm.edges)
     for f in bm.faces:
         f.smooth = True
