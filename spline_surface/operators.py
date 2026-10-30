@@ -1147,7 +1147,38 @@ def _stitch_t_junctions(bm, dist):
     return count
 
 
-def weld_mesh(name, surfaces, resolution, context=None):
+def _split_ngons(bm):
+    """Cut faces with more than four corners into quads and triangles.
+
+    Stitching a T-junction turns a quad into a pentagon (or worse). Each such
+    face is cut from its straightest corner (the stitched vertex) to a far
+    corner, so the leftovers are quads and triangles. Returns the number of cuts.
+    """
+    import bmesh
+    cuts = 0
+    for _ in range(10 * len(bm.faces) + 10):
+        face = next((f for f in bm.faces if len(f.verts) > 4), None)
+        if face is None:
+            break
+        loops = list(face.loops)
+        n = len(loops)
+        best, best_i = 2.0, 0
+        for i, loop in enumerate(loops):
+            a = loops[i - 1].vert.co - loop.vert.co
+            b = loops[(i + 1) % n].vert.co - loop.vert.co
+            cosang = a.dot(b) / max(a.length * b.length, 1e-30)    # -1 for a straight corner
+            if cosang < best:
+                best, best_i = cosang, i
+        j = (best_i + n // 2) % n
+        try:
+            bmesh.utils.face_split(face, loops[best_i].vert, loops[j].vert)
+        except (ValueError, RuntimeError):
+            break
+        cuts += 1
+    return cuts
+
+
+def weld_mesh(name, surfaces, resolution, context=None, quads=True):
     """One mesh of all patches, sampled uniformly and welded along shared edges.
 
     Each patch gets segments in proportion to its size (the longest side
@@ -1157,6 +1188,7 @@ def weld_mesh(name, surfaces, resolution, context=None):
     long edge meets two shorter patches (Fill Hole around a centre, a split
     neighbour), the short side's extra vertices are stitched into the long
     side's edges so the seam still closes.
+    With `quads`, the pentagons the stitching leaves are cut into quads and triangles.
     Returns (mesh, fallback_names): fallback_names lists patches that weren't
     a clean control net and so used Blender's own tessellation instead.
     """
@@ -1192,6 +1224,8 @@ def weld_mesh(name, surfaces, resolution, context=None):
     if _stitch_t_junctions(bm, dist):
         bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=dist)
     bmesh.ops.dissolve_degenerate(bm, dist=dist, edges=bm.edges)
+    if quads:
+        _split_ngons(bm)
     for f in bm.faces:
         f.smooth = True
     me = bpy.data.meshes.new(name)
@@ -1210,6 +1244,10 @@ class SS_OT_to_mesh(bpy.types.Operator):
     weld: bpy.props.BoolProperty(
         name="Weld", default=True,
         description="Join all patches into one mesh and merge the seams")
+    quads: bpy.props.BoolProperty(
+        name="Quads", default=True,
+        description="Cut the pentagons that welded seams leave into quads and triangles "
+                    "(so the mesh subdivides cleanly)")
 
     @classmethod
     def poll(cls, context):
@@ -1223,7 +1261,7 @@ class SS_OT_to_mesh(bpy.types.Operator):
         weld_fallback = []
         if self.weld:
             me, weld_fallback = weld_mesh(surfaces[0].name + "_mesh", surfaces,
-                                          settings.mesh_resolution, context)
+                                          settings.mesh_resolution, context, self.quads)
             for ob in surfaces:
                 for mat in zebra.real_materials(ob):
                     if mat is not None and mat.name not in me.materials:

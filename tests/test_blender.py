@@ -1372,10 +1372,10 @@ def run():
     bpy.context.scene.cursor.location = (0, 1000, 0)
     bpy.ops.spline_surface.add_patch(shape='DOME', points_u=6, points_v=6, size_x=2.0, size_y=2.0)
     dome = bpy.context.active_object
-    ring = bezier_curve("proj_line", [(-0.6, 1000.0, 3.0), (0.0, 1000.3, 3.0), (0.6, 1000.0, 3.0)])
-    select([ring, dome])
+    proj_src = bezier_curve("proj_line", [(-0.6, 1000.0, 3.0), (0.0, 1000.3, 3.0), (0.6, 1000.0, 3.0)])
+    select([proj_src, dome])
     vl.objects.active = dome
-    assert bpy.ops.spline_surface.project_curve(curve=ring.name, patch=dome.name, mode='Z',
+    assert bpy.ops.spline_surface.project_curve(curve=proj_src.name, patch=dome.name, mode='Z',
                                                 samples=10) == {'FINISHED'}
     proj = bpy.context.active_object
     pl = read_polyline(proj, bpy.context.evaluated_depsgraph_get(), 40)
@@ -1431,6 +1431,18 @@ def run():
     for o in bpy.data.objects:
         if o.type == 'SURFACE':
             o.hide_set(False)
+    # ---- v0.47: To Mesh cuts the pentagons left by welded T-junctions into quads and triangles
+    five_q = ring(5, (0, 1300, 0))
+    assert bpy.ops.spline_surface.fill_hole(picks=";".join("%s:V0" % o.name for o in five_q))         == {'FINISHED'}
+    group_q = list(five_q) + [o for o in bpy.context.selected_objects]
+    for flag in (False, True):
+        select(group_q)
+        assert bpy.ops.spline_surface.to_mesh(quads=flag) == {'FINISHED'}
+        me_ = bpy.context.active_object.data
+        big = sum(1 for p in me_.polygons if len(p.vertices) > 4)
+        print("to mesh quads", flag, "faces", len(me_.polygons), "n-gons", big)
+        if flag:
+            assert big == 0
     spline_surface.unregister()
     print("ALL OK")
 
