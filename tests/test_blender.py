@@ -1339,6 +1339,35 @@ def run():
     assert bpy.ops.spline_surface.add_preset(kind='HOOD_FENDER', radius=0.0) == {'FINISHED'}
     assert len([o for o in bpy.data.objects if o.name not in before]) == 2
 
+    # ---- v0.44: Blueprints stand a reference drawing at its real size
+    import tempfile
+    img = bpy.data.images.new("bp_test", 200, 100)
+    path = os.path.join(tempfile.gettempdir(), "ss_blueprint_test.png")
+    img.filepath_raw = path
+    img.file_format = 'PNG'
+    img.save()
+    for view, check in (
+            ('SIDE', lambda c: abs(np.ptp(c[:, 1]) - 4.0) < 1e-4 and abs(c[:, 2].min()) < 1e-4
+             and abs(c[:, 2].max() - 2.0) < 1e-4 and abs(np.ptp(c[:, 0])) < 1e-4
+             and abs((c[:, 1].min() + c[:, 1].max()) / 2) < 1e-4),
+            ('FRONT', lambda c: abs(np.ptp(c[:, 0]) - 4.0) < 1e-4 and abs(c[:, 2].min()) < 1e-4
+             and abs(c[:, 2].max() - 2.0) < 1e-4 and abs(np.ptp(c[:, 1])) < 1e-4),
+            ('TOP', lambda c: abs(np.ptp(c[:, 0]) - 4.0) < 1e-4 and abs(np.ptp(c[:, 1]) - 2.0) < 1e-4
+             and abs(c[:, 1].min() + 1.0) < 1e-4 and abs(np.ptp(c[:, 2])) < 1e-4)):
+        assert bpy.ops.spline_surface.add_blueprint(filepath=path, view=view, length=4.0) == {'FINISHED'}
+        bp = bpy.context.active_object
+        assert bp.type == 'EMPTY' and bp.empty_display_type == 'IMAGE'
+        vl.update()
+        sz = bp.empty_display_size
+        ox, oy = bp.empty_image_offset
+        asp = 0.5   # 200 x 100 image: the offset is in units of the displayed width and height
+        local = [(ox * sz, oy * sz * asp), ((ox + 1) * sz, oy * sz * asp),
+                 ((ox + 1) * sz, (oy + 1) * sz * asp), (ox * sz, (oy + 1) * sz * asp)]
+        corners = np.array([np.array(bp.matrix_world @ __import__("mathutils").Vector((x, y, 0.0)))
+                            for x, y in local])
+        print("blueprint", view, corners.min(0).round(3), corners.max(0).round(3))
+        assert check(corners), (view, corners)
+
     spline_surface.unregister()
     print("ALL OK")
 
