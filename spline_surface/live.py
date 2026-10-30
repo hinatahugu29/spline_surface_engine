@@ -30,15 +30,28 @@ def _inputs(meta):
     return names
 
 
+_graph_cache = {"key": None, "graph": {}}
+
+
 def dependency_graph():
-    """{object name: set of names that depend on it} over all patches."""
+    """{object name: set of names that depend on it} over all patches.
+
+    Recipes are only parsed again when some recipe string changed, which keeps
+    the per-edit cost of live update independent of how many patches exist.
+    """
+    recipes = [(ob.name, ob[META_KEY]) for ob in bpy.data.objects if META_KEY in ob]
+    key = hash(tuple(recipes))
+    if _graph_cache["key"] == key:
+        return _graph_cache["graph"]
     down = {}
-    for ob in bpy.data.objects:
-        meta = _meta(ob) if META_KEY in ob else None
-        if meta is None:
+    for name, raw in recipes:
+        try:
+            meta = json.loads(raw)
+        except (ValueError, TypeError):
             continue
-        for name in _inputs(meta):
-            down.setdefault(name, set()).add(ob.name)
+        for src in _inputs(meta):
+            down.setdefault(src, set()).add(name)
+    _graph_cache["key"], _graph_cache["graph"] = key, down
     return down
 
 
@@ -126,9 +139,14 @@ def rebuild(ob, context, force=False):
 
 
 def update_chain(names, context):
-    """Rebuild everything downstream of `names`. Returns {status: [object names]}."""
-    result = {"ok": [], "skipped": [], "error": []}
+    """Rebuild everything downstream of `names`. Returns {status: [object names]}.
+
+    A patch whose rebuild came out identical stops the chain there: what only
+    reads it is listed under "unchanged" and left alone.
+    """
+    result = {"ok": [], "skipped": [], "error": [], "unchanged": []}
     blocked = set()
+    changed = set(names)
     order, looped = downstream_order(names, dependency_graph())
     result["error"] += looped
     for name in order:
@@ -140,10 +158,17 @@ def update_chain(names, context):
             blocked.add(name)
             result["skipped"].append(name)
             continue
+        if not changed & set(_inputs(meta)):
+            # nothing it reads moved (an upstream rebuild gave the same shape)
+            result["unchanged"].append(name)
+            continue
+        before = _signature(ob)
         status, _ = rebuild(ob, context)
         result[status].append(name)
         if status != "ok":
             blocked.add(name)
+        elif _signature(ob) != before:
+            changed.add(name)
     return result
 
 

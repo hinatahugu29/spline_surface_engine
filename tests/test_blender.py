@@ -129,6 +129,16 @@ def run():
     src_net = world_net(patch)[0]
     ext_net = read_surface_net(ext.data)
     assert np.allclose(ext_net[:, 0], src_net[:, -1], atol=1e-5)
+    # early cutoff: rebuilding an unmoved source stops the chain at the first identical result
+    select([ext])
+    assert bpy.ops.spline_surface.extend_edge(edge='V1', length=0.2, continuity='G1') == {'FINISHED'}
+    ext2 = bpy.context.active_object
+    from spline_surface import live as live_mod
+    res = live_mod.update_chain([patch.name], bpy.context)
+    assert ext.name in res["ok"] and ext2.name in res["unchanged"], res
+    assert live_mod.dependency_graph() is live_mod.dependency_graph()   # cached while recipes stand
+    bpy.data.objects.remove(ext2, do_unlink=True)
+    select([patch])
     # G1: first row direction continues the source's last row direction.
     d_src = src_net[:, -1] - src_net[:, -2]
     d_ext = ext_net[:, 1] - ext_net[:, 0]
