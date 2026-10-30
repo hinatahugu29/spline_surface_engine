@@ -1,6 +1,6 @@
 # Spline Surface 説明書
 
-対象バージョン：0.39 ／ Blender 5.0 以降
+対象バージョン：0.40 ／ Blender 5.0 以降
 
 ---
 
@@ -122,6 +122,8 @@ Inspect 欄の **Control Points** で、固定された点（オレンジ）と�
 | 機能 | 内容 |
 |---|---|
 | **Add Patch** | 3D カーソルの位置にパッチを出します。Shape（Plane＝平ら / Arc＝一方向に曲がる / Dome＝二方向に曲がる）、大きさ、Bulge（膨らみの高さ）、制御点の数、Order（次数＋1）を調整パネルで変えられます |
+| **Line** | 3D カーソルの位置に、境界として使いやすい直線をベジェで追加します（Add Boundary Curve、Shape=Line）。調整パネルで Length を変えられます |
+| **Arc** | 3D カーソルの位置に、境界として使いやすい円弧をベジェで追加します（Add Boundary Curve、Shape=Arc）。Radius・Angle（180 で半円）・Segments（角度が大きいときに増やす）を調整パネルで変えられます。AUTO ハンドルの近似ではなく、厳密な円弧の形になります |
 | **Coons** | 選んだ 3〜4 本のカーブ（境界）で囲まれた面を張ります。カーブの向きや順番はばらばらで構いません |
 | **Loft** | 2 本以上の断面カーブを順に通る面を張ります |
 | **Curve Network** | 縦横に交差するカーブの網から、区画ごとに面を張り、内側の継ぎ目を G2 でつなぎます（詳しくは 5.1.1） |
@@ -307,7 +309,7 @@ Inspect 欄の **Control Points** で、固定された点（オレンジ）と�
 | 半径の矢印が出ない／edited by hand since the fillet | 切り詰めた面かつなぎ面を手で動かしています。Regenerate でレシピの形に戻すと、再び変えられます |
 | every curve must cross every curve of the other direction | Curve Network で交点が足りません。Network Check をオンにすると、足りない所が赤い線で示されます |
 | curves of the same direction cross each other | 同じ方向のカーブどうしが交差しています。Network Check で赤い印の所を直してください |
-| boundary loop is not closed | Coons で、カーブの端どうしが離れています。Snap Ends で端をくっつけるか、Gap Tolerance を上げてください |
+| boundary loop is not closed | Coons で、カーブの端どうしが離れています。Snap Ends で端をくっつけるか、Gap Tolerance を上げてください。Blender 標準の Nurbs Path を境界に使っている場合は、既定で Endpoint がオフなので角に隙間ができていることがあります（Create 欄の Line / Arc を使うとこの問題を避けられます） |
 | Live Update で付いてこない面がある | その面は「手で直した面」です。パネル上部に「not updated (hand edited)」と表示されます。Regenerate すると付いてくるようになります（手の修正は消えます） |
 | To Mesh で小さい面が粗い | Mesh Resolution は一番長い辺の分割数です。値を上げてください |
 | 面の向き（表裏）が逆に見える | ビューポートの Overlays → Face Orientation で確認できます。表裏は、つないだ相手の面に合わせて決まります |

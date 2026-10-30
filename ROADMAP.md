@@ -3,11 +3,11 @@
 車のような滑らかな曲面を、NURBS の慣れなしで作れるようにする Blender 5.x アドオン。
 最終出力はメッシュ。操作はボタンとクリック選択が基本で、ギズモは操作が固まってから載せる。
 
-## できていること（〜 v0.35）
+## できていること（〜 v0.40）
 
 | 分類 | 機能 |
 |---|---|
-| 作る | Add Patch（Plane / Arc / Dome）、Coons、Loft、Curve Network（＋ Add Curve Grid）、Snap Ends |
+| 作る | Add Patch（Plane / Arc / Dome）、Line / Arc（Add Boundary Curve、境界用の直線・円弧）、Coons、Loft、Curve Network（＋ Add Curve Grid）、Snap Ends |
 | 伸ばす・つなぐ | Extend Edge、Bridge Edges、Match Edge（G0/G1/G2）、Corner Fill、Fill Hole（3辺以上、カーブ混在、G0 は平らなフタ）、Fillet（複数の継ぎ目、トリム、コーナーパッチ）、Split Patch、Offset Surface |
 | まとめて扱う | Live Update、Linked Edit、Edge Chain、Merge Patches、Cage、Mirror Group |
 | 面の内側の編集 | Soft Pull（起点：点／線／制御点、減衰5種、連続ストローク）、Control Mesh、Fair、Refine |
@@ -27,6 +27,7 @@
 | v0.30〜v0.32 | Soft Pull の拡張：線起点、連続ストローク、減衰カーブ、制御点起点 |
 | v0.33 | ギズモ（Extend の長さ、Offset の距離）、To Mesh の T 字頂点の接続と密度の均一化 |
 | v0.34〜v0.35 | Fillet を複数の継ぎ目でまとめて、コーナーパッチ、Fill Hole G0 の平らなフタ |
+| v0.40 | **Add Boundary Curve**：境界用の直線・円弧をベジェで追加（Create 欄に Line / Arc。Arc の Angle を 180 にすると半円）。Blender 標準の Path は既定で Endpoint オフのため境界に使うと角に隙間ができることがあり、それを避けられる。あわせて、Fillet 半径ギズモが元の面を削除した後も例外を出し続けていたのを修正 |
 
 ## 設計の原則（引き続き）
 
@@ -67,6 +68,11 @@
 - **Fair Curves**：制御多角形の2階差分でならし、端点・端の向き・交点は拘束で固定、最後にハンドルを一直線に揃えて G1（`core.curveedit.fair_chain`）
 - 編集したカーブのハンドルは Aligned に（Auto のままだと Blender が計算し直して編集が消える）
 - **左右対称のカーブ編集は見送り**：Curve Network は横方向のカーブが中心線をまたいで1本につながっている必要があり、カーブを半分ずつミラーすると網にならない。片側の網から面を作って Mirror Group で反転する方が確実
+
+### v0.40 境界用カーブのプリミティブ ← 完了（実機確認は並行継続）
+- **Add Boundary Curve**：3D カーソルの位置に、境界として使いやすい直線・円弧をベジェで追加（Create 欄に Line / Arc ボタン、Coons/Loft と同じ横並び）。直線は VECTOR ハンドル、円弧は標準のκ定数による厳密なハンドルで、AUTO ハンドルの近似ではない正確な形になる。Angle を 180 にすると半円
+- Blender 標準の Nurbs Path は既定で Endpoint がオフで、境界に使うと角にわずかな隙間ができることがある（Coons の "boundary loop is not closed" 等の原因になりうる）。それを避けるための手早い選択肢として追加
+- ついでに見つかった不具合を修正：Fillet 半径ギズモ（`SS_GGT_fillet_radius._place`）が、フィレットの元になった面（境界カーブ等）が削除された後も `compute_from_meta` の例外を捕まえずに毎フレーム再試行し、ビューポート描画のたびにトレースバックを出していた。ほかの呼び出し箇所と同じく try/except で保護
 
 ### 次の候補（決まり次第ここに）
 - 残課題・保留から選ぶ。実機確認で見つかった不便を優先する
