@@ -11,6 +11,11 @@ def _zebra_update(self, context):
     zebra.update_material(self)
 
 
+def _curvature_update(self, context):
+    from . import curvature
+    curvature.mark_dirty()
+
+
 class SS_Settings(bpy.types.PropertyGroup):
     live_update: bpy.props.BoolProperty(
         name="Live Update", default=True,
@@ -46,6 +51,20 @@ class SS_Settings(bpy.types.PropertyGroup):
         update=_zebra_update)
     continuity_report: bpy.props.StringProperty(
         name="Continuity Report", default="[]", options={'HIDDEN', 'SKIP_SAVE'})
+    comb_scale: bpy.props.FloatProperty(
+        name="Scale", default=1.0, min=0.05, max=20.0, update=_curvature_update,
+        description="Length of the longest comb tooth, relative to the scene size")
+    comb_count: bpy.props.IntProperty(
+        name="Combs", default=5, min=1, max=40, update=_curvature_update,
+        description="Iso-curves per patch and direction that get a comb")
+    comb_direction: bpy.props.EnumProperty(
+        name="Direction", default='BOTH', update=_curvature_update,
+        items=[('U', "U", "Combs along U"), ('V', "V", "Combs along V"),
+               ('BOTH', "U+V", "Combs in both directions")])
+    curvature_type: bpy.props.EnumProperty(
+        name="Map", default='GAUSS', update=_curvature_update,
+        items=[('GAUSS', "Gaussian", "Product of the principal curvatures: dome, flat, saddle"),
+               ('MEAN', "Mean", "Average of the principal curvatures, signed by the normal")])
 
 
 class _SubPanel:
@@ -196,6 +215,21 @@ class SS_PT_inspect(_SubPanel, bpy.types.Panel):
                 if c.get(g):
                     row.label(text="%s %d" % (g, c[g]),
                               icon=GRADE_ICONS.get(g, 'QUESTION'))
+        from . import curvature
+        on = curvature.is_on("comb")
+        layout.operator("spline_surface.curvature_comb", icon='FORCE_HARMONIC', depress=on,
+                        text="Curvature Comb: On" if on else "Curvature Comb")
+        if on:
+            row = layout.row(align=True)
+            row.prop(s, "comb_scale")
+            row.prop(s, "comb_count")
+            layout.prop(s, "comb_direction", expand=True)
+        on = curvature.is_on("map")
+        layout.operator("spline_surface.curvature_map", icon='COLOR', depress=on,
+                        text="Curvature Map: On" if on else "Curvature Map")
+        if on:
+            layout.prop(s, "curvature_type", expand=True)
+            layout.label(text="Full colour at ±%.3g" % curvature.limit())
         from . import ctrlpoints
         on = ctrlpoints._state["handle"] is not None
         layout.operator("spline_surface.control_points", icon='PARTICLE_POINT', depress=on,

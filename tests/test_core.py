@@ -694,6 +694,30 @@ def test_trimmed_fillet():
         raise AssertionError("a radius larger than the patch must be refused")
 
 
+def test_curvature_paraboloid():
+    from core.bezier import bernstein
+    from core.curvature import color_ramp, comb, surface_curvature
+    a, b = 0.4, -0.25  # z = a x^2 + b y^2 on [-1, 1]^2: a saddle
+    t = np.linspace(0, 1, 15)
+    pinv = np.linalg.pinv(bernstein(3, t))
+    X, Y = -1 + 2 * t[:, None] + 0 * t, -1 + 0 * t[:, None] + 2 * t
+    net = np.stack([pinv @ C @ pinv.T for C in (X, Y, a * X * X + b * Y * Y)], -1)
+    o = (4, 4)
+    # Through the middle, the x-curve is z = a x^2: curvature 2a at x = 0.
+    pts, k = comb(net, o, 'U', count=3, samples=21)
+    centre = k[1, 10]
+    assert np.allclose(pts[1, 10], [0, 0, 0], atol=1e-9)
+    assert np.allclose(centre, [0, 0, 2 * a], atol=1e-6), centre
+    pts, k = comb(net, o, 'V', count=3, samples=21)
+    assert np.allclose(k[1, 10], [0, 0, 2 * b], atol=1e-6), k[1, 10]
+    # At the origin K = 4ab and H = a + b (normal +z here).
+    P, N, K, H = surface_curvature(net, o, samples=21)
+    assert np.allclose(P[10, 10], 0, atol=1e-9) and N[10, 10, 2] > 0.99
+    assert abs(K[10, 10] - 4 * a * b) < 1e-6 and abs(H[10, 10] - (a + b)) < 1e-6
+    c = color_ramp([-1.0, 0.0, 1.0], 1.0)
+    assert c[0, 2] > c[0, 0] and c[1, 1] > c[1, 0] and c[2, 0] > c[2, 2]
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
