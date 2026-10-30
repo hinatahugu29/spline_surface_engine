@@ -10,7 +10,7 @@ from .core.coons import close_loop, coons_net, loop_to_sides, orient_loop, snap_
 from .core.blend import blend_curve_net, blend_net
 from .core.corner import corner_net
 from .core.fill import fill_patches, side_from_curve, side_from_patch
-from .core.fillet import fillet_net, multi_fillet
+from .core.fillet import corner_loops, fillet_net, multi_fillet
 from .core.meshing import segment_counts, t_junctions
 from .core.mirror import mirror_net, symmetrize
 from .core.network import build_network
@@ -966,6 +966,9 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
         name="Continuity", default='G2',
         items=[('G1', "G1", "Tangent match at the trimmed edges; closest to a true arc"),
                ('G2', "G2", "Tangent and curvature match at the trimmed edges")])
+    corners: bpy.props.BoolProperty(
+        name="Fill Corners", default=True,
+        description="Close the holes where fillets meet (e.g. a box corner) with corner patches")
 
     @classmethod
     def poll(cls, context):
@@ -997,9 +1000,10 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
                 "Enter/Space: set radius   Esc/RMB: cancel" % len(self._picked))
         else:
             context.area.header_text_set(
-                "Fillet: %d seam(s)   Wheel: radius %.4g   C: %s   Enter/click: confirm   "
-                "Backspace: back to picking   Esc/RMB: cancel"
-                % (len(self._picked), self.radius, self.continuity))
+                "Fillet: %d seam(s)   Wheel: radius %.4g   C: %s   V: corner patches %s   "
+                "Enter/click: confirm   Backspace: back to picking   Esc/RMB: cancel"
+                % (len(self._picked), self.radius, self.continuity,
+                   "on" if self.corners else "off"))
 
     def _label(self):
         if not self._adjust and self._hover is not None:
@@ -1032,6 +1036,14 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
                 for a, ea, b, eb in seams:
                     self._preview += [edge_polyline(*trimmed[a], ea, 24),
                                       edge_polyline(*trimmed[b], eb, 24)]
+                if self.corners:
+                    nets = [(n, o) for n, o, _ in bridges]
+                    pts = np.concatenate([n.reshape(-1, 3) for n, _ in nets])
+                    tol = 1e-3 * np.ptp(pts, axis=0).max() + 1e-9
+                    for loop in corner_loops(nets):
+                        sides = [side_from_patch(*nets[i], e) for i, e in loop]
+                        for net, orders in fill_patches(sides, self.continuity, tol=tol):
+                            self._preview += iso_lines(net, orders)
             except Exception:
                 pass  # preview-only
         context.area.tag_redraw()
@@ -1077,8 +1089,11 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
                 self.radius = min(1000.0, max(1e-4, self.radius * f))
                 self._header(context)
                 self._update_preview(context)
-            elif event.type == 'C' and event.value == 'PRESS':
-                self.continuity = 'G1' if self.continuity == 'G2' else 'G2'
+            elif event.type in {'C', 'V'} and event.value == 'PRESS':
+                if event.type == 'C':
+                    self.continuity = 'G1' if self.continuity == 'G2' else 'G2'
+                else:
+                    self.corners = not self.corners
                 self._header(context)
                 self._update_preview(context)
             elif event.type in {'LEFTMOUSE', 'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS':
@@ -1128,6 +1143,29 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
                                 "flip": False})
                 made.append(ob)
             context.view_layer.update()
+            corner_count = corner_failed = 0
+            if self.corners:
+                names = [ob.name for ob in made]
+                for loop in corner_loops([(n, o) for n, o, _ in bridges]):
+                    # Saved as a Fill Hole between the bridges, so it follows them.
+                    meta = {"method": "fill", "sources": [names[i] for i, _ in loop],
+                            "edges": [e for _, e in loop], "continuity": self.continuity,
+                            "tension": 1.0, "layout": 'AUTO'}
+                    try:
+                        parts = compute_fill(meta, settings)
+                    except ValueError:
+                        corner_failed += 1
+                        continue
+                    for part, (net, orders) in enumerate(parts):
+                        cu = build_surface_data(names[loop[0][0]] + "_corner", net,
+                                                settings.resolution, orders)
+                        for mat in zebra.real_materials(made[loop[0][0]]):
+                            cu.materials.append(mat)
+                        cob = bpy.data.objects.new(cu.name, cu)
+                        context.collection.objects.link(cob)
+                        store_meta(cob, dict(meta, part=part))
+                        made.append(cob)
+                    corner_count += 1
             live.update_chain(sorted(trimmed), context)
         finally:
             live._state["busy"] = False
@@ -1138,8 +1176,13 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
             ob.select_set(True)
         context.view_layer.objects.active = made[-1]
         trims = [i["trim"] for i in infos]
-        self.report({'INFO'}, "fillet: %d seam(s), trimmed %.3g-%.3g" % (
-            len(seams), min(trims), max(trims)))
+        msg = "fillet: %d seam(s), trimmed %.3g-%.3g, %d corner(s) filled" % (
+            len(seams), min(trims), max(trims), corner_count)
+        if corner_failed:
+            self.report({'WARNING'}, msg + "; %d corner(s) left open (use Fill Hole)"
+                        % corner_failed)
+        else:
+            self.report({'INFO'}, msg)
         return {'FINISHED'}
 
 

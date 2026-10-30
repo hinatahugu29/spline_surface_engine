@@ -920,6 +920,37 @@ def test_multi_fillet_corner():
         raise AssertionError("the same edge picked twice must be refused")
 
 
+def test_fillet_corner_patch():
+    from core.fill import fill_patches, side_from_patch
+    from core.fillet import corner_loops, multi_fillet
+    g = np.linspace(0, 1, 3)
+    G0, G1 = g[:, None] + 0 * g, 0 * g[:, None] + g
+    F = np.stack([G0, G1, 0 * G0], -1)            # floor z = 0 (u = x, v = y)
+    W1 = np.stack([1 + 0 * G0, G1, G0], -1)       # wall x = 1 (u = z, v = y)
+    W2 = np.stack([G1, 1 + 0 * G0, G0], -1)       # wall y = 1 (u = z, v = x)
+    o = (3, 3)
+    patches = {"F": (F, o), "W1": (W1, o), "W2": (W2, o)}
+    # All three edges of the box corner (1, 1, 0) rounded.
+    seams = [("F", "U1", "W1", "U0"), ("F", "V1", "W2", "U0"), ("W1", "V1", "W2", "V1")]
+    _, bridges, _ = multi_fillet(patches, seams, 0.2)
+    nets = [(n, bo) for n, bo, _ in bridges]
+    loops = corner_loops(nets)
+    assert len(loops) == 1 and len(loops[0]) == 3  # one triangular hole
+    assert sorted(i for i, _ in loops[0]) == [0, 1, 2]
+    sides = [side_from_patch(*nets[i], e) for i, e in loops[0]]
+    corner = fill_patches(sides, 'G1', tol=1e-6)
+    for i, e in loops[0]:  # the corner patch closes the hole against every bridge
+        touched = 0
+        for Q, oq in corner:
+            ang, hits = _boundary_angle(nets[i][0], nets[i][1], e, Q, oq)
+            touched += hits
+            assert ang < 2.0, (i, e, ang)
+        assert touched > 20, (i, e)
+    # One fillet alone ends on open boundaries: nothing to fill.
+    _, one, _ = multi_fillet(patches, seams[:1], 0.2)
+    assert corner_loops([(n, bo) for n, bo, _ in one]) == []
+
+
 def test_curvature_paraboloid():
     from core.bezier import bernstein
     from core.curvature import color_ramp, comb, surface_curvature

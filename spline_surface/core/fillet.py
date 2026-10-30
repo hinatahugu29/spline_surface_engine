@@ -180,3 +180,56 @@ def multi_fillet(patches, seams, radius, continuity='G2', tol=1e-3):
         net, orders = blend_net(*trimmed[a], ea, *trimmed[b], eb, continuity, tension)
         bridges.append((net, orders, tension))
     return trimmed, bridges, infos
+
+
+def corner_loops(bridges, rel_tol=1e-3):
+    """Holes left where fillets meet: closed loops of bridge end edges.
+
+    A fillet bridge runs along its seam (edges V0, V1 on the trimmed
+    patches); its ends U0 and U1 cross from one patch to the other. Where
+    fillets meet at a corner their ends join end to end around a hole (a
+    triangle at a box corner where all three edges are filleted). Ends that
+    don't close a loop (open boundaries) are skipped.
+    bridges: [(net, orders)]. Returns [[(bridge index, 'U0' | 'U1'), ...]].
+    """
+    pts = np.concatenate([np.asarray(n).reshape(-1, 3) for n, _ in bridges])
+    tol = max(rel_tol * float(np.ptp(pts, axis=0).max()), 1e-9)
+    nodes = []
+
+    def node(p):
+        for i, q in enumerate(nodes):
+            if np.linalg.norm(p - q) < tol:
+                return i
+        nodes.append(p)
+        return len(nodes) - 1
+
+    ends = []
+    for i, (net, _) in enumerate(bridges):
+        net = np.asarray(net, float)
+        for edge, row in (('U0', net[0]), ('U1', net[-1])):
+            a, b = node(row[0]), node(row[-1])
+            if a != b:
+                ends.append(((i, edge), a, b))
+    links = {}
+    for k, (_, a, b) in enumerate(ends):
+        links.setdefault(a, []).append(k)
+        links.setdefault(b, []).append(k)
+    loops, used = [], set()
+    for start in range(len(ends)):
+        if start in used:
+            continue
+        # Walk end to end; a loop closes back on the starting node.
+        chain, k, (_, first, at) = [start], start, ends[start]
+        while at != first:
+            nxt = [j for j in links[at] if j != k and j not in chain]
+            if len(links[at]) != 2 or not nxt:
+                chain = None
+                break
+            k = nxt[0]
+            chain.append(k)
+            _, a, b = ends[k]
+            at = b if a == at else a
+        if chain and len(links[first]) == 2:
+            used.update(chain)
+            loops.append([ends[j][0] for j in chain])
+    return loops
