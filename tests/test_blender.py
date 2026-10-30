@@ -1404,6 +1404,33 @@ def run():
     print("trim: faces", len(cut.data.polygons), "of", full_faces, "closest vertex to the centre", r.min())
     assert len(cut.data.polygons) < full_faces - 20 and r.min() > 0.3     # the hole is open
     assert r.min() < 0.42                                                  # the ring sits on the outline
+    # ---- a window opening built from four Coons strips around the opening (the manual's recipe)
+    from spline_surface.seams import shared_seams
+    z0 = 1200.0
+    P = lambda x, y: (x, z0 + y, 0.0)
+    outer = [P(0, 0), P(4, 0), P(4, 3), P(0, 3)]
+    inner = [P(1, 0.8), P(3, 0.8), P(3, 2.2), P(1, 2.2)]
+    cv = lambda a, b, n: bezier_curve(n, [a, tuple((np.array(a) + np.array(b)) / 2), b])
+    outer_c = [cv(outer[i], outer[(i + 1) % 4], "o%d" % i) for i in range(4)]
+    inner_c = [cv(inner[i], inner[(i + 1) % 4], "i%d" % i) for i in range(4)]
+    conn_c = [cv(outer[i], inner[i], "c%d" % i) for i in range(4)]
+    strips = []
+    for i in range(4):
+        j = (i + 1) % 4
+        select([outer_c[i], inner_c[i], conn_c[i], conn_c[j]])
+        assert bpy.ops.spline_surface.coons() == {'FINISHED'}, i
+        strips.append(bpy.context.active_object)
+    vl.update()
+    for o in bpy.data.objects:
+        if o.type == 'SURFACE' and o not in strips:
+            o.hide_set(True)
+    ring_seams = [s for s in shared_seams(bpy.context)
+                  if s["a"] in {x.name for x in strips} and s["b"] in {x.name for x in strips}]
+    print("window frame: strips", len(strips), "seams", len(ring_seams), [s["grade"] for s in ring_seams])
+    assert len(ring_seams) == 4 and all(s["grade"] != 'open' for s in ring_seams)
+    for o in bpy.data.objects:
+        if o.type == 'SURFACE':
+            o.hide_set(False)
     spline_surface.unregister()
     print("ALL OK")
 
