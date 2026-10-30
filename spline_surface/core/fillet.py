@@ -11,8 +11,10 @@ fillet generally has different normal curvature than the surfaces it joins.
 
 The fillet's own two edges are the circle's tangent points, set back from the
 original crease by the "reach" the radius demands. `fillet_net` leaves the
-source patches untouched; `trimmed_fillet` cuts them back by that reach and
-bridges the new edges, so the result is one smooth chain of patches.
+source patches untouched; `multi_fillet` cuts them back by that reach and
+bridges the new edges, so the result is one smooth chain of patches. The
+bridge's handles are sized so a G1 bridge between flat surfaces
+approximates the arc.
 """
 import numpy as np
 
@@ -134,23 +136,47 @@ def trim_net(net, orders, edge, distance, samples=200):
     return (A, oa, t, err) if at_end else (B, ob, t, err)
 
 
-def trimmed_fillet(Pa, orders_a, edge_a, Pb, orders_b, edge_b, radius,
-                   continuity='G2', tol=1e-3):
-    """Trim both patches back from their shared edge and bridge the gap.
+def multi_fillet(patches, seams, radius, continuity='G2', tol=1e-3):
+    """Fillet several seams at once.
 
-    The trim distance is the rolling ball's reach, so the new edges sit
-    where a `radius` fillet would touch the surfaces; the bridge's handles
-    are sized so a G1 bridge between flat surfaces approximates that arc.
-    Returns ((net_a, orders_a), (net_b, orders_b), (net, orders), info).
+    patches: {name: (net, orders)}; seams: [(name_a, edge_a, name_b, edge_b)].
+    Every reach is measured on the original patches, then each patch is cut
+    back on all of its filleted edges, then each seam's two cut edges are
+    bridged. (Doing one seam at a time would fail: cutting a patch on one
+    edge shortens its neighbouring edges, which then no longer match the
+    patch across the next seam.) Where fillets meet at a corner a small
+    hole is left for Fill Hole.
+
+    Returns (trimmed {name: (net, orders)}, [(net, orders, tension)] per
+    seam, [info] per seam).
     """
-    _, _, info = fillet_net(Pa, orders_a, edge_a, Pb, orders_b, edge_b, radius, tol)
-    reach = float(info["reach"].mean())
-    A, oa, _, err_a = trim_net(Pa, orders_a, edge_a, reach)
-    B, ob, _, err_b = trim_net(Pb, orders_b, edge_b, reach)
-    # Degree-5 handle of a circular arc of sweep alpha is 3/5 of the cubic's
-    # (4/3) tan(alpha/4) r; over the chord 2 r sin(alpha/2) that is this tension.
-    alpha = np.pi - np.radians(info["mean_angle"])
-    tension = float(2.0 * np.tan(alpha / 4.0) / np.sin(alpha / 2.0))
-    net, orders = blend_net(A, oa, edge_a, B, ob, edge_b, continuity, tension)
-    info.update(trim=reach, tension=tension, trim_error=max(err_a, err_b))
-    return (A, oa), (B, ob), (net, orders), info
+    infos, cuts = [], {}
+    for a, ea, b, eb in seams:
+        (Pa, oa), (Pb, ob) = patches[a], patches[b]
+        _, _, info = fillet_net(Pa, oa, ea, Pb, ob, eb, radius, tol)
+        info["trim"] = reach = float(info["reach"].mean())
+        infos.append(info)
+        for name, edge in ((a, ea), (b, eb)):
+            if any(e == edge for e, _ in cuts.get(name, [])):
+                raise ValueError("%s %s is picked twice" % (name, edge))
+            cuts.setdefault(name, []).append((edge, reach))
+    trimmed = {}
+    for name, edges in cuts.items():
+        net, orders = patches[name]
+        err = 0.0
+        for edge, reach in edges:
+            net, orders, _, e = trim_net(net, orders, edge, reach)
+            err = max(err, e)
+        trimmed[name] = (net, orders)
+        for info, (a, _, b, _) in zip(infos, seams):
+            if name in (a, b):
+                info["trim_error"] = max(info.get("trim_error", 0.0), err)
+    bridges = []
+    for info, (a, ea, b, eb) in zip(infos, seams):
+        # Degree-5 handle of a circular arc of sweep alpha is 3/5 of the cubic's
+        # (4/3) tan(alpha/4) r; over the chord 2 r sin(alpha/2) that is this tension.
+        alpha = np.pi - np.radians(info["mean_angle"])
+        info["tension"] = tension = float(2.0 * np.tan(alpha / 4.0) / np.sin(alpha / 2.0))
+        net, orders = blend_net(*trimmed[a], ea, *trimmed[b], eb, continuity, tension)
+        bridges.append((net, orders, tension))
+    return trimmed, bridges, infos

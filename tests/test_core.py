@@ -816,7 +816,13 @@ def test_fillet_rounds_right_angle_corner():
 
 
 def test_trimmed_fillet():
-    from core.fillet import trim_net, trimmed_fillet
+    from core.fillet import multi_fillet, trim_net
+
+    def trimmed_fillet(Pa, oa, ea, Pb, ob, eb, r):
+        cut, bridges, infos = multi_fillet({"a": (Pa, oa), "b": (Pb, ob)},
+                                           [("a", ea, "b", eb)], r)
+        return cut["a"], cut["b"], bridges[0][:2], infos[0]
+
     n = 6
     g = np.linspace(0.0, 1.0, n)
     A = np.zeros((n, n, 3))
@@ -854,6 +860,39 @@ def test_trimmed_fillet():
         pass
     else:
         raise AssertionError("a radius larger than the patch must be refused")
+
+
+def test_multi_fillet_corner():
+    from core.fillet import multi_fillet
+    g = np.linspace(0, 1, 3)
+    G0, G1 = g[:, None] + 0 * g, 0 * g[:, None] + g
+    F = np.stack([G0, G1, 0 * G0], -1)            # floor z = 0; U1 is x = 1, V1 is y = 1
+    W1 = np.stack([1 + 0 * G0, G1, G0], -1)       # wall x = 1; U0 is z = 0
+    W2 = np.stack([G1, 1 + 0 * G0, G0], -1)       # wall y = 1; U0 is z = 0
+    o = (3, 3)
+    patches = {"F": (F, o), "W1": (W1, o), "W2": (W2, o)}
+    r = 0.2
+    trimmed, bridges, infos = multi_fillet(
+        patches, [("F", "U1", "W1", "U0"), ("F", "V1", "W2", "U0")], r)
+    TF = trimmed["F"][0]
+    # The floor is cut back on both edges; each wall on its bottom edge.
+    assert abs(TF[..., 0].max() - (1 - r)) < 1e-6 and abs(TF[..., 1].max() - (1 - r)) < 1e-6
+    assert abs(trimmed["W1"][0][..., 2].min() - r) < 1e-6
+    assert abs(trimmed["W2"][0][..., 2].min() - r) < 1e-6
+    assert all(abs(i["trim"] - r) < 1e-9 for i in infos)
+    # Each bridge joins its two trimmed edges smoothly.
+    for (net, bo, _), (a, _, b, _) in zip(bridges, [("F", 0, "W1", 0), ("F", 0, "W2", 0)]):
+        for name in (a, b):
+            P, po = trimmed[name]
+            sh = find_shared_edge(P, net, 1e-6, po, bo)
+            assert sh is not None, name
+            assert grade(measure(P, net, *sh[:3], po, bo)) == 'G2', name
+    try:
+        multi_fillet(patches, [("F", "U1", "W1", "U0"), ("F", "U1", "W2", "U0")], r)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("the same edge picked twice must be refused")
 
 
 def test_curvature_paraboloid():

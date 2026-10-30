@@ -10,7 +10,7 @@ from .core.coons import close_loop, coons_net, loop_to_sides, orient_loop, snap_
 from .core.blend import blend_curve_net, blend_net
 from .core.corner import corner_net
 from .core.fill import fill_patches, side_from_curve, side_from_patch
-from .core.fillet import fillet_net, trimmed_fillet
+from .core.fillet import fillet_net, multi_fillet
 from .core.meshing import segment_counts, t_junctions
 from .core.mirror import mirror_net, symmetrize
 from .core.network import build_network
@@ -76,11 +76,16 @@ def compute_fillet(sources, meta, settings):
                       meta["radius"], tol=_seam_tolerance(Pa, Pb, settings))
 
 
-def compute_trimmed_fillet(sources, meta, settings):
-    (Pa, oa), (Pb, ob) = world_net(sources[0]), world_net(sources[1])
-    return trimmed_fillet(Pa, oa, meta["edges"][0], Pb, ob, meta["edges"][1],
-                          meta["radius"], meta["continuity"],
-                          tol=_seam_tolerance(Pa, Pb, settings))
+def compute_multi_fillet(seams, radius, continuity, settings):
+    """multi_fillet on the objects named in `seams` [(a, edge_a, b, edge_b)]."""
+    names = {n for a, _, b, _ in seams for n in (a, b)}
+    missing = sorted(n for n in names if n not in bpy.data.objects)
+    if missing:
+        raise ValueError("Patches missing: %s" % ", ".join(missing))
+    patches = {n: world_net(bpy.data.objects[n]) for n in names}
+    # Each seam was found at its own pair's tolerance; accept the loosest.
+    tol = max(_seam_tolerance(patches[a][0], patches[b][0], settings) for a, _, b, _ in seams)
+    return multi_fillet(patches, seams, radius, continuity, tol)
 
 
 def find_fillet_seams(context, settings):
@@ -947,15 +952,13 @@ class SS_OT_bridge_edges(_EdgePairPicker, bpy.types.Operator):
 class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
     bl_idname = "spline_surface.fillet"
     bl_label = "Fillet"
-    bl_description = ("Round the crease at a seam where two patch edges already coincide "
-                      "(e.g. after Match Edge): both patches are trimmed back and bridged. "
-                      "Click the seam, then set the radius")
+    bl_description = ("Round the creases at seams where two patch edges already coincide "
+                      "(e.g. after Match Edge): the patches are trimmed back and bridged. "
+                      "Click one or more seams, Enter, then set the radius")
     bl_options = {'REGISTER', 'UNDO'}
 
-    source_a: bpy.props.StringProperty(name="Patch A")
-    edge_a: bpy.props.EnumProperty(name="Edge A", items=[(e, e, "") for e in EDGE_KEYS])
-    source_b: bpy.props.StringProperty(name="Patch B")
-    edge_b: bpy.props.EnumProperty(name="Edge B", items=[(e, e, "") for e in EDGE_KEYS])
+    seams: bpy.props.StringProperty(
+        name="Seams", description="Picked seams as JSON [[patch a, edge a, patch b, edge b], ...]")
     radius: bpy.props.FloatProperty(
         name="Radius", default=0.1, min=1e-4, max=1000.0,
         description="Rolling-ball radius: sets how far both patches are trimmed back")
@@ -978,7 +981,8 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
                                    "(use Match Edge first, or raise Gap Tolerance)")
             return {'CANCELLED'}
         self._hover = None
-        self._picked = None  # (a, b) key of self._seams once clicked
+        self._picked = []     # (a, b) keys of self._seams, in click order
+        self._adjust = False  # picking seams, then setting the radius
         self._preview = []
         self.radius = 0.1
         self._picker = pick.Overlay(context, self._draw_lines, self._label)
@@ -987,16 +991,18 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def _header(self, context):
-        if self._picked is None:
+        if not self._adjust:
             context.area.header_text_set(
-                "Fillet: click the seam to round   Esc/RMB: cancel")
+                "Fillet: click seams to round (%d picked, click again to drop)   "
+                "Enter/Space: set radius   Esc/RMB: cancel" % len(self._picked))
         else:
             context.area.header_text_set(
-                "Fillet: Wheel: radius %.4g   C: %s   Enter/click: confirm   Esc/RMB: cancel"
-                % (self.radius, self.continuity))
+                "Fillet: %d seam(s)   Wheel: radius %.4g   C: %s   Enter/click: confirm   "
+                "Backspace: back to picking   Esc/RMB: cancel"
+                % (len(self._picked), self.radius, self.continuity))
 
     def _label(self):
-        if self._picked is None and self._hover is not None:
+        if not self._adjust and self._hover is not None:
             a, b = self._hover
             ea, eb, pts = self._seams[self._hover]
             return "%s(%s) | %s(%s)" % (a, ea, b, eb), pts[len(pts) // 2]
@@ -1004,34 +1010,34 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
 
     def _draw_lines(self):
         lines = [(v[2], pick.COLOR_EDGE, 2.0) for k, v in self._seams.items()
-                 if k not in (self._hover, self._picked)]
-        key = self._picked or self._hover
-        if key is not None:
-            color = pick.COLOR_SELECTED if self._picked else pick.COLOR_HOVER
-            lines.append((self._seams[key][2], color, 4.0))
+                 if k != self._hover and k not in self._picked]
+        lines += [(self._seams[k][2], pick.COLOR_SELECTED, 4.0) for k in self._picked]
+        if self._hover is not None and not self._adjust:
+            lines.append((self._seams[self._hover][2], pick.COLOR_HOVER, 4.0))
         lines += [(pts, pick.COLOR_PREVIEW, 1.0) for pts in self._preview]
         return lines
 
-    def _meta(self):
-        return {"sources": [self.source_a, self.source_b],
-                "edges": [self.edge_a, self.edge_b], "radius": self.radius,
-                "continuity": self.continuity}
+    def _seam_list(self):
+        return [list(s) for s in json.loads(self.seams or "[]")]
 
     def _update_preview(self, context):
         self._preview = []
-        if self._picked is not None:
+        if self._adjust:
             try:
-                (A, oa), (B, ob), (net, orders), _ = compute_trimmed_fillet(
-                    [bpy.data.objects[self.source_a], bpy.data.objects[self.source_b]],
-                    self._meta(), context.scene.spline_surface)
-                self._preview = iso_lines(net, orders) + [
-                    edge_polyline(A, oa, self.edge_a, 24), edge_polyline(B, ob, self.edge_b, 24)]
+                seams = self._seam_list()
+                trimmed, bridges, _ = compute_multi_fillet(
+                    seams, self.radius, self.continuity, context.scene.spline_surface)
+                for net, orders, _ in bridges:
+                    self._preview += iso_lines(net, orders)
+                for a, ea, b, eb in seams:
+                    self._preview += [edge_polyline(*trimmed[a], ea, 24),
+                                      edge_polyline(*trimmed[b], eb, 24)]
             except Exception:
                 pass  # preview-only
         context.area.tag_redraw()
 
     def modal(self, context, event):
-        if self._picked is None:
+        if not self._adjust:
             if event.type == 'MOUSEMOVE':
                 hover = pick.nearest_polyline(
                     context, {k: v[2] for k, v in self._seams.items()},
@@ -1042,16 +1048,31 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
             elif event.type == 'LEFTMOUSE' and event.value == 'PRESS':
                 if self._hover is None:
                     return {'RUNNING_MODAL'}
-                self._picked = self._hover
-                a, b = self._picked
-                ea, eb, _ = self._seams[self._picked]
-                self.source_a, self.edge_a, self.source_b, self.edge_b = a, ea, b, eb
+                if self._hover in self._picked:
+                    self._picked.remove(self._hover)
+                else:
+                    self._picked.append(self._hover)
+                self._header(context)
+                context.area.tag_redraw()
+            elif event.type in {'RET', 'NUMPAD_ENTER', 'SPACE'} and event.value == 'PRESS':
+                if not self._picked:
+                    return {'RUNNING_MODAL'}
+                self.seams = json.dumps([[a, self._seams[(a, b)][0], b, self._seams[(a, b)][1]]
+                                         for a, b in self._picked])
+                self._adjust = True
                 self._header(context)
                 self._update_preview(context)
+            elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
+                return {'PASS_THROUGH'}  # zoom while hunting for seams
             elif self._common_modal(context, event):
                 return self._common_result
         else:
-            if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'} and event.value == 'PRESS':
+            if event.type == 'BACK_SPACE' and event.value == 'PRESS':
+                self._adjust = False
+                self._preview = []
+                self._header(context)
+                context.area.tag_redraw()
+            elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'} and event.value == 'PRESS':
                 f = 1.1 if event.type == 'WHEELUPMOUSE' else 1 / 1.1
                 self.radius = min(1000.0, max(1e-4, self.radius * f))
                 self._header(context)
@@ -1069,48 +1090,56 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
 
     def execute(self, context):
         settings = context.scene.spline_surface
-        meta = self._meta()
         try:
-            sources = [bpy.data.objects[n] for n in meta["sources"]]
-        except KeyError:
-            self.report({'ERROR'}, "Pick a seam first")
-            return {'CANCELLED'}
-        try:
-            (A, oa), (B, ob_), (net, orders), info = compute_trimmed_fillet(
-                sources, meta, settings)
+            seams = self._seam_list()
+            if not seams:
+                raise ValueError("Pick at least one seam")
+            trimmed, bridges, infos = compute_multi_fillet(
+                seams, self.radius, self.continuity, settings)
         except ValueError as e:
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
+        partners = {}
+        for a, _, b, _ in seams:
+            partners.setdefault(a, set()).add(b)
+            partners.setdefault(b, set()).add(a)
         from . import live  # live imports this module
         live._state["busy"] = True
+        made = []
         try:
-            for src, P, o, other in ((sources[0], A, oa, sources[1].name),
-                                     (sources[1], B, ob_, sources[0].name)):
+            for name, (P, o) in trimmed.items():
+                src = bpy.data.objects[name]
                 old = json.loads(src[META_KEY]) if META_KEY in src else {}
-                # The two used to meet at the crease (e.g. matched G0 to each
-                # other); after the trim that match would snap them back.
-                matches = [m for m in old.get("matches", []) if m["ref"] != other]
+                # Patches filleted together used to meet at the crease (e.g.
+                # matched G0); after the trim that match would snap them back.
+                matches = [m for m in old.get("matches", []) if m["ref"] not in partners[name]]
                 replace_net(src, P, settings, o)
                 store_meta(src, raw_meta(P, o, matches=matches))
-            name = sources[0].name + "_fillet"
-            cu = build_surface_data(name, net, settings.resolution, orders)
-            for mat in zebra.real_materials(sources[0]):
-                cu.materials.append(mat)
-            ob = bpy.data.objects.new(name, cu)
-            context.collection.objects.link(ob)
-            # Stored as a bridge between the trimmed edges, so Live Update and
-            # Regenerate keep it following both patches.
-            store_meta(ob, {"method": "blend", "sources": meta["sources"],
-                            "edges": meta["edges"], "continuity": self.continuity,
-                            "tension": info["tension"], "flip": False})
+            for (a, ea, b, eb), (net, orders, tension) in zip(seams, bridges):
+                cu = build_surface_data(a + "_fillet", net, settings.resolution, orders)
+                for mat in zebra.real_materials(bpy.data.objects[a]):
+                    cu.materials.append(mat)
+                ob = bpy.data.objects.new(cu.name, cu)
+                context.collection.objects.link(ob)
+                # Stored as a bridge between the trimmed edges, so Live Update
+                # and Regenerate keep it following both patches.
+                store_meta(ob, {"method": "blend", "sources": [a, b], "edges": [ea, eb],
+                                "continuity": self.continuity, "tension": tension,
+                                "flip": False})
+                made.append(ob)
             context.view_layer.update()
-            live.update_chain(meta["sources"], context)
+            live.update_chain(sorted(trimmed), context)
         finally:
             live._state["busy"] = False
             live._reset()
-        _make_active(context, ob)
-        self.report({'INFO'}, "fillet: trimmed %.3g off both patches, angle %.1f deg"
-                    % (info["trim"], info["mean_angle"]))
+        for o in context.selected_objects:
+            o.select_set(False)
+        for ob in made:
+            ob.select_set(True)
+        context.view_layer.objects.active = made[-1]
+        trims = [i["trim"] for i in infos]
+        self.report({'INFO'}, "fillet: %d seam(s), trimmed %.3g-%.3g" % (
+            len(seams), min(trims), max(trims)))
         return {'FINISHED'}
 
 
