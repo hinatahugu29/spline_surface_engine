@@ -1169,6 +1169,26 @@ def test_presets():
     assert np.allclose(f[:, 0], h[:, -1]) and abs((f[:, -1, 2] - f[:, 0, 2]).mean() + 0.4) < 1e-9
 
 
+def test_project_points():
+    from core.project import project_points
+    g = np.linspace(0, 1, 6)
+    U, V = g[:, None] + 0 * g, 0 * g[:, None] + g
+    net = np.stack([U, V, 0.3 * (1 - (2 * U - 1) ** 2) * (1 - (2 * V - 1) ** 2)], -1)
+    o = (6, 6)
+    top = project_points(net, o, [[0.5, 0.5, 1.0]])[0][0]            # nearest point lies straight below
+    assert np.allclose(top, [0.5, 0.5, 0.192], atol=1e-6), top
+    side = project_points(net, o, [[0.2, 0.7, -0.5]])[0][0]          # nearer to the patch's edge u = 0
+    assert abs(side[0]) < 1e-9 and abs(side[2]) < 1e-9
+    p, uv, ok = project_points(net, o, [[0.5, 0.5, 1.0], [0.2, 0.7, -0.5], [1.5, 0.5, 0.2]],
+                               direction=(0, 0, -1))
+    assert ok.tolist() == [True, True, False]                         # the last ray misses (x > 1)
+    assert np.allclose(p[0], [0.5, 0.5, 0.192], atol=1e-6)
+    assert np.allclose(p[1][:2], [0.2, 0.7]) and abs(p[1][2] - nurbs.eval_points(net, o, [0.2], [0.7])[0][2]) < 1e-6
+    # a slanted ray lands on the patch along its own line
+    q = project_points(net, o, [[0.0, 0.5, 0.6]], direction=(1, 0, -1))[0][0]
+    assert abs(q[0] - (0.6 - q[2])) < 1e-6 and 0.0 < q[0] < 1.0
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

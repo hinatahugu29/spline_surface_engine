@@ -1368,6 +1368,26 @@ def run():
         print("blueprint", view, corners.min(0).round(3), corners.max(0).round(3))
         assert check(corners), (view, corners)
 
+    # ---- v0.45: Project Curve lays a curve onto a patch
+    bpy.context.scene.cursor.location = (0, 1000, 0)
+    bpy.ops.spline_surface.add_patch(shape='DOME', points_u=6, points_v=6, size_x=2.0, size_y=2.0)
+    dome = bpy.context.active_object
+    ring = bezier_curve("proj_line", [(-0.6, 1000.0, 3.0), (0.0, 1000.3, 3.0), (0.6, 1000.0, 3.0)])
+    select([ring, dome])
+    vl.objects.active = dome
+    assert bpy.ops.spline_surface.project_curve(curve=ring.name, patch=dome.name, mode='Z',
+                                                samples=10) == {'FINISHED'}
+    proj = bpy.context.active_object
+    pl = read_polyline(proj, bpy.context.evaluated_depsgraph_get(), 40)
+    dnet, dord = world_net(dome)
+    # every point of the new curve lies on the dome
+    from spline_surface.core.project import project_points as _pp
+    back, _, _ = _pp(dnet, dord, pl)
+    print("project curve: max distance from the dome", np.linalg.norm(back - pl, axis=1).max())
+    assert np.linalg.norm(back - pl, axis=1).max() < 5e-3
+    assert abs(pl[0][0] + 0.6) < 1e-3 and abs(pl[-1][0] - 0.6) < 1e-3   # ends keep their x (along Z)
+    assert pl[:, 2].max() < 3.0 and pl[:, 2].min() > -1.0
+
     spline_surface.unregister()
     print("ALL OK")
 
