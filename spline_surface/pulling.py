@@ -1,6 +1,10 @@
 """Soft Pull: click a point on a patch, drag, and the free control points around
 it follow. Pinned points (rows next to G0/G1/G2 seams) never move, so every
 seam keeps its continuity; the patch ends up like one edited by hand.
+
+L switches the origin from a point to an iso-line through it (D: which way,
+T: taper the ends), so a whole line - a character line, an open edge - is
+pulled with a band around it.
 """
 import bpy
 import numpy as np
@@ -11,7 +15,8 @@ from mathutils.geometry import intersect_line_plane
 
 from . import pick
 from .core.nurbs import eval_points, eval_surface
-from .core.softpull import soft_pull
+from .core.softpull import line_pull, soft_pull
+from .core.split import iso_line
 from .ctrlpoints import pin_masks
 from .live import _write_in_place
 from .recipe import iso_lines, replace_net
@@ -19,6 +24,7 @@ from .recipe import iso_lines, replace_net
 GRID = 33          # surface samples per direction used for picking
 PICK_PIXELS = 40.0
 DEFAULT_RADIUS = 0.25  # of the patch size
+EDGE_SNAP = 0.06   # a line this close (in parameter) to the boundary snaps onto it
 AXES = {'X': (1.0, 0.0, 0.0), 'Y': (0.0, 1.0, 0.0), 'Z': (0.0, 0.0, 1.0)}
 MODE_NAMES = {'NORMAL': "normal", 'VIEW': "view plane", 'X': "X axis", 'Y': "Y axis", 'Z': "Z axis"}
 
@@ -37,7 +43,8 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
     bl_label = "Soft Pull"
     bl_description = ("Click a point on a patch and drag: the free control points around it "
                       "follow. Rows pinned by seams stay put, so G0/G1/G2 are kept. "
-                      "Wheel: radius, N: surface normal, X/Y/Z: that axis, V: view plane")
+                      "Wheel: radius, N: surface normal, X/Y/Z: that axis, V: view plane, "
+                      "L: pull a whole line (D: direction, T: taper)")
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -65,6 +72,9 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
         self._hover = None   # (name, u, v, point)
         self._drag = None    # dict while the button is held
         self._mode = 'NORMAL'
+        self._line = False   # origin: a point, or the iso-line through it
+        self._dir = 'U'      # line u = const ('U') or v = const ('V')
+        self._taper = False
         self._picker = pick.Overlay(context, self._lines)
         context.window_manager.modal_handler_add(self)
         self._header(context)
@@ -73,14 +83,36 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
     # ------------------------------------------------------------ helpers
 
     def _header(self, context, extra=""):
+        if self._line:
+            origin = "L line %s=const (D)   T taper: %s   Wheel: width %.3g" % (
+                self._dir.lower(), "on" if self._taper else "off", self._radius)
+        else:
+            origin = "L point   Wheel: radius %.3g" % self._radius
         context.area.header_text_set(
-            "Soft Pull: drag a patch point   Move: %s   Wheel: radius %.3g   "
+            "Soft Pull: drag   Origin: %s   Move: %s   "
             "N normal / X Y Z axis / V view   Esc/RMB: cancel%s"
-            % (MODE_NAMES[self._mode], self._radius, extra))
+            % (origin, MODE_NAMES[self._mode], extra))
 
     def _view_axes(self, context):
         rot = context.region_data.view_rotation
         return np.array(rot @ Vector((1, 0, 0))), np.array(rot @ Vector((0, 1, 0)))
+
+    def _line_param(self, u, v):
+        """(t0, along) of the iso-line through (u, v), snapped onto a boundary."""
+        t0, along = (u, v) if self._dir == 'U' else (v, u)
+        if t0 < EDGE_SNAP:
+            t0 = 0.0
+        elif t0 > 1.0 - EDGE_SNAP:
+            t0 = 1.0
+        return t0, along
+
+    def _band(self, net, orders, t0, right, up):
+        """The iso-line plus width circles at its ends and middle."""
+        pts = iso_line(net, orders, self._dir, t0)
+        lines = [(pts, pick.COLOR_HOVER, 3.0)]
+        for p in (pts[0], pts[len(pts) // 2], pts[-1]):
+            lines.append((_circle(p, self._radius, right, up, 32), pick.COLOR_HOVER, 1.0))
+        return lines
 
     def _lines(self):
         ctx = bpy.context
@@ -90,10 +122,17 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
         if self._drag is not None:
             d = self._drag
             lines = [(pts, pick.COLOR_PREVIEW, 1.5) for pts in iso_lines(d["net"], d["orders"], 8)]
-            lines.append((_circle(d["anchor"], self._radius, right, up), pick.COLOR_HOVER, 2.0))
+            if "t0" in d:
+                lines += self._band(d["net"], d["orders"], d["t0"], right, up)
+            else:
+                lines.append((_circle(d["anchor"], self._radius, right, up), pick.COLOR_HOVER, 2.0))
             lines.append((np.array([d["anchor"], d["anchor"] + d["delta"]]),
                           pick.COLOR_SELECTED, 3.0))
             return lines
+        if self._line:
+            name, u, v, _ = self._hover
+            net, orders, _ = self._patches[name]
+            return self._band(net, orders, self._line_param(u, v)[0], right, up)
         return [(_circle(self._hover[3], self._radius, right, up), pick.COLOR_HOVER, 2.0)]
 
     def _nearest(self, context, mouse):
@@ -135,19 +174,31 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
     def _start_drag(self, context):
         name, u, v, point = self._hover
         net, orders, _ = self._patches[name]
-        du = eval_points(net, orders, [u], [v], 1, 0)[0]
-        dv = eval_points(net, orders, [u], [v], 0, 1)[0]
+        line = {}
+        if self._line:
+            t0, along = self._line_param(u, v)
+            u, v = (t0, along) if self._dir == 'U' else (along, t0)
+            point = eval_points(net, orders, [u], [v])[0]
+            line = {"t0": t0, "along": along, "dir": self._dir}
+        # Just inside the boundary, so a snapped edge still has a usable normal.
+        cu, cv = np.clip(u, 1e-4, 1 - 1e-4), np.clip(v, 1e-4, 1 - 1e-4)
+        du = eval_points(net, orders, [cu], [cv], 1, 0)[0]
+        dv = eval_points(net, orders, [cu], [cv], 0, 1)[0]
         normal = np.cross(du, dv)
         length = np.linalg.norm(normal)
         normal = normal / length if length > 1e-12 else np.array([0.0, 0.0, 1.0])
         self._drag = {"name": name, "uv": (u, v), "anchor": np.array(point), "normal": normal,
-                      "delta": np.zeros(3), "net": net, "orders": orders, "gain": 1.0}
+                      "delta": np.zeros(3), "net": net, "orders": orders, "gain": 1.0, **line}
 
     def _apply(self, context, event):
         d = self._drag
         net, orders, mask = self._patches[d["name"]]
         d["delta"] = self._delta(context, event)
-        d["net"], d["gain"] = soft_pull(net, orders, mask, d["uv"], d["delta"], self._radius)
+        if "t0" in d:
+            d["net"], d["gain"] = line_pull(net, orders, mask, d["dir"], d["t0"], d["along"],
+                                            d["delta"], self._radius, self._taper)
+        else:
+            d["net"], d["gain"] = soft_pull(net, orders, mask, d["uv"], d["delta"], self._radius)
         ob = bpy.data.objects.get(d["name"])
         if ob is not None:
             self._write(context, ob, d["net"], orders)
@@ -182,6 +233,19 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
             return {'FINISHED'}
         elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
             self._radius *= 1.1 if event.type == 'WHEELUPMOUSE' else 1 / 1.1
+            if self._drag:
+                self._apply(context, event)
+            self._header(context)
+            context.area.tag_redraw()
+        elif event.type in {'L', 'D'} and event.value == 'PRESS' and not self._drag:
+            if event.type == 'L':
+                self._line = not self._line
+            else:
+                self._dir = 'V' if self._dir == 'U' else 'U'
+            self._header(context)
+            context.area.tag_redraw()
+        elif event.type == 'T' and event.value == 'PRESS':
+            self._taper = not self._taper
             if self._drag:
                 self._apply(context, event)
             self._header(context)

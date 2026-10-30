@@ -36,6 +36,44 @@ def pull_weights(net, orders, mask, anchor, radius):
     return w
 
 
+def line_weights(net, orders, mask, direction, t0, width, taper=False):
+    """Falloff weight (nu, nv) of every control point around an iso-line.
+
+    The line is u = t0 ('U', running along v) or v = t0 ('V', along u). Each
+    control point's Greville image is measured against the line point at the
+    same along-parameter, so the region is a band of half-width `width`.
+    `taper` fades the band to nothing at both ends of the line.
+    """
+    net = np.asarray(net, float)
+    gu, gv = greville(net.shape[0], orders[0]), greville(net.shape[1], orders[1])
+    pos = eval_surface(net, orders, gu, gv)
+    if direction == 'U':
+        line = eval_surface(net, orders, [t0], gv)[0][None, :, :]
+        along = gv[None, :]
+    else:
+        line = eval_surface(net, orders, gu, [t0])[:, 0][:, None, :]
+        along = gu[:, None]
+    s = np.clip(np.linalg.norm(pos - line, axis=-1) / max(width, 1e-9), 0.0, 1.0)
+    w = (1.0 - s * s) ** 3
+    if taper:
+        w = w * (4.0 * along * (1.0 - along))
+    w[np.asarray(mask, bool)] = 0.0
+    return w
+
+
+def line_pull(net, orders, mask, direction, t0, along, delta, width, taper=False):
+    """Move the iso-line (see line_weights) so its point at `along` moves by
+    `delta`. Returns (new net, gain) like soft_pull."""
+    net = np.asarray(net, float)
+    w = line_weights(net, orders, mask, direction, t0, width, taper)
+    u, v = (t0, along) if direction == 'U' else (along, t0)
+    gain = float(basis_matrix(net.shape[0], orders[0], [u])[0]
+                 @ w @ basis_matrix(net.shape[1], orders[1], [v])[0])
+    if gain < MIN_GAIN:
+        return net.copy(), 0.0
+    return net + (w / max(gain, GAIN_FLOOR))[..., None] * np.asarray(delta, float), gain
+
+
 def soft_pull(net, orders, mask, uv, delta, radius):
     """Move the surface point at `uv` by `delta`. Returns (new net, gain).
 

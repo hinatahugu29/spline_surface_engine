@@ -550,7 +550,7 @@ def test_soft_pull():
     from core.lock import lock_mask
     from core.softpull import soft_pull
     g = np.linspace(0, 1, 7)
-    net = np.stack(np.meshgrid(g, g, indexing="ij") + [np.zeros((7, 7))], -1)
+    net = np.stack(list(np.meshgrid(g, g, indexing="ij")) + [np.zeros((7, 7))], -1)
     orders = (7, 7)
     mask = lock_mask((7, 7), [('U1', 'G2')])
     delta = np.array([0.0, 0.0, 0.4])
@@ -566,12 +566,49 @@ def test_soft_pull():
     same, gain = soft_pull(net, orders, mask, (1.0, 0.5), delta, 0.5)
     assert gain == 0.0 and np.allclose(same, net)
     # multispan NURBS: same contract
-    net2 = np.stack(np.meshgrid(np.linspace(0, 1, 9), np.linspace(0, 1, 9), indexing="ij")
+    net2 = np.stack(list(np.meshgrid(np.linspace(0, 1, 9), np.linspace(0, 1, 9), indexing="ij"))
                     + [np.zeros((9, 9))], -1)
     new2, _ = soft_pull(net2, (4, 4), np.zeros((9, 9), bool), (0.5, 0.5), delta, 0.4)
     q0 = nurbs.eval_points(net2, (4, 4), [0.5], [0.5])[0]
     q1 = nurbs.eval_points(new2, (4, 4), [0.5], [0.5])[0]
     assert np.allclose(q1 - q0, delta, atol=1e-9)
+
+
+def test_line_pull():
+    from core.lock import lock_mask
+    from core.softpull import line_pull
+    g = np.linspace(0, 1, 9)
+    net = np.stack(list(np.meshgrid(g, g, indexing="ij")) + [np.zeros((9, 9))], -1)
+    o = (4, 4)
+    mask = lock_mask((9, 9), [('U1', 'G2')])
+    delta = np.array([0.0, 0.0, 0.3])
+    along = np.linspace(0, 1, 11)
+    line0 = nurbs.eval_points(net, o, np.full(11, 0.5), along)
+    # The whole iso-line u = 0.5 moves with the cursor, not just one point.
+    new, gain = line_pull(net, o, mask, 'U', 0.5, 0.3, delta, 0.3)
+    assert gain > 0.3
+    line1 = nurbs.eval_points(new, o, np.full(11, 0.5), along)
+    assert np.allclose(line1 - line0, delta, atol=1e-9)
+    assert np.allclose(new[mask], net[mask])
+    far = np.abs(net[..., 0] - 0.5) > 0.35
+    assert np.allclose(new[far], net[far])  # outside the band nothing moves
+    # Taper: the middle follows the cursor, the line's ends stay put.
+    new, _ = line_pull(net, o, mask, 'U', 0.5, 0.5, delta, 0.3, taper=True)
+    line1 = nurbs.eval_points(new, o, np.full(11, 0.5), along)
+    assert np.allclose(line1[5] - line0[5], delta, atol=1e-9)
+    assert np.allclose(line1[[0, -1]], line0[[0, -1]], atol=1e-9)
+    # An open boundary edge can be pulled; the pinned seam edge cannot.
+    new, gain = line_pull(net, o, mask, 'U', 0.0, 0.5, delta, 0.3)
+    e0 = nurbs.eval_points(net, o, np.zeros(11), along)
+    e1 = nurbs.eval_points(new, o, np.zeros(11), along)
+    assert gain > 0.3 and np.allclose(e1 - e0, delta, atol=1e-9)
+    same, gain = line_pull(net, o, mask, 'U', 1.0, 0.5, delta, 0.3)
+    assert gain == 0.0 and np.allclose(same, net)
+    # 'V' lines run along u.
+    new, _ = line_pull(net, o, np.zeros((9, 9), bool), 'V', 0.25, 0.5, delta, 0.3)
+    l0 = nurbs.eval_points(net, o, along, np.full(11, 0.25))
+    l1 = nurbs.eval_points(new, o, along, np.full(11, 0.25))
+    assert np.allclose(l1 - l0, delta, atol=1e-9)
 
 
 def test_refine_keeps_shape():
@@ -593,7 +630,7 @@ def test_refine_keeps_shape():
 def test_fair_net():
     from core.fair import fair_net
     g = np.linspace(0, 1, 8)
-    flat = np.stack(np.meshgrid(g, g, indexing="ij") + [np.zeros((8, 8))], -1)
+    flat = np.stack(list(np.meshgrid(g, g, indexing="ij")) + [np.zeros((8, 8))], -1)
     bumpy = flat.copy()
     bumpy[3, 4, 2] += 0.5
     bumpy[4, 2, 2] -= 0.3
