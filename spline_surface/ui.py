@@ -309,9 +309,12 @@ class SS_PT_inspect(_SubPanel, bpy.types.Panel):
             rows = []
         col = layout.column(align=True)
         for r in rows:
-            col.label(text="%s(%s) | %s(%s): %s" % (
+            row = col.row(align=True)
+            row.label(text="%s(%s) | %s(%s): %s" % (
                           r["a"], r.get("edge_a", "?"), r["b"], r.get("edge_b", "?"), r["grade"]),
                       icon=GRADE_ICONS.get(r["grade"], 'QUESTION'))
+            jump = row.operator("spline_surface.seam_jump", text="", icon='RESTRICT_SELECT_OFF')
+            jump.a, jump.b = r["a"], r["b"]
             col.label(text="    angle %.3g°, curvature %.1f%%" % (r["angle"], 100 * r["curvature"]))
 
 

@@ -467,20 +467,57 @@ class SS_OT_match_edge(bpy.types.Operator):
         return {'FINISHED'}
 
 
+_GRADE_ORDER = {'open': -1, 'G0': 0, 'G1': 1, 'G2': 2}
+
+
+class SS_OT_seam_jump(bpy.types.Operator):
+    bl_idname = "spline_surface.seam_jump"
+    bl_label = "Go to Seam"
+    bl_description = "Select the two patches of this seam and bring them into view"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    a: bpy.props.StringProperty()
+    b: bpy.props.StringProperty()
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT'
+
+    def execute(self, context):
+        obs = [bpy.data.objects.get(n) for n in (self.a, self.b)]
+        if not all(obs):
+            self.report({'ERROR'}, "A patch of this seam no longer exists; run Check Continuity again")
+            return {'CANCELLED'}
+        for o in context.selected_objects:
+            o.select_set(False)
+        for o in obs:
+            o.select_set(True)
+        context.view_layer.objects.active = obs[0]
+        if context.area and context.area.type == 'VIEW_3D':
+            bpy.ops.view3d.view_selected()
+        return {'FINISHED'}
+
+
 class SS_OT_check_continuity(bpy.types.Operator):
     bl_idname = "spline_surface.check_continuity"
     bl_label = "Check Continuity"
-    bl_description = "Measure gap, normal angle and curvature jump on seams between selected patches"
+    bl_description = ("Measure gap, normal angle and curvature jump on seams between the selected "
+                      "patches (all visible patches when fewer than two are selected). The worst "
+                      "seams come first; the arrow button next to one jumps to it")
     bl_options = {'REGISTER'}
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and len(_selected_surfaces(context)) >= 2
+        return context.mode == 'OBJECT' and len([o for o in context.visible_objects
+                                                 if o.type == 'SURFACE']) >= 2
 
     def execute(self, context):
         settings = context.scene.spline_surface
         nets = {}
-        for o in _selected_surfaces(context):
+        pool = _selected_surfaces(context)
+        if len(pool) < 2:
+            pool = [o for o in context.visible_objects if o.type == 'SURFACE']
+        for o in pool:
             try:
                 nets[o.name] = world_net(o)
             except ValueError as e:
@@ -496,6 +533,7 @@ class SS_OT_check_continuity(bpy.types.Operator):
                 m = measure(Pa, Pb, *shared[:3], oa, ob_)
                 rows.append({"a": a, "b": b, "edge_a": shared[0], "edge_b": shared[1],
                             "grade": grade(m), **m})
+        rows.sort(key=lambda r: (_GRADE_ORDER.get(r["grade"], 0), -r["angle"], -r["curvature"]))
         settings.continuity_report = json.dumps(rows)
         if not rows:
             self.report({'WARNING'}, "No shared edges found between the selected patches")
@@ -1577,4 +1615,4 @@ classes = (SS_OT_add_patch, SS_OT_add_boundary_curve, SS_OT_coons, SS_OT_loft, S
            SS_OT_regenerate, SS_OT_extend_edge, SS_OT_corner_fill, SS_OT_bridge_edges,
            SS_OT_fill_hole, SS_OT_offset_surface, SS_OT_add_curve_grid,
            SS_OT_curve_network,
-           SS_OT_match_edge, SS_OT_check_continuity, SS_OT_to_mesh)
+           SS_OT_match_edge, SS_OT_seam_jump, SS_OT_check_continuity, SS_OT_to_mesh)

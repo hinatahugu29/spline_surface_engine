@@ -300,6 +300,16 @@ def run():
     rows = json.loads(bpy.context.scene.spline_surface.continuity_report)
     print("multispan seam", rows[0]["grade"], rows[0]["angle"], rows[0]["curvature"])
     assert rows[0]["grade"] == "G2"
+    # report with nothing selected scans all visible patches, worst grade first, and jumps to a seam
+    [o.select_set(False) for o in bpy.context.scene.objects]
+    assert bpy.ops.spline_surface.check_continuity() == {'FINISHED'}
+    allrows = json.loads(bpy.context.scene.spline_surface.continuity_report)
+    order = {'open': -1, 'G0': 0, 'G1': 1, 'G2': 2}
+    assert len(allrows) >= 1
+    assert [order[r["grade"]] for r in allrows] == sorted(order[r["grade"]] for r in allrows)
+    assert bpy.ops.spline_surface.seam_jump(a=allrows[0]["a"], b=allrows[0]["b"]) == {'FINISHED'}
+    assert {o.name for o in bpy.context.selected_objects} == {allrows[0]["a"], allrows[0]["b"]}
+    print("continuity report all", len(allrows), allrows[0]["grade"])
     meta = json.loads(hand[spline_surface.operators.META_KEY])
     assert spline_surface.operators.hand_edited(hand, meta)
     # Matching a hand-edited patch keeps the hand shape as its recipe.
