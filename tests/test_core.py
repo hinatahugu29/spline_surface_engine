@@ -300,8 +300,11 @@ def test_split_exact_and_fitted():
     assert grade(m) == "G2", m
 
 
-def _ring_patches(n_sides, radius=1.0, width=0.6):
-    """Patches around an n-gon hole in z = f(x, y); edge V0 of each lies on the hole."""
+def _ring_patches(n_sides, radius=1.0, width=0.6, tilt=None):
+    """Patches around an n-gon hole in z = f(x, y); edge V0 of each lies on the hole.
+
+    With `tilt`, the hole lies in z = 0 and each patch rises tilt * width away from it.
+    """
     from core.bezier import bernstein
     f = lambda x, y: 0.15 * x * x - 0.1 * x * y + 0.12 * y * y + 0.03 * x ** 3
     ang = np.linspace(0, 2 * np.pi, n_sides, endpoint=False) + 0.3
@@ -316,7 +319,8 @@ def _ring_patches(n_sides, radius=1.0, width=0.6):
         U, V = t[:, None], t[None, :]
         X = (1 - V) * ((1 - U) * a[0] + U * b[0]) + V * ((1 - U) * (a[0] + o[0]) + U * (b[0] + o[0]))
         Y = (1 - V) * ((1 - U) * a[1] + U * b[1]) + V * ((1 - U) * (a[1] + o[1]) + U * (b[1] + o[1]))
-        net = np.stack([pinv @ C @ pinv.T for C in (X, Y, f(X, Y))], axis=-1)
+        Z = f(X, Y) if tilt is None else tilt * width * (V + 0 * U)
+        net = np.stack([pinv @ C @ pinv.T for C in (X, Y, Z)], axis=-1)
         out.append(net)
     return out
 
@@ -367,6 +371,27 @@ def test_fill_nsided():
             assert sh is not None
             m = measure(A, B, *sh[:3], oa, ob_)
             assert m["gap"] < 1e-9 and m["angle"] < 1.0, (n_sides, j, m)
+
+
+def test_fill_g0_flat_lid():
+    from core.fill import fill_patches, side_from_patch
+    # A planar hole whose neighbours tilt up away from it (a bowl rim): G1/G2
+    # follow the tilt, G0 lays a flat lid across the boundary.
+    for n_sides, layout in ((3, 'AUTO'), (4, 'AUTO'), (5, 'AUTO'), (6, 'RADIAL')):
+        ring = _ring_patches(n_sides, tilt=0.5)
+        sides = [side_from_patch(P, (6, 6), 'V0') for P in ring]
+        assert max(abs(s[0][0][:, 2]).max() for s in sides) < 1e-6  # the hole is planar
+        lid = fill_patches(sides, 'G0', tol=1e-6, layout=layout)
+        g = np.linspace(0, 1, 9)
+        z = max(np.abs(nurbs.eval_surface(n, o, g, g)[..., 2]).max() for n, o in lid)
+        assert z < 1e-6, (n_sides, z)
+        dome = fill_patches(sides, 'G2', tol=1e-6, layout=layout)
+        assert max(np.abs(nurbs.eval_surface(n, o, g, g)[..., 2]).max() for n, o in dome) > 0.01
+        # the lid still faces the same way as its neighbours
+        normal = lambda n, o: np.cross(nurbs.eval_points(n, o, [0.5], [0.3], 1, 0)[0],
+                                       nurbs.eval_points(n, o, [0.5], [0.3], 0, 1)[0])
+        side = np.sign(normal(ring[0], (6, 6))[2])
+        assert all(np.sign(normal(n, o)[2]) == side for n, o in lid), n_sides
 
 
 def test_offset_distance_and_seams():

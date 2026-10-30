@@ -314,7 +314,7 @@ def _balanced(loop, sectors=6):
     return out
 
 
-def _radial_patches(loop, continuity, tension):
+def _radial_patches(loop, continuity, tension, lift=None):
     """One patch per side, all meeting at a centre pole (a cap / dome).
 
     Used when the boundary has smooth "corners" (e.g. closing the open end
@@ -322,6 +322,8 @@ def _radial_patches(loop, continuity, tension):
     from the side's ends to the centre, and a collapsed top at the centre.
     Neighbouring patches share each spoke with a common cross direction (the
     boundary tangent at the spoke's foot) fading to zero at the pole.
+    `lift` raises the pole along the cap's axis, in boundary radii (default:
+    `tension`, a hemisphere-like dome; 0 keeps it on the boundary's centroid).
     """
     loop = _balanced(loop)
     N = len(loop)
@@ -351,7 +353,7 @@ def _radial_patches(loop, continuity, tension):
                               @ sd[0][0] for sd in loop])
     c0 = samples.mean(axis=0)
     radius = np.linalg.norm(samples - c0, axis=1).mean()
-    centre = c0 + axis * radius * tension
+    centre = c0 + axis * radius * (tension if lift is None else lift)
     L = np.mean([np.linalg.norm(centre - c) for c in corners])
     alpha = tension * L / max(np.mean([np.linalg.norm(t) for t in t_corner]), 1e-12)
 
@@ -401,6 +403,9 @@ def fill_patches(sides, continuity='G2', tension=1.0, tol=1e-3, layout='AUTO'):
     a centre; 'RADIAL' = one patch per side meeting at a centre pole (caps,
     e.g. closing the end of a tube); 'AUTO' picks RADIAL when some boundary
     "corner" is smooth (quads would be crushed there), GRID otherwise.
+    G0 uses the boundary's position only: no neighbour's slope bends the
+    inside and a radial pole stays on the boundary's centroid, so a planar
+    boundary gives a flat lid.
     Returns [(net, orders)].
     """
     if continuity not in ('G0', 'G1', 'G2'):
@@ -411,15 +416,20 @@ def fill_patches(sides, continuity='G2', tension=1.0, tol=1e-3, layout='AUTO'):
     if patch_first[0][0][1] is None:
         raise ValueError("pick at least one patch edge (only curves: use Coons)")
     loop = order_loop(patch_first, tol)
+    # Which way the fill faces comes from the neighbours, even for G0.
+    normals = [_side_normal(s) for s in loop if s[0][1] is not None]
+    ref = np.sum([v / max(np.linalg.norm(v), 1e-12) for v in normals], axis=0)
+    flat = continuity == 'G0'
+    if flat:
+        loop = [([rows[0], None, None], k, sign) for rows, k, sign in loop]
     if layout == 'AUTO':
         layout = 'RADIAL' if (len(loop) < 3 or min(_corner_turn(loop)) < SMOOTH_CORNER)             else 'GRID'
     if layout == 'RADIAL':
-        return [(_orient(net, orders, ref), orders)
-                for net, orders, ref in _radial_patches(loop, continuity, tension)]
+        return [(_orient(net, orders, ref if flat else side_ref), orders)
+                for net, orders, side_ref in _radial_patches(
+                    loop, continuity, tension, lift=0.0 if flat else None)]
     if len(loop) < 3:
         raise ValueError("two sides can only be filled radially")
-    normals = [_side_normal(s) for s in loop if s[0][1] is not None]
-    ref = np.sum([v / max(np.linalg.norm(v), 1e-12) for v in normals], axis=0)
     if len(loop) == 4:
         nets = [quad_net(loop, continuity, tension, STAR_POINTS)]
     else:

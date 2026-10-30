@@ -1155,7 +1155,7 @@ class SS_OT_fill_hole(pick.ModalPicker, bpy.types.Operator):
         name="Edges", description="object:edge pairs separated by ';'")
     continuity: bpy.props.EnumProperty(
         name="Continuity", default='G2',
-        items=[('G0', "G0", "Touch the edges only"),
+        items=[('G0', "G0", "Touch the edges only: a flat lid when the hole's outline is flat"),
                ('G1', "G1", "Match tangents across every edge"),
                ('G2', "G2", "Match tangents and curvature across every edge")])
     tension: bpy.props.FloatProperty(
