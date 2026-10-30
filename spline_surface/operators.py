@@ -934,6 +934,12 @@ class SS_OT_fillet(_EdgePairPicker, bpy.types.Operator):
     _wheel_attr, _wheel_label, _wheel_bounds = "radius", "radius", (1e-4, 1000.0)
     _has_continuity = False
 
+    def _candidates(self, context):
+        # Unlike Corner Fill/Bridge Edges, Fillet's whole point is to pick an
+        # edge that already coincides with another, so it must not be hidden
+        # as "already shared" the way surface_edges() does by default.
+        return surface_edges(context, free_only=False)
+
     def _compute(self, sources, meta, settings):
         net, orders, self._info = compute_fillet(sources, meta, settings)
         return net, orders
