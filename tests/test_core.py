@@ -683,6 +683,17 @@ def test_extend_length_handle():
         assert abs(np.linalg.norm(direction) - 1) < 1e-12
 
 
+def test_offset_distance_handle():
+    from core.offset import distance_handle, offset_net
+    P = _poly_patch(0, 0)
+    base, normal = distance_handle(P, (6, 6))
+    assert abs(np.linalg.norm(normal) - 1) < 1e-12 and normal[2] > 0
+    for d in (0.15, -0.1):
+        Q, o, err = offset_net(P, (6, 6), d)
+        mid = nurbs.eval_points(Q, o, [0.5], [0.5])[0]
+        assert np.linalg.norm(mid - (base + d * normal)) < max(2 * err, 1e-6), (d, err)
+
+
 def test_refine_keeps_shape():
     from core.fair import refine_curve, refine_net
     for n, k in ((4, 4), (6, 4), (8, 3), (9, 4)):

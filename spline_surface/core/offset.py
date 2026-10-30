@@ -25,6 +25,14 @@ def _normals(net, orders, U, V):
     return N
 
 
+def distance_handle(net, orders):
+    """(base, unit normal) at the middle of the patch: offset_net moves that
+    point to base + distance * normal."""
+    P = np.asarray(net, dtype=float)
+    base = eval_points(P, orders, [0.5], [0.5])[0]
+    return base, _normals(P, orders, np.array([0.5]), np.array([0.5]))[0]
+
+
 def offset_net(net, orders, distance, refine=2):
     """Net of the surface offset by `distance` along cross(S_u, S_v).
 
