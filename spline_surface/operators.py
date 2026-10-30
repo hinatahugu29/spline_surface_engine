@@ -1247,6 +1247,75 @@ class SS_OT_to_mesh(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def _arc_points(radius, angle_deg, segments):
+    """Bezier (point, handle_left, handle_right) triples tracing a circular
+    arc of `angle_deg` degrees and `radius`, centred at the origin in the XY
+    plane, starting at angle 0. Handles are exact (not AUTO), so the curve
+    is a true circular arc rather than an approximation of one."""
+    angle = np.radians(angle_deg)
+    theta = angle / segments
+    h = radius * 4.0 / 3.0 * np.tan(theta / 4.0)
+    pts = []
+    for i in range(segments + 1):
+        a = angle * i / segments
+        co = np.array([radius * np.cos(a), radius * np.sin(a), 0.0])
+        tangent = np.array([-np.sin(a), np.cos(a), 0.0])
+        pts.append((co, co - h * tangent, co + h * tangent))
+    return pts
+
+
+class SS_OT_add_boundary_curve(bpy.types.Operator):
+    bl_idname = "spline_surface.add_boundary_curve"
+    bl_label = "Add Boundary Curve"
+    bl_description = ("Add a straight line or circular arc at the 3D cursor, sized for use "
+                      "as a patch boundary (Coons, Loft, Curve Network...)")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    shape: bpy.props.EnumProperty(
+        name="Shape", default='LINE',
+        items=[('LINE', "Line", "Straight line"),
+               ('ARC', "Arc", "Circular arc; set Angle to 180 for a half circle")])
+    length: bpy.props.FloatProperty(name="Length", default=2.0, min=0.001, unit='LENGTH',
+                                    description="Line shape only")
+    radius: bpy.props.FloatProperty(name="Radius", default=1.0, min=0.001, unit='LENGTH',
+                                    description="Arc shape only")
+    angle: bpy.props.FloatProperty(name="Angle", default=90.0, min=1.0, max=359.0,
+                                   subtype='FACTOR', description="Arc shape only, in degrees")
+    segments: bpy.props.IntProperty(name="Segments", default=1, min=1, max=8,
+                                    description="Arc shape only: Bezier segments (more for a "
+                                                "large angle)")
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT'
+
+    def execute(self, context):
+        if self.shape == 'LINE':
+            pts = [(np.array([-self.length / 2.0, 0.0, 0.0]), None, None),
+                  (np.array([self.length / 2.0, 0.0, 0.0]), None, None)]
+            handle_type = 'VECTOR'
+        else:
+            pts = _arc_points(self.radius, self.angle, self.segments)
+            handle_type = 'FREE'
+        cu = bpy.data.curves.new("BoundaryCurve", 'CURVE')
+        cu.dimensions = '3D'
+        sp = cu.splines.new('BEZIER')
+        sp.bezier_points.add(len(pts) - 1)
+        origin = np.array(context.scene.cursor.location)
+        for bp, (co, hl, hr) in zip(sp.bezier_points, pts):
+            bp.co = co + origin
+            if handle_type == 'VECTOR':
+                bp.handle_left_type = bp.handle_right_type = 'VECTOR'
+            else:
+                bp.handle_left_type = bp.handle_right_type = 'FREE'
+                bp.handle_left = hl + origin
+                bp.handle_right = hr + origin
+        ob = bpy.data.objects.new(cu.name, cu)
+        context.collection.objects.link(ob)
+        _make_active(context, ob)
+        return {'FINISHED'}
+
+
 class SS_OT_add_curve_grid(bpy.types.Operator):
     bl_idname = "spline_surface.add_curve_grid"
     bl_label = "Add Curve Grid"
@@ -1456,8 +1525,8 @@ class SS_OT_add_patch(bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (SS_OT_add_patch, SS_OT_coons, SS_OT_loft, SS_OT_snap_ends, SS_OT_regenerate,
-           SS_OT_extend_edge, SS_OT_corner_fill, SS_OT_bridge_edges,
+classes = (SS_OT_add_patch, SS_OT_add_boundary_curve, SS_OT_coons, SS_OT_loft, SS_OT_snap_ends,
+           SS_OT_regenerate, SS_OT_extend_edge, SS_OT_corner_fill, SS_OT_bridge_edges,
            SS_OT_fill_hole, SS_OT_offset_surface, SS_OT_add_curve_grid,
            SS_OT_curve_network,
            SS_OT_match_edge, SS_OT_check_continuity, SS_OT_to_mesh)

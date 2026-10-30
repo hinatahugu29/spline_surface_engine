@@ -101,7 +101,9 @@ class SS_PT_create(_SubPanel, bpy.types.Panel):
         layout = self.layout
         layout.operator("spline_surface.add_patch", icon='SURFACE_NSURFACE')
         col = layout.column(align=True)
-        col.label(text="From curves:")
+        row = col.row(align=True)
+        row.label(text="From curves:")
+        row.operator("spline_surface.add_boundary_curve", icon='ADD', text="")
         row = col.row(align=True)
         row.operator("spline_surface.coons", icon='MOD_MESHDEFORM', text="Coons")
         row.operator("spline_surface.loft", icon='MOD_SCREW', text="Loft")

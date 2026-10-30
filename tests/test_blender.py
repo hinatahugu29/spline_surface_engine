@@ -346,6 +346,25 @@ def run():
         g = grade(measure(na, nb, ea, eb, rev, oa, ob_))
         print("primitive", shape, g)
         assert g == 'G2', g
+    # Add Boundary Curve: a true straight line and a true circular arc,
+    # usable directly as patch boundaries.
+    from spline_surface.bridge.read_curves import read_polyline
+    bpy.context.scene.cursor.location = (10, 20, 0)
+    assert bpy.ops.spline_surface.add_boundary_curve(shape='LINE', length=4.0) == {'FINISHED'}
+    line = bpy.context.active_object
+    dg = bpy.context.evaluated_depsgraph_get()
+    pl = read_polyline(line, dg, 32)
+    d = pl[-1] - pl[0]
+    straight = np.linalg.norm(np.cross(pl - pl[0], d / np.linalg.norm(d)), axis=1).max()
+    print("boundary line length", np.linalg.norm(d), "straightness", straight)
+    assert abs(np.linalg.norm(d) - 4.0) < 1e-5 and straight < 1e-6
+    assert bpy.ops.spline_surface.add_boundary_curve(
+        shape='ARC', radius=2.0, angle=180.0, segments=2) == {'FINISHED'}
+    arc = bpy.context.active_object
+    pl = read_polyline(arc, dg, 64)
+    radii = np.linalg.norm(pl - np.array(bpy.context.scene.cursor.location), axis=1)
+    print("boundary arc radius range", radii.min(), radii.max())
+    assert abs(radii.max() - 2.0) < 0.01 and radii.min() > 2.0 - 0.02
     # corner fill: two extensions off adjacent edges leave a notch; fill it G2
     bpy.context.scene.cursor.location = (0, 30, 0)
     bpy.ops.spline_surface.add_patch(shape='DOME', points_u=6, points_v=10)
