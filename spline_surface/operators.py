@@ -71,9 +71,36 @@ def compute_corner(sources, meta, settings):
 
 def compute_fillet(sources, meta, settings):
     (Pa, oa), (Pb, ob) = world_net(sources[0]), world_net(sources[1])
-    size = max(np.ptp(Pa.reshape(-1, 3), axis=0).max(), np.ptp(Pb.reshape(-1, 3), axis=0).max())
     return fillet_net(Pa, oa, meta["edges"][0], Pb, ob, meta["edges"][1],
-                      meta["radius"], tol=settings.gap_tolerance * 0.1 * size + 1e-6)
+                      meta["radius"], tol=_seam_tolerance(Pa, Pb, settings))
+
+
+def find_fillet_seams(context, settings):
+    """{(obj_a name, obj_b name): (edge_a, edge_b, polyline)} for every pair of
+    visible patches that share a coincident edge (the only valid Fillet input).
+
+    Uses the same curve-sampling match as Check Continuity, at the same
+    tolerance, so a seam offered here is one Check Continuity would call G0.
+    """
+    nets = {}
+    for ob in context.visible_objects:
+        if ob.type != 'SURFACE':
+            continue
+        try:
+            nets[ob.name] = world_net(ob)
+        except ValueError:
+            continue
+    names = sorted(nets)
+    seams = {}
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            (Pa, oa), (Pb, ob_) = nets[a], nets[b]
+            shared = find_shared_edge(Pa, Pb, _seam_tolerance(Pa, Pb, settings), oa, ob_)
+            if shared is None:
+                continue
+            ea, eb, _, _ = shared
+            seams[(a, b)] = (ea, eb, edge_polyline(Pa, oa, ea, 24))
+    return seams
 
 
 def compute_fill(meta, settings):
@@ -673,9 +700,6 @@ class _EdgePairPicker(pick.ModalPicker):
     # loop; Corner Fill joins two patches meeting at a corner, where that
     # has no meaning, so it keeps the plain "different patch" rule.
     _allow_same_patch = False
-    # The wheel adjusts one scalar property; Fillet swaps tension for radius.
-    _wheel_attr, _wheel_label, _wheel_bounds = "tension", "tension", (0.05, 3.0)
-    _has_continuity = True
 
     def _candidates(self, context):
         return surface_edges(context)
@@ -701,10 +725,9 @@ class _EdgePairPicker(pick.ModalPicker):
 
     def _header(self, context):
         step = "click the first edge" if self._first is None else "click the second edge"
-        cont = "   C: %s" % self.continuity if self._has_continuity else ""
         context.area.header_text_set(
-            self._title + ": %s%s   Wheel: %s %.3g   Esc/RMB: cancel"
-            % (step, cont, self._wheel_label, getattr(self, self._wheel_attr)))
+            self._title + ": %s   C: %s   Wheel: tension %.2f   Esc/RMB: cancel"
+            % (step, self.continuity, self.tension))
 
     def _label(self):
         return pick.edge_label(self._hover, self._edges[self._hover]) if self._hover else None
@@ -749,11 +772,10 @@ class _EdgePairPicker(pick.ModalPicker):
                 self._update_preview(context)
         elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'} and event.value == 'PRESS':
             f = 1.1 if event.type == 'WHEELUPMOUSE' else 1 / 1.1
-            lo, hi = self._wheel_bounds
-            setattr(self, self._wheel_attr, min(hi, max(lo, getattr(self, self._wheel_attr) * f)))
+            self.tension = min(3.0, max(0.05, self.tension * f))
             self._header(context)
             self._update_preview(context)
-        elif self._has_continuity and event.type == 'C' and event.value == 'PRESS':
+        elif event.type == 'C' and event.value == 'PRESS':
             order = ['G0', 'G1', 'G2']
             self.continuity = order[(order.index(self.continuity) + 1) % 3]
             self._header(context)
@@ -914,12 +936,11 @@ class SS_OT_bridge_edges(_EdgePairPicker, bpy.types.Operator):
         return super().modal(context, event)
 
 
-class SS_OT_fillet(_EdgePairPicker, bpy.types.Operator):
+class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
     bl_idname = "spline_surface.fillet"
     bl_label = "Fillet"
-    bl_description = ("Round the crease between two coincident patch edges (same position, "
-                      "different surface tangents) with a given radius. Click the two edges "
-                      "in the viewport")
+    bl_description = ("Round the crease at a seam where two patch edges already coincide "
+                      "(e.g. after Match Edge). Click the seam, then set the radius")
     bl_options = {'REGISTER', 'UNDO'}
 
     source_a: bpy.props.StringProperty(name="Patch A")
@@ -930,32 +951,127 @@ class SS_OT_fillet(_EdgePairPicker, bpy.types.Operator):
         name="Radius", default=0.1, min=1e-4, max=1000.0,
         description="Rolling-ball radius of the fillet")
 
-    _method, _suffix, _title = "fillet", "_fillet", "Fillet"
-    _wheel_attr, _wheel_label, _wheel_bounds = "radius", "radius", (1e-4, 1000.0)
-    _has_continuity = False
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT'
 
-    def _candidates(self, context):
-        # Unlike Corner Fill/Bridge Edges, Fillet's whole point is to pick an
-        # edge that already coincides with another, so it must not be hidden
-        # as "already shared" the way surface_edges() does by default.
-        return surface_edges(context, free_only=False)
+    def invoke(self, context, event):
+        if context.area is None or context.area.type != 'VIEW_3D':
+            return self.execute(context)
+        settings = context.scene.spline_surface
+        self._seams = find_fillet_seams(context, settings)
+        if not self._seams:
+            self.report({'ERROR'}, "No coincident edges between visible patches "
+                                   "(use Match Edge first, or raise Gap Tolerance)")
+            return {'CANCELLED'}
+        self._hover = None
+        self._picked = None  # (a, b) key of self._seams once clicked
+        self._preview = []
+        self.radius = 0.1
+        self._picker = pick.Overlay(context, self._draw_lines, self._label)
+        context.window_manager.modal_handler_add(self)
+        self._header(context)
+        return {'RUNNING_MODAL'}
 
-    def _compute(self, sources, meta, settings):
-        net, orders, self._info = compute_fillet(sources, meta, settings)
-        return net, orders
+    def _header(self, context):
+        if self._picked is None:
+            context.area.header_text_set(
+                "Fillet: click the seam to round   Esc/RMB: cancel")
+        else:
+            context.area.header_text_set(
+                "Fillet: Wheel: radius %.4g   Enter/click: confirm   Esc/RMB: cancel"
+                % self.radius)
+
+    def _label(self):
+        if self._picked is None and self._hover is not None:
+            a, b = self._hover
+            ea, eb, pts = self._seams[self._hover]
+            return "%s(%s) | %s(%s)" % (a, ea, b, eb), pts[len(pts) // 2]
+        return None
+
+    def _draw_lines(self):
+        lines = [(v[2], pick.COLOR_EDGE, 2.0) for k, v in self._seams.items()
+                 if k not in (self._hover, self._picked)]
+        key = self._picked or self._hover
+        if key is not None:
+            color = pick.COLOR_SELECTED if self._picked else pick.COLOR_HOVER
+            lines.append((self._seams[key][2], color, 4.0))
+        lines += [(pts, pick.COLOR_PREVIEW, 1.0) for pts in self._preview]
+        return lines
 
     def _meta(self):
-        return {"method": self._method, "sources": [self.source_a, self.source_b],
+        return {"method": "fillet", "sources": [self.source_a, self.source_b],
                 "edges": [self.edge_a, self.edge_b], "radius": self.radius}
 
+    def _update_preview(self, context):
+        self._preview = []
+        if self._picked is not None:
+            try:
+                net, orders, self._info = compute_fillet(
+                    [bpy.data.objects[self.source_a], bpy.data.objects[self.source_b]],
+                    self._meta(), context.scene.spline_surface)
+                self._preview = iso_lines(net, orders)
+            except Exception:
+                pass  # preview-only
+        context.area.tag_redraw()
+
+    def modal(self, context, event):
+        if self._picked is None:
+            if event.type == 'MOUSEMOVE':
+                hover = pick.nearest_polyline(
+                    context, {k: v[2] for k, v in self._seams.items()},
+                    (event.mouse_region_x, event.mouse_region_y))
+                if hover != self._hover:
+                    self._hover = hover
+                    context.area.tag_redraw()
+            elif event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+                if self._hover is None:
+                    return {'RUNNING_MODAL'}
+                self._picked = self._hover
+                a, b = self._picked
+                ea, eb, _ = self._seams[self._picked]
+                self.source_a, self.edge_a, self.source_b, self.edge_b = a, ea, b, eb
+                self._header(context)
+                self._update_preview(context)
+            elif self._common_modal(context, event):
+                return self._common_result
+        else:
+            if event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'} and event.value == 'PRESS':
+                f = 1.1 if event.type == 'WHEELUPMOUSE' else 1 / 1.1
+                self.radius = min(1000.0, max(1e-4, self.radius * f))
+                self._header(context)
+                self._update_preview(context)
+            elif event.type in {'LEFTMOUSE', 'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS':
+                self._finish(context)
+                return self.execute(context)
+            elif self._common_modal(context, event):
+                return self._common_result
+        return {'RUNNING_MODAL'}
+
     def execute(self, context):
-        self._info = None
-        result = super().execute(context)
-        if result == {'FINISHED'} and self._info is not None:
-            self.report({'INFO'}, "fillet reach %.3g-%.3g, max dihedral angle %.1f deg"
-                        % (self._info["reach"].min(), self._info["reach"].max(),
-                           self._info["max_angle"]))
-        return result
+        settings = context.scene.spline_surface
+        meta = self._meta()
+        try:
+            sources = [bpy.data.objects[n] for n in meta["sources"]]
+        except KeyError:
+            self.report({'ERROR'}, "Pick a seam first")
+            return {'CANCELLED'}
+        try:
+            net, orders, info = compute_fillet(sources, meta, settings)
+            name = sources[0].name + "_fillet"
+            cu = build_surface_data(name, net, settings.resolution, orders)
+        except ValueError as e:
+            self.report({'ERROR'}, str(e))
+            return {'CANCELLED'}
+        for mat in zebra.real_materials(sources[0]):
+            cu.materials.append(mat)
+        ob = bpy.data.objects.new(name, cu)
+        context.collection.objects.link(ob)
+        store_meta(ob, meta)
+        _make_active(context, ob)
+        self.report({'INFO'}, "fillet reach %.3g-%.3g, max dihedral angle %.1f deg"
+                    % (info["reach"].min(), info["reach"].max(), info["max_angle"]))
+        return {'FINISHED'}
 
 
 class SS_OT_fill_hole(pick.ModalPicker, bpy.types.Operator):
