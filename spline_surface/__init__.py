@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Spline Surface",
     "author": "hinata",
-    "version": (0, 45, 0),
+    "version": (0, 46, 0),
     "blender": (5, 0, 0),
     "location": "View3D > Sidebar > Spline Surface",
     "description": "Build smooth NURBS patches from boundary curves",
@@ -10,12 +10,12 @@ bl_info = {
 
 import bpy  # noqa: E402
 
-from . import blueprints, cage, controlmesh, ctrlpoints, curvature, curvetools, filleting, flanging, gizmos, linked, live, netcheck, operators, panelgap, presetting, projecting, pulling, seams, shaping, splitting, symmetry, ui, zebra  # noqa: E402
+from . import blueprints, cage, controlmesh, ctrlpoints, curvature, curvetools, filleting, flanging, gizmos, linked, live, netcheck, operators, panelgap, presetting, projecting, pulling, seams, shaping, splitting, trimming, symmetry, ui, zebra  # noqa: E402
 
 classes = (ui.classes + blueprints.classes + operators.classes + filleting.classes + flanging.classes + live.classes + linked.classes
            + cage.classes + symmetry.classes + splitting.classes + seams.classes + ctrlpoints.classes
            + curvature.classes + netcheck.classes + curvetools.classes + pulling.classes + controlmesh.classes
-           + panelgap.classes + presetting.classes + projecting.classes + shaping.classes + zebra.classes + gizmos.classes)
+           + panelgap.classes + presetting.classes + projecting.classes + trimming.classes + shaping.classes + zebra.classes + gizmos.classes)
 
 
 def _add_menu(self, context):

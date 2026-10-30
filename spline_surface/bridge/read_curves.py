@@ -54,3 +54,32 @@ def read_polyline(obj, depsgraph, samples=32):
     pts = np.array(local, dtype=float)
     M = np.array(obj.matrix_world)
     return pts @ M[:3, :3].T + M[:3, 3]
+
+
+def read_loop(obj, depsgraph, samples=16):
+    """World-space (k, 3) points around a closed curve, the first point not repeated.
+
+    A cyclic Bezier spline is closed by its last segment; any other curve is
+    taken as drawn and closed by joining its ends.
+    """
+    if obj.type != 'CURVE' or not obj.data.splines:
+        raise ValueError("%s: not a curve" % obj.name)
+    spline = obj.data.splines[0]
+    if spline.type == 'BEZIER':
+        pts = spline.bezier_points
+        pairs = list(zip(pts[:-1], pts[1:])) + ([(pts[-1], pts[0])] if spline.use_cyclic_u else [])
+        local = []
+        for a, b in pairs:
+            seg = interpolate_bezier(a.co, a.handle_right, b.handle_left, b.co, samples + 1)
+            local.extend(seg if not local else seg[1:])
+        local = [tuple(p) for p in local]
+    else:
+        local = _evaluated_polyline(obj, depsgraph)
+    if len(local) < 3:
+        raise ValueError("%s: too few points" % obj.name)
+    arr = np.array(local, dtype=float)
+    M = np.array(obj.matrix_world)
+    arr = arr @ M[:3, :3].T + M[:3, 3]
+    if np.linalg.norm(arr[0] - arr[-1]) < 1e-6 * max(np.ptp(arr, axis=0).max(), 1e-9):
+        arr = arr[:-1]
+    return arr

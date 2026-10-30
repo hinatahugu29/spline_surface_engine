@@ -1388,6 +1388,22 @@ def run():
     assert abs(pl[0][0] + 0.6) < 1e-3 and abs(pl[-1][0] - 0.6) < 1e-3   # ends keep their x (along Z)
     assert pl[:, 2].max() < 3.0 and pl[:, 2].min() > -1.0
 
+    # ---- v0.46: Trim to Mesh (prototype) cuts a hole along a closed curve
+    bpy.context.scene.cursor.location = (0, 1100, 0)
+    bpy.ops.spline_surface.add_patch(shape='DOME', points_u=6, points_v=6, size_x=2.0, size_y=2.0)
+    cap = bpy.context.active_object
+    circ = bezier_curve("hole_loop", [(0.4, 1100.0, 3.0), (0.0, 1100.4, 3.0), (-0.4, 1100.0, 3.0),
+                                      (0.0, 1099.6, 3.0)])
+    circ.data.splines[0].use_cyclic_u = True
+    select([circ, cap])
+    assert bpy.ops.spline_surface.trim_mesh(mode='Z', resolution=40, points=48) == {'FINISHED'}
+    cut = bpy.context.active_object
+    full_faces = 40 * 40
+    xy = np.array([(v.co.x, v.co.y - 1100.0) for v in cut.data.vertices])
+    r = np.hypot(xy[:, 0], xy[:, 1])
+    print("trim: faces", len(cut.data.polygons), "of", full_faces, "closest vertex to the centre", r.min())
+    assert len(cut.data.polygons) < full_faces - 20 and r.min() > 0.3     # the hole is open
+    assert r.min() < 0.42                                                  # the ring sits on the outline
     spline_surface.unregister()
     print("ALL OK")
 

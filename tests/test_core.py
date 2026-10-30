@@ -1189,6 +1189,36 @@ def test_project_points():
     assert abs(q[0] - (0.6 - q[2])) < 1e-6 and 0.0 < q[0] < 1.0
 
 
+def test_trim_grid():
+    from core.trim import trim_grid
+    g = np.linspace(0, 1, 6)
+    U, V = g[:, None] + 0 * g, 0 * g[:, None] + g
+    net = np.stack([U, V, 0.3 * (1 - (2 * U - 1) ** 2) * (1 - (2 * V - 1) ** 2)], -1)
+    o = (6, 6)
+
+    def area(q, uv):
+        a, b, c, d = (uv[q[:, i]] for i in range(4))
+        cross = lambda p, r: p[:, 0] * r[:, 1] - r[:, 0] * p[:, 1]
+        return 0.5 * (cross(a, b) + cross(b, c) + cross(c, d) + cross(d, a))
+
+    rect = np.array([[0.3, 0.4], [0.7, 0.4], [0.7, 0.6], [0.3, 0.6]])
+    verts, quads, uv = trim_grid(net, o, [rect], 48, 48)
+    A = area(quads, uv)
+    assert abs(A.sum() - (1 - 0.4 * 0.2)) < 1e-9 and A.min() > 0          # exact hole, no flipped cells
+    on_edge = (np.abs(uv[:, 0] - 0.3) < 1e-9) | (np.abs(uv[:, 0] - 0.7) < 1e-9)         | (np.abs(uv[:, 1] - 0.4) < 1e-9) | (np.abs(uv[:, 1] - 0.6) < 1e-9)
+    assert on_edge.sum() > 40                                              # the ring sits on the outline
+    assert not np.any((uv[:, 0] > 0.3 + 1e-9) & (uv[:, 0] < 0.7 - 1e-9)
+                      & (uv[:, 1] > 0.4 + 1e-9) & (uv[:, 1] < 0.6 - 1e-9))
+    t = np.linspace(0, 2 * np.pi, 40, endpoint=False)
+    ellipse = np.stack([0.5 + 0.2 * np.cos(t), 0.5 + 0.15 * np.sin(t)], -1)
+    verts, quads, uv = trim_grid(net, o, [ellipse], 48, 48)
+    A = area(quads, uv)
+    assert A.min() > 0
+    assert abs(A.sum() - (1 - np.pi * 0.2 * 0.15)) < 0.01                  # the 40-gon is a touch smaller
+    two = trim_grid(net, o, [rect, ellipse + np.array([0.3, 0.3])], 48, 48)   # two holes
+    assert len(two[1]) > 0 and not np.any(np.isnan(two[0]))
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

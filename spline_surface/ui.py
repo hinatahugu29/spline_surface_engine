@@ -144,6 +144,7 @@ class SS_PT_create(_SubPanel, bpy.types.Panel):
             col.label(text=line, icon='CHECKMARK' if line.endswith("ready") else
                       ('NONE' if i == 0 else 'ERROR'))
         col.operator("spline_surface.project_curve", icon='MOD_SHRINKWRAP')
+        col.operator("spline_surface.trim_mesh", icon='MOD_BOOLEAN')
         row = col.row(align=True)
         row.operator("spline_surface.move_crossing", icon='TRANSFORM_ORIGINS')
         row.operator("spline_surface.fair_curves", icon='MOD_SMOOTH')
