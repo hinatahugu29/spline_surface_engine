@@ -21,7 +21,7 @@ import spline_surface  # noqa: E402
 from spline_surface.bridge.write_surface import build_surface_data  # noqa: E402
 from spline_surface.core.continuity import find_shared_edge, grade, measure  # noqa: E402
 from spline_surface.filleting import find_fillet_seams  # noqa: E402
-from spline_surface.operators import store_meta, world_net  # noqa: E402
+from spline_surface.operators import edge_polyline, store_meta, world_net  # noqa: E402
 from spline_surface.recipe import META_KEY  # noqa: E402
 
 extra = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
@@ -91,6 +91,29 @@ for o in bpy.context.selected_objects:
 vl.objects.active = bpy.data.objects["Hood"]
 bpy.data.objects["Hood"].select_set(True)
 step("extend nose", bpy.ops.spline_surface.extend_edge(edge='U1', length=0.4, continuity='G2'))
+vl.update()
+
+# Front corner: the nose side, the fender's front edge (fillet + wall) and a
+# closing curve from the fender's bottom to the nose tip bound a four-sided hole.
+cu = bpy.data.curves.new("CornerEdge", 'CURVE')
+cu.dimensions = '3D'
+sp = cu.splines.new('BEZIER')
+sp.bezier_points.add(2)
+def _end(name, edge, last):
+    net, orders = world_net(bpy.data.objects[name])
+    pl = edge_polyline(net, orders, edge, 8)
+    return tuple(pl[-1] if last else pl[0])
+
+
+for bp, co in zip(sp.bezier_points, [_end("Fender", 'U1', True), (1.02, 1.75, -0.32),
+                                     _end("Hood_ext", 'U0', True)]):
+    bp.co = co
+    bp.handle_left_type = bp.handle_right_type = 'AUTO'
+corner_edge = bpy.data.objects.new("CornerEdge", cu)
+bpy.context.collection.objects.link(corner_edge)
+vl.update()
+picks = "Hood_ext:U0;Fender_fillet:U1;Fender:U1;CornerEdge:CURVE"
+step("fill front corner", bpy.ops.spline_surface.fill_hole(picks=picks, continuity=os.environ.get('FC', 'G2'), layout='GRID', tension=float(os.environ.get('FT', '1.0'))))
 vl.update()
 
 group = [o for o in bpy.data.objects if META_KEY in o]
