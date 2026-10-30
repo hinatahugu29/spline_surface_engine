@@ -96,6 +96,14 @@ def run():
     assert bpy.ops.spline_surface.zebra_toggle() == {'FINISHED'}
     assert patch.data.materials[0].name == "SS_Zebra"
     bpy.context.scene.spline_surface.zebra_axis = 'X'
+    # stripe width and softness drive the map-range thresholds: white where sin(x) > cos(pi * width)
+    import math
+    ss = bpy.context.scene.spline_surface
+    ss.zebra_width, ss.zebra_softness = 0.25, 0.1
+    rng = bpy.data.materials["SS_Zebra"].node_tree.nodes["range"].inputs
+    assert abs(rng["From Min"].default_value - (math.cos(math.pi * 0.25) - 0.1)) < 1e-6
+    assert abs(rng["From Max"].default_value - (math.cos(math.pi * 0.25) + 0.1)) < 1e-4
+    ss.zebra_width, ss.zebra_softness = 0.5, 0.05
     assert bpy.ops.spline_surface.zebra_toggle() == {'FINISHED'}
     assert len(patch.data.materials) == 0
 

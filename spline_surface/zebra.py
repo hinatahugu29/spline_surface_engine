@@ -6,6 +6,7 @@ changes in stripe width reveal curvature (G2) jumps. Visible in Material
 Preview / Rendered shading.
 """
 import json
+import math
 
 import bpy
 
@@ -16,9 +17,10 @@ AXES = {'X': (1, 0, 0), 'Y': (0, 1, 0), 'Z': (0, 0, 1)}
 
 def _get_material():
     mat = bpy.data.materials.get(MAT_NAME)
-    if mat is not None:
+    if mat is not None and "range" in mat.node_tree.nodes:
         return mat
-    mat = bpy.data.materials.new(MAT_NAME)
+    if mat is None:
+        mat = bpy.data.materials.new(MAT_NAME)
     mat.use_nodes = True
     nt = mat.node_tree
     nt.nodes.clear()
@@ -36,9 +38,11 @@ def _get_material():
     freq.name = "frequency"
     sine = nt.nodes.new("ShaderNodeMath")
     sine.operation = 'SINE'
-    step = nt.nodes.new("ShaderNodeMath")
-    step.operation = 'GREATER_THAN'
-    step.inputs[1].default_value = 0.0
+    step = nt.nodes.new("ShaderNodeMapRange")
+    step.name = "range"
+    step.clamp = True
+    step.inputs["To Min"].default_value = 0.0
+    step.inputs["To Max"].default_value = 1.0
     emit = nt.nodes.new("ShaderNodeEmission")
     out = nt.nodes.new("ShaderNodeOutputMaterial")
     link = nt.links.new
@@ -49,7 +53,7 @@ def _get_material():
     link(dot.outputs["Value"], freq.inputs[0])
     link(freq.outputs[0], sine.inputs[0])
     link(sine.outputs[0], step.inputs[0])
-    link(step.outputs[0], emit.inputs["Color"])
+    link(step.outputs["Result"], emit.inputs["Color"])
     link(emit.outputs[0], out.inputs["Surface"])
     for k, node in enumerate((geo, neg, refl, dot, freq, sine, step, emit, out)):
         node.location = (k * 180, 0)
@@ -63,6 +67,13 @@ def update_material(settings):
     nodes = mat.node_tree.nodes
     nodes["axis"].inputs[1].default_value = AXES[settings.zebra_axis]
     nodes["frequency"].inputs[1].default_value = settings.zebra_frequency
+    # sin(x) > t is white for a share `width` of each period when t = cos(pi * width);
+    # a short ramp around t softens the edges so thin stripes do not alias
+    t = math.cos(math.pi * settings.zebra_width)
+    soft = settings.zebra_softness
+    rng = nodes["range"].inputs
+    rng["From Min"].default_value = t - soft
+    rng["From Max"].default_value = t + soft + 1e-6
 
 
 def real_materials(ob):

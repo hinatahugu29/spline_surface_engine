@@ -53,6 +53,12 @@ class SS_Settings(bpy.types.PropertyGroup):
                     "the same density (unwelded To Mesh: segments per patch)")
     zebra_frequency: bpy.props.FloatProperty(
         name="Stripes", default=40.0, min=1.0, max=500.0, update=_zebra_update)
+    zebra_width: bpy.props.FloatProperty(
+        name="Width", default=0.5, min=0.05, max=0.95, update=_zebra_update,
+        description="Share of each period that is light (0.5: equal light and dark)")
+    zebra_softness: bpy.props.FloatProperty(
+        name="Soft", default=0.05, min=0.0, max=1.0, update=_zebra_update,
+        description="How soft the stripe edges are (0: hard edges)")
     zebra_axis: bpy.props.EnumProperty(
         name="Axis", items=[(k, k, "") for k in zebra.AXES], default='Z',
         update=_zebra_update)
@@ -246,6 +252,9 @@ class SS_PT_inspect(_SubPanel, bpy.types.Panel):
         row = layout.row(align=True)
         row.prop(s, "zebra_frequency")
         row.prop(s, "zebra_axis", text="")
+        row = layout.row(align=True)
+        row.prop(s, "zebra_width")
+        row.prop(s, "zebra_softness")
         from . import seams
         on = seams._state["handle"] is not None
         layout.operator("spline_surface.seam_colors", icon='COLORSET_03_VEC', depress=on,
