@@ -23,6 +23,19 @@ ENVELOPE = (1.0, 0.55, 0.15, 1.0)
 _state = {"handle": None, "comb": False, "map": False, "dirty": False,
           "teeth": [], "envelopes": [], "tris": None, "kmax": 0.0, "limit": 0.0}
 
+# Per-patch results keyed by the patch's own numbers: moving one patch only
+# recomputes that patch. Entries not used by the latest refresh are dropped.
+_cache = {}
+_used = set()
+
+
+def _cached(kind, net, orders, params, fn):
+    key = (kind, tuple(orders), params, net.shape, net.tobytes())
+    _used.add(key)
+    if key not in _cache:
+        _cache[key] = fn(net, orders)
+    return _cache[key]
+
 
 def _chosen(context):
     visible = [ob for ob in context.visible_objects if ob.type in {'SURFACE', 'CURVE'}]
@@ -69,6 +82,7 @@ def _robust_max(values):
 
 def refresh(context):
     s = context.scene.spline_surface
+    _used.clear()
     obs = _chosen(context)
     patches = _patches(obs)
     curve_combs = _curve_combs(obs, context.evaluated_depsgraph_get()) if _state["comb"] else []
@@ -78,7 +92,8 @@ def refresh(context):
     _state["teeth"], _state["envelopes"], _state["tris"] = [], [], None
     if _state["comb"] and (patches or curve_combs):
         dirs = ('U', 'V') if s.comb_direction == 'BOTH' else (s.comb_direction,)
-        combs = [comb(n, o, d, s.comb_count) for n, o in patches for d in dirs]
+        combs = [_cached('comb', n, o, (d, s.comb_count), lambda n, o, d=d: comb(n, o, d, s.comb_count))
+                 for n, o in patches for d in dirs]
         combs += [(P[None], k[None]) for P, k in curve_combs]
         kmax = _robust_max([np.linalg.norm(k, axis=2) for _, k in combs])
         _state["kmax"] = kmax
@@ -88,7 +103,7 @@ def refresh(context):
             _state["envelopes"] += [row.astype(np.float32) for row in tips]
             _state["teeth"].append(np.stack([P, tips], axis=2).reshape(-1, 3).astype(np.float32))
     if _state["map"] and patches:
-        grids = [surface_curvature(n, o) for n, o in patches]
+        grids = [_cached('map', n, o, (), surface_curvature) for n, o in patches]
         idx = 2 if s.curvature_type == 'GAUSS' else 3
         limit = _robust_max([g[idx] for g in grids])
         _state["limit"] = limit
@@ -106,6 +121,8 @@ def refresh(context):
         pos = np.concatenate([p.reshape(-1, 3) for p in pos]).astype(np.float32)
         col = np.concatenate([c.reshape(-1, 4) for c in col]).astype(np.float32)
         _state["tris"] = (pos, col)
+    for key in [k for k in _cache if k not in _used]:
+        del _cache[key]
     _state["dirty"] = False
     for win in context.window_manager.windows:
         for area in win.screen.areas:
@@ -223,5 +240,6 @@ def unregister():
         bpy.types.SpaceView3D.draw_handler_remove(_state["handle"], 'WINDOW')
         _state["handle"] = None
     _state["comb"] = _state["map"] = False
+    _cache.clear()
     if _on_depsgraph in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph)
