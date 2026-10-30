@@ -160,6 +160,7 @@ class SS_PT_grow(_SubPanel, bpy.types.Panel):
         row.operator("spline_surface.corner_fill", icon='MOD_TRIANGULATE')
         row.operator("spline_surface.fill_hole", icon='MOD_MESHDEFORM')
         col.operator("spline_surface.fillet", icon='MOD_BEVEL')
+        col.operator("spline_surface.flange", icon='MOD_SKIN')
         col.operator("spline_surface.split_patch", icon='MOD_EDGESPLIT')
         layout.operator("spline_surface.offset_surface", icon='MOD_OFFSET')
 

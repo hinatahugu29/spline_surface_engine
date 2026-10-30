@@ -8,7 +8,7 @@
 | 分類 | 機能 |
 |---|---|
 | 作る | Add Patch（Plane / Arc / Dome）、Line / Arc（Add Boundary Curve、境界用の直線・円弧）、Coons、Loft、Curve Network（＋ Add Curve Grid）、Snap Ends |
-| 伸ばす・つなぐ | Extend Edge、Bridge Edges、Match Edge（G0/G1/G2）、Corner Fill、Fill Hole（3辺以上、カーブ混在、G0 は平らなフタ）、Fillet（複数の継ぎ目、トリム、コーナーパッチ）、Split Patch、Offset Surface |
+| 伸ばす・つなぐ | Extend Edge、Bridge Edges、Match Edge（G0/G1/G2）、Corner Fill、Fill Hole（3辺以上、カーブ混在、G0 は平らなフタ）、Flange（辺から壁を立ち上げて折れ目を丸める）、Fillet（複数の継ぎ目、トリム、コーナーパッチ）、Split Patch、Offset Surface |
 | まとめて扱う | Live Update、Linked Edit、Edge Chain、Merge Patches、Cage、Mirror Group |
 | 面の内側の編集 | Soft Pull（起点：点／線／制御点、減衰5種、連続ストローク）、Control Mesh、Fair、Refine |
 | 確認 | Zebra、Seam Colors、Curvature Comb、Curvature Map、Control Points、Check Continuity（対応する辺の名前つき） |
@@ -71,7 +71,7 @@ v0.37〜v0.40 の実機確認は並行継続中。
 
 ### 第2段階 v0.5x 車体パネルを作る道具
 目的：車らしいパネルの「縁」と「付き方」を扱えるようにする。
-- **Flange / Return**（縁の折り返し）：Offset と Fillet の仕組みの組み合わせ。ドアやボンネットの見切りに必要
+- ~~Flange / Return~~ → v0.41 で完了（Return は壁の辺にもう一度 Flange）
 - **Panel Gap**（パネル間の隙間）：隣り合うパネルの縁を一定の隙間でそろえる。面の縁どうしの距離を測って表示するところから
 - **Presets**：ボンネット・ルーフ・ドア等の初期構成（境界カーブ＋面）をボタン一つで置く
 - **下絵配置の補助**：正面・側面・上面の画像を実寸で合わせる
@@ -90,6 +90,10 @@ v0.37〜v0.40 の実機確認は並行継続中。
 - 解析の拡充：Reflection Lines、継ぎ目全体の連続性レポート（G0/G1/G2 の一覧と問題箇所へのジャンプ）
 - To Mesh の品質：5角形以上の面をなくし、四角形主体のきれいなメッシュにする（サブディビジョンしても崩れない）
 - Blender Extensions への公開に向けて：マニュアルの整備、サンプル .blend、バージョンの扱い、エラー報告の導線
+
+## v0.41 Flange（縁の折り返し） ← 完了
+- 開いた辺から壁（`core.flange`、折る向きと角度と深さ）を立ち上げ、折れ目を Fillet で丸める（`spline_surface.flange`）。壁は新しいレシピ `flange` で、元の面に連動する。丸めた折れ目は通常の Fillet なので半径を後から変えられる
+- 制約：壁は元の辺の制御点ごとに折る向きを決めるまっすぐな帯（曲がった辺では近似）。2回目の折り返し（Return）は、壁の辺にもう一度 Flange をかける
 
 ## v0.40.3 Fill Hole の自由カーブの端の向き ← 完了
 - 基準モデルの穴埋めで、閉じ用カーブ側の継ぎ目の法線が最大 59° ずれていた原因を特定：カーブ辺は最小二乗でフィットされ、端の向きが自由だったため、カーブが隣の面の接平面に沿って出ていても、フィットで端が大きく傾いていた。`core.nurbs.fit_polyline_tangent` を追加し、`side_from_curve` で使用（端の向きを保つ）

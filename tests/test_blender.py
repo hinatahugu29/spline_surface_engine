@@ -1252,6 +1252,45 @@ def run():
     print("fair curves: shape changed", changed, "crossings drifted", drift)
     assert changed > 1e-3 and drift < 2e-2 and len(faired) == len(bumped)
 
+    # ---- v0.41: Flange folds a rounded wall off a patch edge
+    from spline_surface.operators import compute_flange  # noqa: F401
+    bpy.context.scene.cursor.location = (0, 700, 0)
+    bpy.ops.spline_surface.add_patch(shape='PLANE', points_u=5, points_v=5)
+    panel = bpy.context.active_object
+    vl.update()
+    edge_y = world_net(panel)[0][..., 1].max()
+    before_names = {o.name for o in bpy.data.objects}
+    assert bpy.ops.spline_surface.flange(source=panel.name, edge='V1', length=0.4, angle=90.0,
+                                         radius=0.08) == {'FINISHED'}
+    made = [o for o in bpy.data.objects if o.name not in before_names]
+    methods = sorted(json.loads(o[spline_surface.operators.META_KEY])["method"] for o in made)
+    print("flange made", [(o.name, json.loads(o[spline_surface.operators.META_KEY])["method"]) for o in made])
+    assert methods == ["blend", "fillet_trim"], methods
+    wall = next(o for o in made if json.loads(o[spline_surface.operators.META_KEY])["method"]
+                == "fillet_trim" and "_flange" in o.name)
+    wnet = world_net(wall)[0]
+    drop = wnet[..., 2].min()
+    print("flange wall bottom z", drop)
+    assert abs(drop - (-0.4)) < 1e-4, drop
+    # the wall hangs below the panel's edge, square to it
+    assert np.allclose(wnet[..., 1], edge_y, atol=1e-4)
+    # Return: a second flange off the free edge of the first wall
+    assert bpy.ops.spline_surface.flange(source=wall.name, edge='V1', length=0.2, angle=90.0,
+                                         radius=0.04) == {'FINISHED'}
+    ret = bpy.context.active_object
+    print("return flange", ret.name, world_net(ret)[0][..., 2].min())
+    # without rounding it is a single sharp wall that follows its source
+    bpy.context.scene.cursor.location = (0, 720, 0)
+    bpy.ops.spline_surface.add_patch(shape='PLANE', points_u=5, points_v=5)
+    sharp = bpy.context.active_object
+    assert bpy.ops.spline_surface.flange(source=sharp.name, edge='U0', length=0.3, angle=60.0,
+                                         radius=0.0) == {'FINISHED'}
+    w2 = bpy.context.active_object
+    before = world_net(w2)[0].copy()
+    sharp.location.x += 0.5
+    vl.update()
+    assert np.abs(world_net(w2)[0] - before).max() > 0.4
+
     spline_surface.unregister()
     print("ALL OK")
 

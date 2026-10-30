@@ -11,6 +11,7 @@ from .core.blend import blend_curve_net, blend_net
 from .core.corner import corner_net
 from .core.fill import fill_patches, side_from_curve, side_from_patch
 from .core.fillet import fillet_net, multi_fillet
+from .core.flange import flange_net
 from .core.meshing import segment_counts, t_junctions
 from .core.mirror import mirror_net, symmetrize
 from .core.network import build_network
@@ -59,6 +60,12 @@ def compute_extend(source, meta, settings):
     net, orders = world_net(source)
     return extend_net(net, meta["edge"], meta["length"], meta["continuity"],
                       settings.degree, orders)
+
+
+def compute_flange(source, meta):
+    net, orders = world_net(source)
+    return flange_net(net, meta["edge"], meta["length"], meta["angle"], meta.get("flip", False),
+                      orders)
 
 
 def compute_corner(sources, meta, settings):
@@ -183,6 +190,9 @@ def compute_from_meta(meta, context):
         msg = "max fit error %.3g" % err
     elif meta["method"] == "extend":
         (net, orders), msg = compute_extend(sources[0], meta, settings), meta["continuity"]
+    elif meta["method"] == "flange":
+        net, orders = compute_flange(sources[0], meta)
+        msg = "flange %.4g at %.4g deg" % (meta["length"], meta["angle"])
     elif meta["method"] == "corner":
         net, orders = compute_corner(sources, meta, settings)
         msg = meta["continuity"]

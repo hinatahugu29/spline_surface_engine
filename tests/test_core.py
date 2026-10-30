@@ -1107,6 +1107,30 @@ def test_two_fillets_meet_in_a_mitre():
             assert grade(measure(P, net, *sh[:3], po, bo)) == 'G2', name
 
 
+def test_flange_wall():
+    from core.flange import flange_net
+    g = np.linspace(0, 1, 4)
+    U, V = g[:, None] + 0 * g, 0 * g[:, None] + g
+    P = np.stack([U, V, 0 * U], -1)                    # flat patch, normal +z
+    for edge, at in (('U0', ('x', 0.0)), ('U1', ('x', 1.0)), ('V0', ('y', 0.0)), ('V1', ('y', 1.0))):
+        net, orders = flange_net(P, edge, 0.5, 90.0)
+        assert orders == (4, 2) and net.shape == (4, 2, 3)
+        # the wall starts on the edge and drops 0.5 along -z (the back of the patch)
+        assert np.allclose(net[:, 1] - net[:, 0], [0, 0, -0.5], atol=1e-9), edge
+        axis = 0 if at[0] == 'x' else 1
+        assert np.allclose(net[..., axis], at[1]), edge
+    net, _ = flange_net(P, 'V1', 0.5, 90.0, flip=True)
+    assert np.allclose(net[:, 1] - net[:, 0], [0, 0, 0.5], atol=1e-9)
+    net, _ = flange_net(P, 'V1', 1.0, 45.0)            # leans halfway: out and down
+    assert np.allclose(net[0, 1] - net[0, 0], [0, np.sqrt(0.5), -np.sqrt(0.5)], atol=1e-9)
+    for bad in (0.0, 180.0, -10.0):
+        try:
+            flange_net(P, 'V1', 0.5, bad)
+        except ValueError:
+            continue
+        raise AssertionError("angle %s must be refused" % bad)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
