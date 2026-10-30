@@ -632,20 +632,25 @@ def test_fillet_rounds_right_angle_corner():
 
     gg = np.linspace(0.0, 1.0, 25)
     surf = nurbs.eval_surface(net, orders, gg, gg)
-    # The crease ran along z, at x = 1, y = 0: this is a convex (outer) corner,
-    # so the ball rolls outward and every fillet point is `radius` from the
-    # line (1 + radius, -radius, z) parallel to z (the circle's axis).
-    axis = np.array([1.0 + radius, -radius, 0.0])
+    # The crease runs along z at x = 1, y = 0; A lies at x < 1, B at y > 0.
+    # The ball sits between the walls, so every fillet point is `radius` from
+    # the line (1 - radius, radius, z) - the circle's axis.
+    axis = np.array([1.0 - radius, radius, 0.0])
     d = surf.copy()
     d[..., 2] = 0.0
     dist = np.linalg.norm(d - axis[None, None, :], axis=2)
     assert np.abs(dist - radius).max() < 1e-5, np.abs(dist - radius).max()
-    # one edge sits on B's wall (x = 1); the other on A's wall (y = 0).
-    assert np.abs(surf[:, 0, 0] - 1.0).max() < 1e-9
-    assert np.abs(surf[:, -1, 1]).max() < 1e-9
-    # Both are inset from the original crease by exactly `radius`.
-    assert np.abs(surf[:, 0, 1] - (-radius)).max() < 1e-9
-    assert np.abs(surf[:, -1, 0] - (1.0 + radius)).max() < 1e-9
+    # Each fillet edge lies ON its source wall, inset `radius` from the crease
+    # (that is where the walls get trimmed back to).
+    ends = [surf[:, 0], surf[:, -1]]
+    on_a = [e for e in ends if np.abs(e[:, 1]).max() < 1e-9]
+    on_b = [e for e in ends if np.abs(e[:, 0] - 1.0).max() < 1e-9]
+    assert len(on_a) == 1 and len(on_b) == 1
+    assert np.abs(on_a[0][:, 0] - (1.0 - radius)).max() < 1e-9
+    assert np.abs(on_b[0][:, 1] - radius).max() < 1e-9
+    # The arc bows toward the crease, not away from it.
+    mid = surf[:, len(gg) // 2]
+    assert np.all(mid[:, 0] > 1.0 - radius) and np.all(mid[:, 1] < radius)
 
 
 if __name__ == "__main__":

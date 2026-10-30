@@ -4,7 +4,7 @@ Unlike Bridge Edges (`blend.py`), the two edges here already share the same
 position - only their surface tangents differ, so there is a sharp G0 crease
 (e.g. two patches joined with Match Edge, or any edge picked twice). The
 fillet is a rolling-ball blend: at each point along the shared edge, the
-circle of `radius` tangent to both surfaces' outward edge-derivatives is
+circle of `radius` sitting between the two surfaces, tangent to both, is
 found, and the patch is fit (least squares) to that circle's arc. The result
 is G1 (tangent-plane continuous) with each surface, not G2 - a true radius
 fillet generally has different normal curvature than the surfaces it joins.
@@ -65,7 +65,10 @@ def fillet_net(Pa, orders_a, edge_a, Pb, orders_b, edge_b, radius, tol=1e-3, fli
     (Eb, Tb, Ab) = _refit((Eb, Tb, Ab), nb, kb, n, k)
     C = 0.5 * (Ea + Eb)
 
-    ta, tb = _unit(Ta), _unit(Tb)
+    # T points past the edge, away from the patch; the ball sits between the
+    # two surfaces themselves, so roll along the inward directions -T. Then
+    # the tangent points lie on the source surfaces (where trimming cuts).
+    ta, tb = -_unit(Ta), -_unit(Tb)
     cos_phi = np.clip(np.einsum("ij,ij->i", ta, tb), -1.0, 1.0)
     phi = np.arccos(cos_phi)
     phi = np.clip(phi, np.radians(1.0), np.radians(179.0))  # guard flush / folded-back edges
