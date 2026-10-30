@@ -136,6 +136,40 @@ def trim_net(net, orders, edge, distance, samples=200):
     return (A, oa, t, err) if at_end else (B, ob, t, err)
 
 
+def _miter_ends(bridges, tol=1e-6):
+    """Give two bridges that meet at an unrounded edge one shared end curve.
+
+    Rounding two edges of a corner but not the third leaves each bridge ending
+    on a skew arc; the two arcs share their end points but not their shape, so
+    the corner is cracked. Both ends are replaced by the curve whose control
+    points add the two arcs' offsets from the shared end point (the miter of
+    two cylinders). The points where the bridges already agree stay put.
+    bridges: [(net, orders, tension)]; returns the same list.
+    """
+    nets = [np.array(n, float) for n, _, _ in bridges]
+    for i in range(len(nets)):
+        for j in range(i + 1, len(nets)):
+            for ei in (0, -1):
+                for ej in (0, -1):
+                    a, b = nets[i][ei], nets[j][ej]
+                    if np.allclose(a[0], b[0], atol=tol) and np.allclose(a[-1], b[-1], atol=tol):
+                        flip = False
+                    elif np.allclose(a[0], b[-1], atol=tol) and np.allclose(a[-1], b[0], atol=tol):
+                        flip = True
+                    else:
+                        continue
+                    b = b[::-1] if flip else b
+                    differ = np.where(np.linalg.norm(a - b, axis=1) > tol)[0]
+                    if not len(differ):
+                        continue
+                    anchor = a[0] if differ.mean() < (len(a) - 1) / 2 else a[-1]
+                    new = a.copy()
+                    new[differ] = anchor + (a[differ] - anchor) + (b[differ] - anchor)
+                    nets[i][ei] = new
+                    nets[j][ej] = new[::-1] if flip else new
+    return [(n, o, t) for n, (_, o, t) in zip(nets, bridges)]
+
+
 def multi_fillet(patches, seams, radius, continuity='G2', tol=1e-3):
     """Fillet several seams at once.
 
@@ -145,7 +179,8 @@ def multi_fillet(patches, seams, radius, continuity='G2', tol=1e-3):
     bridged. (Doing one seam at a time would fail: cutting a patch on one
     edge shortens its neighbouring edges, which then no longer match the
     patch across the next seam.) Where fillets meet at a corner a small
-    hole is left for Fill Hole.
+    hole is left for Fill Hole; where only two meet (the third edge stays
+    sharp) their ends are mitred into one shared curve.
 
     Returns (trimmed {name: (net, orders)}, [(net, orders, tension)] per
     seam, [info] per seam).
@@ -179,7 +214,7 @@ def multi_fillet(patches, seams, radius, continuity='G2', tol=1e-3):
         info["tension"] = tension = float(2.0 * np.tan(alpha / 4.0) / np.sin(alpha / 2.0))
         net, orders = blend_net(*trimmed[a], ea, *trimmed[b], eb, continuity, tension)
         bridges.append((net, orders, tension))
-    return trimmed, bridges, infos
+    return trimmed, _miter_ends(bridges), infos
 
 
 def corner_loops(bridges, rel_tol=1e-3):

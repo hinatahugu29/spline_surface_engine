@@ -1084,6 +1084,29 @@ def test_fit_polyline_keeps_end_tangents():
         assert cos > 0.9999, cos
 
 
+def test_two_fillets_meet_in_a_mitre():
+    from core.fillet import multi_fillet
+    g = np.linspace(0, 1, 3)
+    G0, G1 = g[:, None] + 0 * g, 0 * g[:, None] + g
+    F = np.stack([G0, G1, 0 * G0], -1)
+    W1 = np.stack([1 + 0 * G0, G1, G0], -1)
+    W2 = np.stack([G1, 1 + 0 * G0, G0], -1)
+    o = (3, 3)
+    patches = {"F": (F, o), "W1": (W1, o), "W2": (W2, o)}
+    trimmed, bridges, _ = multi_fillet(
+        patches, [("F", "U1", "W1", "U0"), ("F", "V1", "W2", "U0")], 0.2)
+    ends = [net[-1] for net, _, _ in bridges]
+    # the two bridge ends are the same curve, lying in the plane x = y
+    assert np.allclose(ends[0], ends[1][::-1], atol=1e-9)
+    assert np.allclose(ends[0][:, 0], ends[0][:, 1], atol=1e-9)
+    # and the bridges are still G2 with the patches they join
+    for (net, bo, _), names in zip(bridges, (("F", "W1"), ("F", "W2"))):
+        for name in names:
+            P, po = trimmed[name]
+            sh = find_shared_edge(P, net, 1e-6, po, bo)
+            assert grade(measure(P, net, *sh[:3], po, bo)) == 'G2', name
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
