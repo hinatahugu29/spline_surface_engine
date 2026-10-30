@@ -4,7 +4,8 @@ blender -b --factory-startup --python tools/build_sample_hood.py -- [out.blend]
 
 Half a car front: a crowned hood (centre line on x = 0), a fender wall hanging
 off its side edge, a rounded shoulder between them (Fillet), a nose extended
-off the hood's front edge (Extend, G2), then the whole group mirrored across
+off the hood's front edge (Extend, G2), a cowl off its rear edge, both corners
+between extension and fender closed with Fill Hole, then the whole group mirrored across
 x = 0 and put through To Mesh. Prints each step and the seam grades, so pain
 points show up as lines in the log.
 """
@@ -94,12 +95,6 @@ bpy.data.objects["Hood"].select_set(True)
 step("extend nose", bpy.ops.spline_surface.extend_edge(edge='U1', length=0.4, continuity='G2'))
 vl.update()
 
-# Front corner: the nose side, the fender's front edge (fillet + wall) and a
-# closing curve from the fender's bottom to the nose tip bound a four-sided hole.
-cu = bpy.data.curves.new("CornerEdge", 'CURVE')
-cu.dimensions = '3D'
-sp = cu.splines.new('BEZIER')
-sp.bezier_points.add(2)
 def _end(name, edge, last):
     net, orders = world_net(bpy.data.objects[name])
     pl = edge_polyline(net, orders, edge, 8)
@@ -119,25 +114,79 @@ def _in_plane(d, n):
     return d / np.linalg.norm(d)
 
 
-# The closing curve has to leave each end inside the neighbouring patch's
-# tangent plane, otherwise the fill cannot be tangent to that patch at the corner.
-F, B = np.array(_end("Fender", 'U1', True)), np.array(_end("Hood_ext", 'U0', True))
-M = np.array((1.02, 1.75, -0.32))
-reach = 0.35 * np.linalg.norm(B - F)
-dF = _in_plane(M - F, _normal("Fender", 1.0, 1.0))
-dB = _in_plane(M - B, _normal("Hood_ext", 0.0, 1.0))
-dM = (B - F) / np.linalg.norm(B - F)
-pts = [(F, F - dF * reach, F + dF * reach), (M, M - dM * reach, M + dM * reach),
-       (B, B + dB * reach, B - dB * reach)]
-for bp, (co, hl, hr) in zip(sp.bezier_points, pts):
-    bp.handle_left_type = bp.handle_right_type = 'FREE'
-    bp.co, bp.handle_left, bp.handle_right = co, hl, hr
-corner_edge = bpy.data.objects.new("CornerEdge", cu)
-bpy.context.collection.objects.link(corner_edge)
+def _edge_touching(name, point):
+    """(edge, u, v) of the patch's edge that ends at `point`, with the corner's (u, v)."""
+    for edge in ('U0', 'U1', 'V0', 'V1'):
+        for last in (False, True):
+            if np.linalg.norm(np.array(_end(name, edge, last)) - point) < 1e-4:
+                u = 0.0 if edge[0] == 'U' and edge[1] == '0' else 1.0 if edge[0] == 'U' else (1.0 if last else 0.0)
+                v = (1.0 if last else 0.0) if edge[0] == 'U' else (0.0 if edge[1] == '0' else 1.0)
+                return edge, u, v, last
+    raise ValueError("no edge of %s ends at %s" % (name, point))
+
+
+def close_corner(tag, ext, ext_point, wall, wall_edge, fillet, fillet_edge, mid):
+    """Fill the hole between an extension's side, the fender's end edge and a closing curve.
+
+    The closing curve runs from the bottom of the fender's end edge to the extension's
+    tip `ext_point` and leaves each end inside the neighbouring patch's tangent plane
+    (otherwise the fill cannot be tangent there). Returns the fill_hole result.
+    """
+    F = np.array(_end(wall, wall_edge, True))
+    B = np.array(ext_point)
+    e_edge, eu, ev, _ = _edge_touching(ext, B)
+    M = np.array(mid)
+    reach = 0.35 * np.linalg.norm(B - F)
+    wu, wv = (1.0 if wall_edge == 'U1' else 0.0), 1.0
+    dF = _in_plane(M - F, _normal(wall, wu, wv))
+    dB = _in_plane(M - B, _normal(ext, eu, ev))
+    dM = (B - F) / np.linalg.norm(B - F)
+    cu = bpy.data.curves.new("Corner" + tag, 'CURVE')
+    cu.dimensions = '3D'
+    sp = cu.splines.new('BEZIER')
+    sp.bezier_points.add(2)
+    pts = [(F, F - dF * reach, F + dF * reach), (M, M - dM * reach, M + dM * reach),
+           (B, B + dB * reach, B - dB * reach)]
+    for bp, (co, hl, hr) in zip(sp.bezier_points, pts):
+        bp.handle_left_type = bp.handle_right_type = 'FREE'
+        bp.co, bp.handle_left, bp.handle_right = co, hl, hr
+    ob = bpy.data.objects.new("Corner" + tag, cu)
+    bpy.context.collection.objects.link(ob)
+    vl.update()
+    picks = "%s:%s;%s:%s;%s:%s;%s:CURVE" % (ext, e_edge, fillet, fillet_edge, wall, wall_edge, ob.name)
+    r = bpy.ops.spline_surface.fill_hole(picks=picks, continuity='G2', layout='GRID')
+    vl.update()
+    return r
+
+
+# Front corner: the nose side, the fender's front edge (fillet + wall) and a
+# closing curve from the fender's bottom to the nose tip bound a four-sided hole.
+step("fill front corner", close_corner(
+    "Front", "Hood_ext", _end("Hood_ext", 'U0', True), "Fender", 'U1', "Fender_fillet", 'U1',
+    (1.02, 1.75, -0.32)))
+
+# Cowl: extend the hood's rear edge backwards, then close the rear corner the same way.
+for o in bpy.context.selected_objects:
+    o.select_set(False)
+vl.objects.active = bpy.data.objects["Hood"]
+bpy.data.objects["Hood"].select_set(True)
+step("extend cowl", bpy.ops.spline_surface.extend_edge(edge='U0', length=0.3, continuity='G2'))
 vl.update()
-picks = "Hood_ext:U0;Fender_fillet:U1;Fender:U1;CornerEdge:CURVE"
-step("fill front corner", bpy.ops.spline_surface.fill_hole(picks=picks, continuity=os.environ.get('FC', 'G2'), layout='GRID', tension=float(os.environ.get('FT', '1.0'))))
-vl.update()
+cowl = [o for o in bpy.data.objects if o.name.startswith("Hood_ext") and o.name != "Hood_ext"
+        and "fill" not in o.name and "mirror" not in o.name][-1]
+print("cowl is", cowl.name)
+def _side_tip(name, x):
+    """End point (smallest y) of the patch's edge lying along x = `x`."""
+    for edge in ('U0', 'U1', 'V0', 'V1'):
+        a, b = np.array(_end(name, edge, False)), np.array(_end(name, edge, True))
+        if abs(a[0] - x) < 1e-3 and abs(b[0] - x) < 1e-3:
+            return tuple(a if a[1] < b[1] else b)
+    raise ValueError("%s has no edge along x = %s" % (name, x))
+
+
+step("fill rear corner", close_corner(
+    "Rear", cowl.name, _side_tip(cowl.name, 0.95), "Fender", 'U0', "Fender_fillet", 'U0',
+    (1.02, -0.2, -0.32)))
 
 group = [o for o in bpy.data.objects if META_KEY in o]
 print("half-body patches", sorted(o.name for o in group))
