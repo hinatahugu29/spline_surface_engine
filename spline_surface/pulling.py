@@ -2,6 +2,9 @@
 it follow. Pinned points (rows next to G0/G1/G2 seams) never move, so every
 seam keeps its continuity; the patch ends up like one edited by hand.
 
+Strokes repeat like a sculpt mode until Enter/Space; Ctrl+Z takes back the
+last stroke and Esc all of them. The whole session is one undo step.
+
 L switches the origin from a point to an iso-line through it (D: which way,
 T: taper the ends), so a whole line - a character line, an open edge - is
 pulled with a band around it.
@@ -62,11 +65,11 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
         if not self._patches:
             self.report({'ERROR'}, "No patches to pull")
             return {'CANCELLED'}
-        g = np.linspace(0.0, 1.0, GRID)
         self._samples = {}
-        for name, (net, orders, _) in self._patches.items():
-            pts = eval_surface(net, orders, g, g)
-            self._samples[name] = (pts.reshape(-1, 3), pts.shape[:2])
+        for name in self._patches:
+            self._sample(name)
+        self._orig = {name: net for name, (net, _, _) in self._patches.items()}
+        self._history = []   # (patch name, net before the stroke)
         self._size = max(_size(n) for n, _, _ in self._patches.values())
         self._radius = DEFAULT_RADIUS * self._size
         self._hover = None   # (name, u, v, point)
@@ -89,9 +92,24 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
         else:
             origin = "L point   Wheel: radius %.3g" % self._radius
         context.area.header_text_set(
-            "Soft Pull: drag   Origin: %s   Move: %s   "
-            "N normal / X Y Z axis / V view   Esc/RMB: cancel%s"
-            % (origin, MODE_NAMES[self._mode], extra))
+            "Soft Pull: drag (%d strokes)   Origin: %s   Move: %s   N / X Y Z / V   "
+            "Ctrl+Z: undo stroke   Enter/Space: done   Esc: cancel all%s"
+            % (len(self._history), origin, MODE_NAMES[self._mode], extra))
+
+    def _sample(self, name):
+        net, orders, _ = self._patches[name]
+        g = np.linspace(0.0, 1.0, GRID)
+        pts = eval_surface(net, orders, g, g)
+        self._samples[name] = (pts.reshape(-1, 3), pts.shape[:2])
+
+    def _set_net(self, context, name, net):
+        """Make `net` the patch's current shape, in the object and for picking."""
+        _, orders, mask = self._patches[name]
+        self._patches[name] = (net, orders, mask)
+        self._sample(name)
+        ob = bpy.data.objects.get(name)
+        if ob is not None:
+            self._write(context, ob, net, orders)
 
     def _view_axes(self, context):
         rot = context.region_data.view_rotation
@@ -106,14 +124,6 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
             t0 = 1.0
         return t0, along
 
-    def _band(self, net, orders, t0, right, up):
-        """The iso-line plus width circles at its ends and middle."""
-        pts = iso_line(net, orders, self._dir, t0)
-        lines = [(pts, pick.COLOR_HOVER, 3.0)]
-        for p in (pts[0], pts[len(pts) // 2], pts[-1]):
-            lines.append((_circle(p, self._radius, right, up, 32), pick.COLOR_HOVER, 1.0))
-        return lines
-
     def _lines(self):
         ctx = bpy.context
         if self._hover is None and self._drag is None:
@@ -123,7 +133,8 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
             d = self._drag
             lines = [(pts, pick.COLOR_PREVIEW, 1.5) for pts in iso_lines(d["net"], d["orders"], 8)]
             if "t0" in d:
-                lines += self._band(d["net"], d["orders"], d["t0"], right, up)
+                lines.append((iso_line(d["net"], d["orders"], d["dir"], d["t0"]),
+                              pick.COLOR_HOVER, 3.0))
             else:
                 lines.append((_circle(d["anchor"], self._radius, right, up), pick.COLOR_HOVER, 2.0))
             lines.append((np.array([d["anchor"], d["anchor"] + d["delta"]]),
@@ -132,7 +143,8 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
         if self._line:
             name, u, v, _ = self._hover
             net, orders, _ = self._patches[name]
-            return self._band(net, orders, self._line_param(u, v)[0], right, up)
+            t0 = self._line_param(u, v)[0]
+            return [(iso_line(net, orders, self._dir, t0), pick.COLOR_HOVER, 3.0)]
         return [(_circle(self._hover[3], self._radius, right, up), pick.COLOR_HOVER, 2.0)]
 
     def _nearest(self, context, mouse):
@@ -215,10 +227,29 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
     # ------------------------------------------------------------ modal
 
     def modal(self, context, event):
-        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS' and self._drag:
-            self._revert(context)
+        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            if self._drag:  # drop just the stroke in progress
+                self._revert(context)
+                self._header(context)
+                context.area.tag_redraw()
+                return {'RUNNING_MODAL'}
+            if event.type == 'RIGHTMOUSE':
+                return {'RUNNING_MODAL'}
+            for name in {n for n, _ in self._history}:
+                self._set_net(context, name, self._orig[name])
             self._finish(context)
             return {'CANCELLED'}
+        if event.type in {'RET', 'NUMPAD_ENTER', 'SPACE'} and event.value == 'PRESS' \
+                and not self._drag:
+            self._finish(context)
+            return {'FINISHED'} if self._history else {'CANCELLED'}
+        if event.type == 'Z' and event.ctrl and event.value == 'PRESS':
+            if self._history and not self._drag:
+                name, net = self._history.pop()
+                self._set_net(context, name, net)
+                self._header(context)
+                context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
         if event.type == 'MOUSEMOVE':
             if self._drag:
                 self._apply(context, event)
@@ -229,8 +260,15 @@ class SS_OT_soft_pull(pick.ModalPicker, bpy.types.Operator):
             if self._hover is not None:
                 self._start_drag(context)
         elif event.type == 'LEFTMOUSE' and event.value == 'RELEASE' and self._drag:
-            self._finish(context)
-            return {'FINISHED'}
+            d, self._drag = self._drag, None
+            if d["gain"] > 0.0 and np.any(d["delta"]):
+                self._history.append((d["name"], self._patches[d["name"]][0]))
+                self._set_net(context, d["name"], d["net"])
+            else:
+                self._set_net(context, d["name"], self._patches[d["name"]][0])
+            self._hover = self._nearest(context, (event.mouse_region_x, event.mouse_region_y))
+            self._header(context)
+            context.area.tag_redraw()
         elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
             self._radius *= 1.1 if event.type == 'WHEELUPMOUSE' else 1 / 1.1
             if self._drag:
