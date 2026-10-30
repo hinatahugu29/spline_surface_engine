@@ -1131,6 +1131,27 @@ def test_flange_wall():
         raise AssertionError("angle %s must be refused" % bad)
 
 
+def test_panel_gap():
+    from core.gap import edge_normals, find_gap_pairs, measure_gap
+    t = np.linspace(0, 1, 20)
+    A = np.stack([t, 0 * t, 0 * t], -1)
+    B = np.stack([t, 0.02 + 0 * t, 0.005 + 0 * t], -1)      # 20 mm across, 5 mm proud
+    m = measure_gap(A, B, np.tile([0.0, 0.0, 1.0], (20, 1)))
+    assert np.allclose(m["gap"], 0.02) and np.allclose(m["step"], 0.005)
+    assert np.allclose(m["dist"], np.hypot(0.02, 0.005))
+    # a tapering joint: the gap grows from 10 to 30 mm
+    C = np.stack([t, 0.01 + 0.02 * t, 0 * t], -1)
+    g = measure_gap(A, C)["gap"]
+    assert abs(g.min() - 0.01) < 5e-3 and abs(g.max() - 0.03) < 5e-3 and g[0] < g[-1]
+    pairs = find_gap_pairs({("a", "V1"): A, ("b", "V0"): B, ("c", "U0"): A + [0, 5, 0]}, 0.05)
+    assert pairs == [(("a", "V1"), ("b", "V0"))], pairs      # the far-away edge is skipped
+    # normals of a flat patch point along z
+    g4 = np.linspace(0, 1, 4)
+    U, V = g4[:, None] + 0 * g4, 0 * g4[:, None] + g4
+    N = edge_normals(np.stack([U, V, 0 * U], -1), (4, 4), 'V1', 8)
+    assert np.allclose(np.abs(N[:, 2]), 1.0)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

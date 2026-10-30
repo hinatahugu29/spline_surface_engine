@@ -11,6 +11,12 @@ def _zebra_update(self, context):
     zebra.update_material(self)
 
 
+def _gap_update(self, context):
+    from . import panelgap
+    if panelgap.is_on():
+        panelgap.mark_dirty()
+
+
 def _curvature_update(self, context):
     from . import curvature
     curvature.mark_dirty()
@@ -62,6 +68,16 @@ class SS_Settings(bpy.types.PropertyGroup):
         name="Direction", default='BOTH', update=_curvature_update,
         items=[('U', "U", "Combs along U"), ('V', "V", "Combs along V"),
                ('BOTH', "U+V", "Combs in both directions")])
+    pgap_target: bpy.props.FloatProperty(
+        name="Target", default=0.01, min=0.0, max=100.0, unit='LENGTH', update=_gap_update,
+        description="Panel Gap: the gap the joints should have")
+    pgap_tolerance: bpy.props.FloatProperty(
+        name="Tolerance", default=0.003, min=0.0, max=100.0, unit='LENGTH', update=_gap_update,
+        description="Panel Gap: how far from the target a gap may be and still show green")
+    pgap_search: bpy.props.FloatProperty(
+        name="Search", default=0.0, min=0.0, max=1000.0, unit='LENGTH', update=_gap_update,
+        description="Panel Gap: edges farther apart than this are not a joint "
+                    "(0: 5% of the scene size)")
     curvature_type: bpy.props.EnumProperty(
         name="Map", default='GAUSS', update=_curvature_update,
         items=[('GAUSS', "Gaussian", "Product of the principal curvatures: dome, flat, saddle"),
@@ -255,6 +271,20 @@ class SS_PT_inspect(_SubPanel, bpy.types.Panel):
         if on:
             free, locked = ctrlpoints.counts()
             layout.label(text="Free %d | Pinned %d" % (free, locked))
+        from . import panelgap
+        on = panelgap.is_on()
+        layout.operator("spline_surface.panel_gap", icon='ARROW_LEFTRIGHT', depress=on,
+                        text="Panel Gap: On" if on else "Panel Gap")
+        if on:
+            row = layout.row(align=True)
+            row.prop(s, "pgap_target")
+            row.prop(s, "pgap_tolerance")
+            layout.prop(s, "pgap_search")
+            col = layout.column(align=True)
+            for j in panelgap.joints():
+                col.label(text="%s | %s" % (j["a"], j["b"]), icon='ARROW_LEFTRIGHT')
+                col.label(text="    gap %.3g - %.3g (mean %.3g), step %.3g"
+                               % (j["min"], j["max"], j["mean"], j["step"]))
         layout.operator("spline_surface.check_continuity", icon='VIEWZOOM')
         try:
             rows = json.loads(s.continuity_report or "[]")

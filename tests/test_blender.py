@@ -1291,6 +1291,34 @@ def run():
     vl.update()
     assert np.abs(world_net(w2)[0] - before).max() > 0.4
 
+    # ---- v0.42: Panel Gap measures the clearance between facing panels
+    from spline_surface import panelgap
+    bpy.context.scene.cursor.location = (0, 800, 0)
+    bpy.ops.spline_surface.add_patch(shape='PLANE', points_u=5, points_v=5, size_x=1.0, size_y=1.0)
+    left = bpy.context.active_object
+    bpy.context.scene.cursor.location = (1.02, 800, 0.004)   # 20 mm to the right, 4 mm proud
+    bpy.ops.spline_surface.add_patch(shape='PLANE', points_u=5, points_v=5, size_x=1.0, size_y=1.0)
+    right = bpy.context.active_object
+    vl.update()
+    hidden = [o for o in bpy.data.objects if o.type == 'SURFACE' and o not in (left, right)]
+    for o in hidden:
+        o.hide_set(True)
+    assert bpy.ops.spline_surface.panel_gap() == {'FINISHED'}
+    joints = [j for j in panelgap.joints() if {j["a"], j["b"]} == {left.name, right.name}]
+    print("panel gap joints", [(j["a"], j["b"], round(j["min"], 4), round(j["max"], 4),
+                                round(j["step"], 4)) for j in joints])
+    assert len(joints) == 1
+    j = joints[0]
+    assert abs(j["min"] - 0.02) < 1e-3 and abs(j["max"] - 0.02) < 1e-3 and abs(j["step"] - 0.004) < 1e-3
+    right.location.x += 0.01
+    vl.update()
+    panelgap.refresh(bpy.context)
+    j = [j for j in panelgap.joints() if {j["a"], j["b"]} == {left.name, right.name}][0]
+    assert abs(j["mean"] - 0.03) < 1e-3, j["mean"]
+    assert bpy.ops.spline_surface.panel_gap() == {'FINISHED'} and not panelgap.is_on()
+    for o in hidden:
+        o.hide_set(False)
+
     spline_surface.unregister()
     print("ALL OK")
 

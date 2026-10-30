@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Spline Surface",
     "author": "hinata",
-    "version": (0, 41, 0),
+    "version": (0, 42, 0),
     "blender": (5, 0, 0),
     "location": "View3D > Sidebar > Spline Surface",
     "description": "Build smooth NURBS patches from boundary curves",
@@ -10,12 +10,12 @@ bl_info = {
 
 import bpy  # noqa: E402
 
-from . import cage, controlmesh, ctrlpoints, curvature, curvetools, filleting, flanging, gizmos, linked, live, netcheck, operators, pulling, seams, shaping, splitting, symmetry, ui, zebra  # noqa: E402
+from . import cage, controlmesh, ctrlpoints, curvature, curvetools, filleting, flanging, gizmos, linked, live, netcheck, operators, panelgap, pulling, seams, shaping, splitting, symmetry, ui, zebra  # noqa: E402
 
 classes = (ui.classes + operators.classes + filleting.classes + flanging.classes + live.classes + linked.classes
            + cage.classes + symmetry.classes + splitting.classes + seams.classes + ctrlpoints.classes
            + curvature.classes + netcheck.classes + curvetools.classes + pulling.classes + controlmesh.classes
-           + shaping.classes + zebra.classes + gizmos.classes)
+           + panelgap.classes + shaping.classes + zebra.classes + gizmos.classes)
 
 
 def _add_menu(self, context):
@@ -31,6 +31,7 @@ def register():
     bpy.types.VIEW3D_MT_surface_add.append(_add_menu)
     live.register()
     seams.register()
+    panelgap.register()
     ctrlpoints.register()
     curvature.register()
     netcheck.register()
@@ -45,6 +46,7 @@ def unregister():
     curvature.unregister()
     ctrlpoints.unregister()
     seams.unregister()
+    panelgap.unregister()
     live.unregister()
     bpy.types.VIEW3D_MT_surface_add.remove(_add_menu)
     del bpy.types.Scene.spline_surface
