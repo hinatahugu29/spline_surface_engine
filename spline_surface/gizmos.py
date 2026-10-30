@@ -177,7 +177,13 @@ class SS_GGT_fillet_radius(_RecipeArrow, bpy.types.GizmoGroup):
             return
         from .operators import compute_from_meta, fillet_base
         meta, side_meta = found
-        base, base_orders, _ = compute_from_meta(fillet_base(side_meta, meta["fillet"]), context)
+        try:
+            base, base_orders, _ = compute_from_meta(
+                fillet_base(side_meta, meta["fillet"]), context)
+        except ValueError:
+            # A source this fillet was built from (e.g. a boundary curve)
+            # was deleted: nothing sane to place the handle on this frame.
+            return
         crease = edge_polyline(base, base_orders, meta["edges"][0], 3)[1]
         net, orders = world_net(context.active_object)
         offset = eval_points(net, orders, [0.5], [0.5])[0] - crease
