@@ -44,6 +44,25 @@ def edge_derivatives(C, k_across, at_end=True):
     return np.einsum("j,ijd->id", d1, C), np.einsum("j,ijd->id", d2, C)
 
 
+def length_handle(P, edge, orders=None):
+    """Where a drag handle for extend_net's `length` sits on the source edge.
+
+    Returns (base, direction, scale): the middle of `edge`, the unit
+    direction the extension grows in there, and world distance per unit of
+    `length` (the tip moves by length * scale; exact for G1, G2 adds a
+    curvature term).
+    """
+    P = np.asarray(P, dtype=float)
+    orders = orders or bezier_orders(P)
+    C, _ = edge_frame(P, edge)
+    k_along, k_across = frame_orders(orders, edge)
+    T, _ = edge_derivatives(C, k_across)
+    mid = basis_matrix(C.shape[0], k_along, 0.5)[0]
+    base, t = mid @ C[:, -1], mid @ T
+    scale = float(np.linalg.norm(t))
+    return base, t / max(scale, 1e-12), scale
+
+
 def extend_net(P, edge, length=0.5, continuity='G2', degree=3, orders=None):
     """Patch continuing `P` across `edge`. Returns (net, orders).
 

@@ -666,6 +666,23 @@ def test_point_pull():
     assert w[4, 4] == w[3, 4] == w[4, 3] == w[3, 3] == 1.0 and w[2, 4] == 0.0
 
 
+def test_extend_length_handle():
+    from core.extend import length_handle
+    P = _poly_patch(0, 0)
+    for edge in EDGES:
+        base, direction, scale = length_handle(P, edge, (6, 6))
+        h = 0.4
+        Q, o = extend_net(P, edge, h, 'G1', orders=(6, 6))
+        # The handle sits mid-edge on the source, and the extension's far
+        # edge middle is length * scale along the handle direction (G1).
+        mids = [nurbs.eval_points(Q, o, [a], [b])[0]
+                for a, b in ((0.5, 0), (0.5, 1), (0, 0.5), (1, 0.5))]
+        tip = base + h * scale * direction
+        assert any(np.allclose(m, tip, atol=1e-9) for m in mids), edge
+        assert any(np.allclose(m, base, atol=1e-9) for m in mids), edge
+        assert abs(np.linalg.norm(direction) - 1) < 1e-12
+
+
 def test_refine_keeps_shape():
     from core.fair import refine_curve, refine_net
     for n, k in ((4, 4), (6, 4), (8, 3), (9, 4)):
