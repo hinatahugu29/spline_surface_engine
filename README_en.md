@@ -29,6 +29,6 @@ Requires Blender 5.0 or later (tested with 5.2 on Windows).
 - `docs/MANUAL.md` manual (Japanese), `docs/FEATURES.md` feature list, `docs/WORKFLOWS.md` six step-by-step workflows, `docs/CHANGELOG.md` history.
 
 ## Reporting a bug
-Select the patches involved and press **Copy Bug Report** at the top of the sidebar, then paste the text into a new issue at
+Select the patches involved and press **Copy Bug Report** in the **Help** panel at the bottom of the sidebar (it starts collapsed), then paste the text into a new issue at
 https://github.com/hinatahugu29/spline_surface_engine/issues
 together with what you did and what you expected. A small .blend that reproduces the problem helps a lot.

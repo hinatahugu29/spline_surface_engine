@@ -110,7 +110,6 @@ class SS_PT_main(bpy.types.Panel):
         col.label(text="options in the Adjust Last Operation panel")
         if s.live_note:
             self.layout.label(text=s.live_note, icon='ERROR')
-        self.layout.operator("spline_surface.copy_report", icon='COPYDOWN')
 
 
 class SS_PT_create(_SubPanel, bpy.types.Panel):
@@ -339,5 +338,19 @@ class SS_PT_output(_SubPanel, bpy.types.Panel):
         self.layout.operator("spline_surface.to_mesh", icon='MESH_GRID')
 
 
+class SS_PT_help(_SubPanel, bpy.types.Panel):
+    bl_label = "Help"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw_header(self, context):
+        self.layout.label(icon='QUESTION')
+
+    def draw(self, context):
+        col = self.layout.column(align=True)
+        col.label(text="Something wrong? Select the patches,")
+        col.label(text="copy the report and paste it into the issue.")
+        col.operator("spline_surface.copy_report", icon='COPYDOWN')
+
+
 classes = (SS_Settings, SS_PT_main, SS_PT_create, SS_PT_create_settings, SS_PT_grow,
-           SS_PT_group, SS_PT_shape, SS_PT_inspect, SS_PT_output)
+           SS_PT_group, SS_PT_shape, SS_PT_inspect, SS_PT_output, SS_PT_help)
