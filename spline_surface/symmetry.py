@@ -141,4 +141,94 @@ class SS_OT_mirror_group(bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (SS_OT_mirror_group,)
+def _mirrors_of(names, down):
+    """Mirror patches among `names`, plus the mirrors made from any of them."""
+    out = []
+    for name in names:
+        ob = bpy.data.objects.get(name)
+        if ob is None or ob.type != 'SURFACE':
+            continue
+        if (_meta(ob) or {}).get("method") == "mirror":
+            out.append(name)
+        for d in sorted(down.get(name, ())):
+            dob = bpy.data.objects.get(d)
+            if dob is not None and (_meta(dob) or {}).get("method") == "mirror":
+                out.append(d)
+    return list(dict.fromkeys(out))
+
+
+def _freeze(ob):
+    net, orders = world_net(ob)
+    store_meta(ob, raw_meta(net, orders))
+
+
+class SS_OT_mirror_unlink(bpy.types.Operator):
+    bl_idname = "spline_surface.mirror_unlink"
+    bl_label = "Unlink Mirror"
+    bl_description = ("Cut the mirrored patches (selected, or made from the selected patches) "
+                      "loose from their originals. They keep their shape and no longer follow "
+                      "the original, so the two sides can differ")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and any(
+            o.type == 'SURFACE' for o in context.selected_objects)
+
+    def execute(self, context):
+        names = _mirrors_of([o.name for o in context.selected_objects], live.dependency_graph())
+        if not names:
+            self.report({'WARNING'}, "No mirrored patches among the selection")
+            return {'CANCELLED'}
+        live._state["busy"] = True
+        try:
+            for name in names:
+                _freeze(bpy.data.objects[name])
+        finally:
+            live._state["busy"] = False
+            live._reset()
+        self.report({'INFO'}, "Unlinked %d mirrored patch(es)" % len(names))
+        return {'FINISHED'}
+
+
+class SS_OT_mirror_remove(bpy.types.Operator):
+    bl_idname = "spline_surface.mirror_remove"
+    bl_label = "Remove Mirror"
+    bl_description = ("Delete the mirrored patches (selected, or made from the selected patches). "
+                      "Patches built from a deleted mirror keep their shape and are cut loose")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and any(
+            o.type == 'SURFACE' for o in context.selected_objects)
+
+    def execute(self, context):
+        down = live.dependency_graph()
+        names = _mirrors_of([o.name for o in context.selected_objects], down)
+        if not names:
+            self.report({'WARNING'}, "No mirrored patches among the selection")
+            return {'CANCELLED'}
+        gone = set(names)
+        orphans = {d for n in names for d in down.get(n, ()) if d not in gone}
+        live._state["busy"] = True
+        try:
+            for name in sorted(orphans):
+                ob = bpy.data.objects.get(name)
+                if ob is not None and ob.type == 'SURFACE':
+                    _freeze(ob)
+            for name in names:
+                ob = bpy.data.objects[name]
+                data = ob.data
+                bpy.data.objects.remove(ob, do_unlink=True)
+                if data is not None and data.users == 0:     # keep the name free for a new mirror
+                    bpy.data.curves.remove(data)
+        finally:
+            live._state["busy"] = False
+            live._reset()
+        self.report({'INFO'}, "Removed %d mirrored patch(es)%s" % (
+            len(names), ", froze %d built from them" % len(orphans) if orphans else ""))
+        return {'FINISHED'}
+
+
+classes = (SS_OT_mirror_group, SS_OT_mirror_unlink, SS_OT_mirror_remove)

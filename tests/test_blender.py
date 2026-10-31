@@ -708,6 +708,47 @@ def run():
     assert bpy.ops.spline_surface.mirror_group(scope='SELECTED') == {'FINISHED'}   # explicit: allowed
     bpy.data.objects.remove(bpy.data.objects[from_mirror.name + "_mirror"], do_unlink=True)
     bpy.data.objects.remove(from_mirror, do_unlink=True)
+    # Unlink keeps the mirror as it is but frees it; Remove deletes it and freezes what was built on it
+    only_ = [o for o in bpy.context.selected_objects]
+    for o in only_:
+        o.select_set(False)
+    ul_base = half
+    ul_mirror = bpy.data.objects[ul_base.name + "_mirror"]
+    ul_base.select_set(True)
+    shape_before = world_net(ul_mirror)[0].copy()
+    assert bpy.ops.spline_surface.mirror_unlink() == {'FINISHED'}
+    assert json.loads(ul_mirror[spline_surface.operators.META_KEY])["method"] == "raw"
+    assert np.allclose(world_net(ul_mirror)[0], shape_before)
+    ul_base.scale.z = 1.2
+    vl.update()
+    assert np.allclose(world_net(ul_mirror)[0], shape_before)           # no longer follows
+    ul_base.scale.z = 1.5
+    vl.update()
+    assert bpy.ops.spline_surface.mirror_unlink() == {'CANCELLED'}
+    # a fresh mirror with a patch built on it, then removed
+    bpy.context.scene.cursor.location = (1, 900, 0)
+    bpy.ops.spline_surface.add_patch(shape='DOME')
+    rm_base = bpy.context.active_object
+    for o in bpy.context.selected_objects:
+        o.select_set(False)
+    rm_base.select_set(True)
+    assert bpy.ops.spline_surface.mirror_group() == {'FINISHED'}
+    rm_mirror = bpy.data.objects[rm_base.name + "_mirror"]
+    select([rm_mirror])
+    assert bpy.ops.spline_surface.extend_edge(source=rm_mirror.name, edge='V1', continuity='G1') == {'FINISHED'}
+    on_mirror = bpy.context.active_object
+    ext_shape = world_net(on_mirror)[0].copy()
+    select([rm_base])
+    rm_name = rm_mirror.name
+    assert bpy.ops.spline_surface.mirror_remove() == {'FINISHED'}
+    assert rm_name not in bpy.data.objects
+    assert json.loads(on_mirror[spline_surface.operators.META_KEY])["method"] == "raw"
+    assert np.allclose(world_net(on_mirror)[0], ext_shape)
+    assert bpy.ops.spline_surface.mirror_remove() == {'CANCELLED'}
+    for dead in (on_mirror, rm_base):
+        dead_data = dead.data
+        bpy.data.objects.remove(dead, do_unlink=True)
+        bpy.data.curves.remove(dead_data)
     # mirror scope: Selected leaves the linked extension alone, Built From Them adds it later
     bpy.context.scene.cursor.location = (1, 500, 0)
     bpy.ops.spline_surface.add_patch(shape='DOME')

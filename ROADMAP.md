@@ -174,3 +174,7 @@ Flange に Outside を追加。面を切り詰めず、縁の外側に丸みと�
 ## v0.55 Copy Bug Report
 
 不具合報告用に、バージョン・設定・選んだ面のレシピと継ぎ目をクリップボードへコピーするボタンを追加。
+
+## v0.56 Mirror の Unlink / Remove
+
+鏡側を元から切り離す Unlink Mirror と、鏡側を消す Remove Mirror を追加。
