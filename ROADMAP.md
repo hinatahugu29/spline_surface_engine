@@ -166,3 +166,7 @@ Loft に Extra Rows（既定 2）を追加。断面の間に、形を変えず�
 ## v0.53 Mirror の Scope
 
 Mirror Group に Scope を追加（Group／Selected／Selected + Built From Them）。鏡側の面から作った面が、元の側へ鏡写しで戻って重複する問題を直した（Selected を除く）。
+
+## v0.54 Flange Outside
+
+Flange に Outside を追加。面を切り詰めず、縁の外側に丸みと壁を付け足す。先にフランジで切り詰めた面につながる隣の面に、フランジを続けるときの隙間を解消する。

@@ -1360,6 +1360,44 @@ def run():
                                          radius=0.04) == {'FINISHED'}
     ret = bpy.context.active_object
     print("return flange", ret.name, world_net(ret)[0][..., 2].min())
+    # Outside: the patch is not cut back, the wall starts where the rounding ends, so a flange can
+    # be carried on along a neighbouring patch and meet the existing wall
+    bpy.context.scene.cursor.location = (0, 760, 0)
+    bpy.ops.spline_surface.add_patch(shape='PLANE')
+    plate = bpy.context.active_object
+    x_outer = world_net(plate)[0][..., 0].max()
+    assert bpy.ops.spline_surface.flange(source=plate.name, edge='U1', length=0.4, angle=90.0,
+                                         radius=0.2) == {'FINISHED'}
+    old_wall = [o for o in bpy.data.objects if o.name.startswith(plate.name) and o.name.endswith("_flange")][0]
+    assert abs(world_net(old_wall)[0][..., 0].max() - x_outer) < 1e-4
+    cut_x = world_net(plate)[0][..., 0].max()
+    assert cut_x < x_outer - 0.15                      # the trimmed plate lost about the radius
+    select([plate])
+    assert bpy.ops.spline_surface.extend_edge(source=plate.name, edge='V1', length=1.0,
+                                              continuity='G1') == {'FINISHED'}
+    cont = bpy.context.active_object
+    cnet, corders = world_net(cont)
+    outer = max(("U0", "U1", "V0", "V1"), key=lambda e: edge_polyline(cnet, corders, e, 5)[:, 0].mean())
+    net_before = cnet.copy()
+    assert bpy.ops.spline_surface.flange(source=cont.name, edge=outer, length=0.4, angle=90.0,
+                                         radius=0.2, outside=True) == {'FINISHED'}
+    assert np.allclose(world_net(cont)[0], net_before)           # the patch is not cut back
+    wall_o = [o for o in bpy.data.objects if o.name.startswith(cont.name) and o.name.endswith("_flange")][0]
+    bl_o = [o for o in bpy.data.objects if o.name.startswith(cont.name) and o.name.endswith("_blend")][0]
+    meta_o = json.loads(wall_o[spline_surface.operators.META_KEY])
+    assert abs(meta_o["offset"] - 0.2) < 1e-6
+    # at the junction the new wall's outer line is where the old wall stands
+    wo = world_net(wall_o)[0]
+    junction_x = wo[np.argmin(wo[:, 0, 1]), 0, 0]
+    print("outside flange junction x", junction_x, "old wall x", x_outer)
+    assert abs(junction_x - x_outer) < 0.05, (junction_x, x_outer)
+    def grade_of(a, b):
+        na, oa = world_net(a)
+        nb, ob_ = world_net(b)
+        sh = find_shared_edge(na, nb, 1e-4, oa, ob_)
+        return None if sh is None else grade(measure(na, nb, *sh[:3], oa, ob_))
+    print("outside flange seams", grade_of(cont, bl_o), grade_of(bl_o, wall_o))
+    assert grade_of(cont, bl_o) in ('G1', 'G2') and grade_of(bl_o, wall_o) in ('G1', 'G2')
     # without rounding it is a single sharp wall that follows its source
     bpy.context.scene.cursor.location = (0, 720, 0)
     bpy.ops.spline_surface.add_patch(shape='PLANE', points_u=5, points_v=5)

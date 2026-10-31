@@ -66,7 +66,7 @@ def compute_extend(source, meta, settings):
 def compute_flange(source, meta):
     net, orders = world_net(source)
     return flange_net(net, meta["edge"], meta["length"], meta["angle"], meta.get("flip", False),
-                      orders)
+                      orders, meta.get("offset", 0.0))
 
 
 def compute_corner(sources, meta, settings):

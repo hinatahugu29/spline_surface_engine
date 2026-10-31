@@ -16,6 +16,11 @@ from .operators import compute_flange
 from .recipe import _make_active, store_meta, surface_edges
 
 
+# Bridge tension that makes a G1 bridge between the patch edge and the wall's first row
+# follow a circular arc (checked in the tests)
+_ARC_TENSION = 1.5
+
+
 class SS_OT_flange(pick.ModalPicker, bpy.types.Operator):
     bl_idname = "spline_surface.flange"
     bl_label = "Flange"
@@ -41,6 +46,11 @@ class SS_OT_flange(pick.ModalPicker, bpy.types.Operator):
         description="Rounding of the fold (0: leave it sharp)")
     flip: bpy.props.BoolProperty(
         name="Flip", default=False, description="Fold towards the front of the patch instead of the back")
+    outside: bpy.props.BoolProperty(
+        name="Outside", default=False,
+        description="Leave the patch as it is and add the rounded fold outside its edge, instead "
+                    "of cutting the patch back by the radius. Use it where the edge already is the "
+                    "outline, e.g. to carry a flange on along a neighbouring patch")
 
     @classmethod
     def poll(cls, context):
@@ -92,6 +102,9 @@ class SS_OT_flange(pick.ModalPicker, bpy.types.Operator):
         settings = context.scene.spline_surface
         meta = {"method": "flange", "sources": [source.name], "edge": self.edge,
                 "length": self.length, "angle": self.angle, "flip": self.flip}
+        outside = self.outside and self.radius > 0.0
+        if outside:
+            meta["offset"] = self.radius
         try:
             net, orders = compute_flange(source, meta)
             cu = build_surface_data(source.name + "_flange", net, settings.resolution, orders)
@@ -104,7 +117,13 @@ class SS_OT_flange(pick.ModalPicker, bpy.types.Operator):
         context.collection.objects.link(wall)
         store_meta(wall, meta)
         _make_active(context, wall)
-        if self.radius > 0.0:
+        if outside:
+            result = bpy.ops.spline_surface.bridge_edges(
+                source_a=source.name, edge_a=self.edge, source_b=wall.name, edge_b='V0',
+                continuity='G1', tension=_ARC_TENSION)
+            if result != {'FINISHED'}:
+                self.report({'WARNING'}, "The wall was added, but the fold could not be rounded")
+        elif self.radius > 0.0:
             seams = json.dumps([[source.name, self.edge, wall.name, 'V0']])
             result = bpy.ops.spline_surface.fillet(
                 seams=seams, radius=self.radius, continuity='G2', corners=False)

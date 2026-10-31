@@ -13,12 +13,14 @@ from .extend import bezier_orders, edge_derivatives, edge_frame, frame_orders
 _NORMAL_SIGN = {'V1': 1.0, 'V0': -1.0, 'U1': -1.0, 'U0': 1.0}
 
 
-def flange_net(P, edge, length=0.3, angle=90.0, flip=False, orders=None):
+def flange_net(P, edge, length=0.3, angle=90.0, flip=False, orders=None, offset=0.0):
     """Wall off `edge` of net P. Returns (net, orders); the edge is the wall's v = 0 row.
 
     angle: 0 continues the patch straight on, 90 folds square to it, 180 folds
     back over it. length: wall depth in world units (along the fold direction).
     flip: fold towards the front (along the normal) instead of the back.
+    offset: radius of a fold rounded *outside* the edge. The wall then starts where
+    that rounding ends, so the patch itself is not cut back (see Flange's Outside).
     """
     if not 0.0 < angle < 180.0:
         raise ValueError("angle must be between 0 and 180 degrees")
@@ -39,5 +41,8 @@ def flange_net(P, edge, length=0.3, angle=90.0, flip=False, orders=None):
     back = n if flip else -n
     d = np.cos(a) * t + np.sin(a) * back
     d /= np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-12)
-    net = np.stack([E, E + length * d], axis=1)   # (along, 2, 3): u along the edge, v out
+    start = E
+    if offset > 0.0:                               # where an arc of that radius, leaving E along t, ends
+        start = E + offset * (np.sin(a) * t + (1.0 - np.cos(a)) * back)
+    net = np.stack([start, start + length * d], axis=1)   # (along, 2, 3): u along the edge, v out
     return net, (k_along, 2)
