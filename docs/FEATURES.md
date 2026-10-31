@@ -52,7 +52,7 @@
 | Edge Chain | つながった開いた辺を1本のカーブにまとめる | 自動／要実機 |
 | Merge | 格子状に並んだ面を1枚に作り直す（近似） | 自動 |
 | Select / Regenerate Group | つながった面をまとめて選ぶ／作り直す | 自動 |
-| Mirror Group | 面のグループを対称面で反転コピーし、連動させる | 自動 |
+| Mirror Group | 面を対称面で反転コピーし、連動させる。Scope で対象（Group／Selected／Selected + Built From Them）を選べる | 自動 |
 | Cage（Add / Apply / Remove） | ラティスで面のグループを大きく変形する | 自動 |
 
 ## 4. 形を整える（Shape 欄）

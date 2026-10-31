@@ -692,6 +692,37 @@ def run():
     assert bpy.ops.spline_surface.to_mesh(weld=True) == {'FINISHED'}
     print("mirror weld", len(bpy.context.active_object.data.vertices))
     assert len(bpy.context.active_object.data.vertices) == expected_mesh((half, hext, mh, me_))[0]
+    # a patch built from a mirrored patch is not mirrored back to the original side
+    only_ = [o for o in bpy.context.selected_objects]
+    for o in only_:
+        o.select_set(False)
+    mir_ext_src = bpy.data.objects[half.name + "_mirror"]
+    mir_ext_src.select_set(True)
+    bpy.context.view_layer.objects.active = mir_ext_src
+    assert bpy.ops.spline_surface.extend_edge(edge='V0', continuity='G2') == {'FINISHED'}
+    from_mirror = bpy.context.active_object
+    n_before = len([o for o in bpy.data.objects if o.type == 'SURFACE'])
+    from_mirror.select_set(True)
+    assert bpy.ops.spline_surface.mirror_group() == {'CANCELLED'}
+    assert len([o for o in bpy.data.objects if o.type == 'SURFACE']) == n_before
+    assert bpy.ops.spline_surface.mirror_group(scope='SELECTED') == {'FINISHED'}   # explicit: allowed
+    bpy.data.objects.remove(bpy.data.objects[from_mirror.name + "_mirror"], do_unlink=True)
+    bpy.data.objects.remove(from_mirror, do_unlink=True)
+    # mirror scope: Selected leaves the linked extension alone, Built From Them adds it later
+    bpy.context.scene.cursor.location = (1, 500, 0)
+    bpy.ops.spline_surface.add_patch(shape='DOME')
+    sc_base = bpy.context.active_object
+    bpy.ops.spline_surface.extend_edge(edge='V1', continuity='G2')
+    sc_ext = bpy.context.active_object
+    for o in bpy.context.selected_objects:
+        o.select_set(False)
+    sc_base.select_set(True)
+    assert bpy.ops.spline_surface.mirror_group(scope='SELECTED') == {'FINISHED'}
+    assert sc_base.name + "_mirror" in bpy.data.objects
+    assert sc_ext.name + "_mirror" not in bpy.data.objects
+    sc_base.select_set(True)
+    assert bpy.ops.spline_surface.mirror_group(scope='DOWNSTREAM') == {'FINISHED'}
+    assert sc_ext.name + "_mirror" in bpy.data.objects
     # split: cut a mirrored patch with extensions; links follow the pieces
     bpy.context.scene.cursor.location = (1, 400, 0)
     bpy.ops.spline_surface.add_patch(shape='DOME')

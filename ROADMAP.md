@@ -162,3 +162,7 @@ Loft に Extra Rows（既定 2）を追加。断面の間に、形を変えず�
 ## v0.52 Add Row
 
 制御点を1行（列）だけ足す。編集モードでも使える。1区間の方向は次数上げで厳密、複数区間は当て直しで形がわずかに動く（量を表示）。位置の指定はできない（均等ノットの制約）。
+
+## v0.53 Mirror の Scope
+
+Mirror Group に Scope を追加（Group／Selected／Selected + Built From Them）。鏡側の面から作った面が、元の側へ鏡写しで戻って重複する問題を直した（Selected を除く）。

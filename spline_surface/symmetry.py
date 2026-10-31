@@ -24,6 +24,13 @@ class SS_OT_mirror_group(bpy.types.Operator):
                       "half follows the original through Live Update")
     bl_options = {'REGISTER', 'UNDO'}
 
+    scope: bpy.props.EnumProperty(
+        name="Scope", default='GROUP',
+        items=[('GROUP', "Group", "The selected patches and everything linked to them by recipes"),
+               ('SELECTED', "Selected", "Only the selected patches"),
+               ('DOWNSTREAM', "Selected + Built From Them",
+                "The selected patches and the patches made from them (fillets, extensions...), "
+                "not the patches they were made from")])
     axis: bpy.props.EnumProperty(
         name="Axis", default='X',
         items=[('X', "X", "Mirror across the YZ plane"), ('Y', "Y", "Mirror across the XZ plane"),
@@ -44,20 +51,37 @@ class SS_OT_mirror_group(bpy.types.Operator):
 
     def execute(self, context):
         settings = context.scene.spline_surface
-        group = live.connected([o.name for o in context.selected_objects])
+        picked = [o.name for o in context.selected_objects]
         down = live.dependency_graph()
+        if self.scope == 'SELECTED':
+            group = set(picked)
+        elif self.scope == 'DOWNSTREAM':
+            group = set(picked) | set(live.downstream_order(picked, down)[0])
+        else:
+            group = live.connected(picked)
+        # Patches built from a mirrored patch already live on the mirrored side: mirroring
+        # them again would put copies back on the original side, so the group scopes skip them.
+        mirrors = [o.name for o in bpy.data.objects
+                   if META_KEY in o and (_meta(o) or {}).get("method") == "mirror"]
+        on_mirror_side = set(live.downstream_order(mirrors, down)[0])             if self.scope != 'SELECTED' else set()
+        skipped_mirror_side = 0
         patches = []
         for name in sorted(group):
             ob = bpy.data.objects[name]
             meta = _meta(ob)
             if ob.type != 'SURFACE' or (meta and meta.get("method") == "mirror"):
                 continue
+            if name in on_mirror_side:
+                skipped_mirror_side += 1
+                continue
             if any((_meta(bpy.data.objects[d]) or {}).get("method") == "mirror"
                    for d in down.get(name, ()) if d in bpy.data.objects):
                 continue  # already mirrored
             patches.append(ob)
         if not patches:
-            self.report({'WARNING'}, "Nothing new to mirror")
+            self.report({'WARNING'}, "Nothing new to mirror" + (
+                " (%d patch(es) built from mirrored patches were left alone)" % skipped_mirror_side
+                if skipped_mirror_side else ""))
             return {'CANCELLED'}
         squared, made = [], []
         live._state["busy"] = True
@@ -109,8 +133,11 @@ class SS_OT_mirror_group(bpy.types.Operator):
             live._reset()
         if made:
             _make_active(context, made[-1])
-        self.report({'INFO'}, "Mirrored %d patch(es), squared %d centre edge(s)"
-                    % (len(made), len(squared)))
+        note = "" if not skipped_mirror_side else (
+            "; left %d patch(es) built from mirrored patches (use Scope: Selected to mirror them)"
+            % skipped_mirror_side)
+        self.report({'INFO'}, "Mirrored %d patch(es), squared %d centre edge(s)%s"
+                    % (len(made), len(squared), note))
         return {'FINISHED'}
 
 
