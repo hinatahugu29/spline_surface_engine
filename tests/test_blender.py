@@ -1447,6 +1447,31 @@ def run():
     assert "Spline Surface 0." in rep and "Blender" in rep and "Settings:" in rep
     assert cont.name in rep and bl_o.name in rep and '"method": "blend"' in rep and "Seams between them" in rep
     assert len(rep) < 20000
+    # Origin to Center: the surface stays, the origin moves to it and stays through rebuilds
+    bpy.context.scene.cursor.location = (0, 980, 0)
+    bpy.ops.spline_surface.add_patch(shape='DOME')
+    oc_base = bpy.context.active_object
+    select([oc_base])
+    assert bpy.ops.spline_surface.extend_edge(source=oc_base.name, edge='V1', length=0.5,
+                                              continuity='G1') == {'FINISHED'}
+    oc_ext = bpy.context.active_object
+    select([oc_ext])
+    shape0 = world_net(oc_ext)[0].copy()
+    assert bpy.ops.spline_surface.origin_to_center() == {'FINISHED'}
+    assert np.allclose(world_net(oc_ext)[0], shape0, atol=1e-5)
+    pts0 = shape0.reshape(-1, 3)
+    assert np.allclose(oc_ext.location, 0.5 * (pts0.min(0) + pts0.max(0)), atol=1e-5), tuple(oc_ext.location)
+    assert not spline_surface.operators.hand_edited(oc_ext, json.loads(oc_ext[spline_surface.operators.META_KEY]))
+    loc_before = np.array(oc_ext.location)
+    oc_base.scale.z = 1.4                     # the source changes: Live Update rebuilds the extension
+    vl.update()
+    assert np.abs(world_net(oc_ext)[0] - shape0).max() > 0.05
+    assert np.allclose(oc_ext.location, loc_before)
+    select([oc_ext])
+    assert bpy.ops.spline_surface.regenerate() == {'FINISHED'}
+    assert np.allclose(oc_ext.location, loc_before)
+    oc_base.scale.z = 1.0
+    vl.update()
     # without rounding it is a single sharp wall that follows its source
     bpy.context.scene.cursor.location = (0, 720, 0)
     bpy.ops.spline_surface.add_patch(shape='PLANE', points_u=5, points_v=5)

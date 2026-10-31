@@ -178,3 +178,7 @@ Flange に Outside を追加。面を切り詰めず、縁の外側に丸みと�
 ## v0.56 Mirror の Unlink / Remove
 
 鏡側を元から切り離す Unlink Mirror と、鏡側を消す Remove Mirror を追加。
+
+## v0.57 面の原点
+
+面の作り直し（Live Update・Regenerate など）でオブジェクトの位置・回転・拡大縮小を保つようにし、Origin to Center を追加。Add Patch の面の原点は 3D カーソルに置く。

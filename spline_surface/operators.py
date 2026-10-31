@@ -24,7 +24,7 @@ from . import pick
 from . import zebra
 from .recipe import (EDGE_KEYS, META_KEY, META_VERSION, OPPOSITE_EDGE, _make_active,
                      edge_polyline, hand_edited, hand_edited_net, iso_lines, raw_meta,
-                     replace_net, store_meta, surface_edges, world_net)
+                     replace_net, set_origin, store_meta, surface_edges, world_net)
 
 BOUNDARY_TYPES = {'CURVE', 'GREASEPENCIL'}
 
@@ -1614,6 +1614,7 @@ class SS_OT_add_patch(bpy.types.Operator):
         cu = build_surface_data(name, net, settings.resolution, orders)
         ob = bpy.data.objects.new(name, cu)
         context.collection.objects.link(ob)
+        set_origin(ob, context.scene.cursor.location)      # the origin sits at the 3D cursor
         store_meta(ob, raw_meta(net, orders))
         _make_active(context, ob)
         return {'FINISHED'}

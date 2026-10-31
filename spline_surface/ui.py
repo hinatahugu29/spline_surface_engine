@@ -240,6 +240,7 @@ class SS_PT_shape(_SubPanel, bpy.types.Panel):
         row = layout.row(align=True)
         row.operator("spline_surface.fair", icon='MOD_SMOOTH')
         row.operator("spline_surface.refine", icon='MOD_SUBSURF')
+        layout.operator("spline_surface.origin_to_center", icon='OBJECT_ORIGIN')
         row = layout.row(align=True)
         for d in ('U', 'V'):
             op = row.operator("spline_surface.insert_line", text="Add Row " + d, icon='ADD')

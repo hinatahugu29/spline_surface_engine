@@ -81,15 +81,32 @@ def raw_meta(net, orders, **extra):
 
 def replace_net(ob, net, settings, orders=None):
     """Swap the object's surface for one built from a world-space net."""
+    # the object keeps its transform (and so its origin); the net is written in its local space
+    M = np.array(ob.matrix_world)
+    if not np.allclose(M, np.eye(4)):
+        Mi = np.linalg.inv(M)
+        net = np.asarray(net) @ Mi[:3, :3].T + Mi[:3, 3]
     cu = build_surface_data(ob.data.name, net, settings.resolution, orders)
     old = ob.data
     for mat in old.materials:
         cu.materials.append(mat)
     ob.data = cu
-    ob.matrix_world.identity()
     ADDON_WRITES.add(ob.name)
     if old.users == 0:
         bpy.data.curves.remove(old)
+
+
+def set_origin(ob, point):
+    """Move the object's origin to the world position `point`; the surface does not move."""
+    from mathutils import Matrix, Vector
+    M = ob.matrix_world.copy()
+    c = M.inverted() @ Vector(point)
+    for sp in ob.data.splines:
+        for p in sp.points:
+            p.co = (p.co.x - c.x, p.co.y - c.y, p.co.z - c.z, p.co.w)
+    ob.data.update_tag()
+    ob.matrix_world = M @ Matrix.Translation(c)
+    ADDON_WRITES.add(ob.name)
 
 
 def _make_active(context, ob):

@@ -12,7 +12,7 @@ from .core.fair import fair_net, insert_line, refine_net
 from .ctrlpoints import pin_masks
 from .live import _write_in_place
 from .core.nurbs import eval_surface
-from .recipe import replace_net, world_net
+from .recipe import replace_net, set_origin, world_net
 
 
 def _patches(context):
@@ -142,4 +142,33 @@ class SS_OT_insert_line(bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (SS_OT_fair, SS_OT_refine, SS_OT_insert_line)
+class SS_OT_origin_to_center(bpy.types.Operator):
+    bl_idname = "spline_surface.origin_to_center"
+    bl_label = "Origin to Center"
+    bl_description = ("Move the origin of the selected patches to the centre of their control "
+                      "points. The surface does not move; rotating and scaling then pivot around "
+                      "the patch, and the origin stays there when the patch is rebuilt")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and bool(_patches(context))
+
+    def execute(self, context):
+        done = 0
+        for ob in _patches(context):
+            try:
+                net, _ = world_net(ob)
+            except ValueError as e:
+                self.report({'WARNING'}, "%s: %s" % (ob.name, e))
+                continue
+            pts = net.reshape(-1, 3)
+            set_origin(ob, 0.5 * (pts.min(axis=0) + pts.max(axis=0)))
+            done += 1
+        if not done:
+            return {'CANCELLED'}
+        self.report({'INFO'}, "Moved the origin of %d patch(es)" % done)
+        return {'FINISHED'}
+
+
+classes = (SS_OT_fair, SS_OT_refine, SS_OT_insert_line, SS_OT_origin_to_center)
