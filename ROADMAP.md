@@ -182,3 +182,8 @@ Flange に Outside を追加。面を切り詰めず、縁の外側に丸みと�
 ## v0.57 面の原点
 
 面の作り直し（Live Update・Regenerate など）でオブジェクトの位置・回転・拡大縮小を保つようにし、Origin to Center を追加。Add Patch の面の原点は 3D カーソルに置く。
+
+## 公開準備の進み具合
+
+- 済：説明書・機能一覧・作業の流れ（6例）・更新履歴・不具合報告の導線（Copy Bug Report、Issue 雛形）・Booth 用の文言と一式の作成スクリプト・サンプル .blend・英語の簡易 README
+- 残：掲載用のスクリーンショット、利用条件（ライセンス）の確定、Blender Extensions 掲載の要件確認、実機での通し確認

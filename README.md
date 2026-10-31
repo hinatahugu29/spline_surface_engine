@@ -9,6 +9,7 @@
 3. 3D ビューのサイドバー（N キー）に **Spline Surface** タブが出ます
 
 ## 文書
+- [English summary](README_en.md)
 - [説明書](docs/MANUAL.md)：考え方、全機能の説明、操作キー、困ったとき、不具合の報告
 - [機能一覧](docs/FEATURES.md)：何ができるか、何ができないか、検証の状況
 - [作業の流れ](docs/WORKFLOWS.md)：目的別に6例の手順
