@@ -391,6 +391,8 @@ def run():
     line = bpy.context.active_object
     dg = bpy.context.evaluated_depsgraph_get()
     pl = read_polyline(line, dg, 32)
+    assert np.allclose(line.location, (10, 20, 0)), tuple(line.location)   # origin at the 3D cursor
+    assert np.allclose(pl.mean(axis=0), (10, 20, 0), atol=1e-5)
     d = pl[-1] - pl[0]
     straight = np.linalg.norm(np.cross(pl - pl[0], d / np.linalg.norm(d)), axis=1).max()
     print("boundary line length", np.linalg.norm(d), "straightness", straight)

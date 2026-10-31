@@ -1394,16 +1394,16 @@ class SS_OT_add_boundary_curve(bpy.types.Operator):
         cu.dimensions = '3D'
         sp = cu.splines.new('BEZIER')
         sp.bezier_points.add(len(pts) - 1)
-        origin = np.array(context.scene.cursor.location)
         for bp, (co, hl, hr) in zip(sp.bezier_points, pts):
-            bp.co = co + origin
+            bp.co = co
             if handle_type == 'VECTOR':
                 bp.handle_left_type = bp.handle_right_type = 'VECTOR'
             else:
                 bp.handle_left_type = bp.handle_right_type = 'FREE'
-                bp.handle_left = hl + origin
-                bp.handle_right = hr + origin
+                bp.handle_left = hl
+                bp.handle_right = hr
         ob = bpy.data.objects.new(cu.name, cu)
+        ob.location = context.scene.cursor.location      # the object's origin sits at the 3D cursor
         context.collection.objects.link(ob)
         _make_active(context, ob)
         return {'FINISHED'}
@@ -1442,9 +1442,10 @@ class SS_OT_add_curve_grid(bpy.types.Operator):
             sp = cu.splines.new('BEZIER')
             sp.bezier_points.add(len(pts) - 1)
             for bp, co in zip(sp.bezier_points, pts):
-                bp.co = co
+                bp.co = co - c
                 bp.handle_left_type = bp.handle_right_type = 'AUTO'
             ob = bpy.data.objects.new(name, cu)
+            ob.location = c                                  # origin at the 3D cursor
             context.collection.objects.link(ob)
             made.append(ob)
 
