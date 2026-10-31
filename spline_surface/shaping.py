@@ -8,9 +8,10 @@ Mesh more to work with. Both leave the patch as if edited by hand.
 import bpy
 import numpy as np
 
-from .core.fair import fair_net, refine_net
+from .core.fair import fair_net, insert_line, refine_net
 from .ctrlpoints import pin_masks
 from .live import _write_in_place
+from .core.nurbs import eval_surface
 from .recipe import replace_net, world_net
 
 
@@ -90,4 +91,55 @@ class SS_OT_refine(bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (SS_OT_fair, SS_OT_refine)
+class SS_OT_insert_line(bpy.types.Operator):
+    bl_idname = "spline_surface.insert_line"
+    bl_label = "Add Row"
+    bl_description = ("Add one row or column of control points to the patch, in Object or Edit "
+                      "Mode. Exact when the direction is a single span; otherwise the net is "
+                      "refitted and the shape moves slightly (the change is reported)")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    direction: bpy.props.EnumProperty(
+        name="Direction", default='U',
+        items=[('U', "U", "One more control point along U (a new row across V)"),
+               ('V', "V", "One more control point along V (a new column across U)")])
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode in {'OBJECT', 'EDIT_SURFACE'} and any(
+            o.type == 'SURFACE' for o in (context.objects_in_mode if context.mode != 'OBJECT'
+                                         else context.selected_objects))
+
+    def execute(self, context):
+        editing = context.mode == 'EDIT_SURFACE'
+        patches = [o for o in (context.objects_in_mode if editing else context.selected_objects)
+                   if o.type == 'SURFACE']
+        if editing:
+            bpy.ops.object.mode_set(mode='OBJECT')   # edit-mode points are only written on leaving
+        done, worst, inexact = 0, 0.0, 0
+        axis = 0 if self.direction == 'U' else 1
+        for ob in patches:
+            try:
+                net, orders = world_net(ob)
+                new, new_orders, exact = insert_line(net, orders, axis)
+            except ValueError as e:
+                self.report({'WARNING'}, "%s: %s" % (ob.name, e))
+                continue
+            if not exact:
+                inexact += 1
+                g = np.linspace(0.0, 1.0, 25)
+                size = max(float(np.ptp(net.reshape(-1, 3), axis=0).max()), 1e-12)
+                diff = np.abs(eval_surface(new, new_orders, g, g) - eval_surface(net, orders, g, g))
+                worst = max(worst, float(np.linalg.norm(diff, axis=2).max()) / size)
+            replace_net(ob, new, context.scene.spline_surface, new_orders)
+            done += 1
+        if editing:
+            bpy.ops.object.mode_set(mode='EDIT')
+        if not done:
+            return {'CANCELLED'}
+        note = "" if not inexact else " - shape moved by up to %.3g%% of the patch size" % (100 * worst)
+        self.report({'INFO'}, "Added a control point line to %d patch(es)%s" % (done, note))
+        return {'FINISHED'}
+
+
+classes = (SS_OT_fair, SS_OT_refine, SS_OT_insert_line)

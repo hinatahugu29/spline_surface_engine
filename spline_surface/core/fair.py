@@ -4,7 +4,8 @@ Both work on control nets (numpy arrays) and know nothing about Blender.
 """
 import numpy as np
 
-from .nurbs import clamped_knots
+from .bezier import elevate_curve
+from .nurbs import basis_matrix, clamped_knots
 
 
 # ---------------------------------------------------------------- refine
@@ -48,6 +49,44 @@ def refine_net(net, orders, direction='BOTH'):
     if direction in ('V', 'BOTH'):
         net = np.stack([refine_curve(net[i], orders[1]) for i in range(net.shape[0])], axis=0)
     return net, tuple(orders)
+
+
+def _insert_line_curves(lines, k):
+    """One more point on every curve in `lines` (m, n, 3): (new lines, exact)."""
+    n = lines.shape[1]
+    if n == k and k < 6:                       # a single span is a Bezier: raise its degree
+        return np.stack([elevate_curve(c, n) for c in lines]), True
+    t = np.linspace(0.0, 1.0, max(8 * (n + 1), 32))
+    old = basis_matrix(n, k, t)
+    new = basis_matrix(n + 1, k, t)
+    target = np.einsum("ti,mid->mtd", old, lines)
+    first, last = lines[:, 0], lines[:, -1]
+    rhs = target - new[None, :, 0, None] * first[:, None] - new[None, :, -1, None] * last[:, None]
+    inner = np.linalg.lstsq(new[:, 1:-1], rhs.transpose(1, 0, 2).reshape(len(t), -1), rcond=None)[0]
+    inner = inner.reshape(n - 1, len(lines), 3).transpose(1, 0, 2)
+    return np.concatenate([first[:, None], inner, last[:, None]], axis=1), False
+
+
+def insert_line(net, orders, axis):
+    """One more row (axis 0, U) or column (axis 1, V) of control points.
+
+    A single-span direction (points == order) is exact: its degree is raised.
+    Otherwise the knots of Blender's clamped uniform B-spline cannot take a
+    single new knot, so the net is refitted with one more point (ends fixed)
+    and the shape moves slightly. Returns (net, orders, exact).
+    """
+    net = np.asarray(net, float)
+    k = orders[axis]
+    if axis == 0:
+        new, exact = _insert_line_curves(net.transpose(1, 0, 2), k)
+        net = new.transpose(1, 0, 2)
+    else:
+        new, exact = _insert_line_curves(net, k)
+        net = new
+    out = list(orders)
+    if exact and net.shape[axis] - 1 == k:
+        out[axis] = k + 1
+    return net, tuple(out), exact
 
 
 # ---------------------------------------------------------------- fair

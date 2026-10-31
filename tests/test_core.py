@@ -864,6 +864,24 @@ def test_refine_keeps_shape():
     assert np.abs(nurbs.eval_surface(net, (4, 5), g, g) - nurbs.eval_surface(new, o, g, g)).max() < 1e-9
 
 
+def test_insert_line():
+    from core.fair import insert_line
+    g = np.linspace(0, 1, 11)
+    # single span (Bezier) along U: exact, order goes up
+    net = rng.normal(size=(4, 6, 3))
+    new, o, exact = insert_line(net, (4, 4), 0)
+    assert exact and new.shape == (5, 6, 3) and o == (5, 4)
+    assert np.abs(nurbs.eval_surface(net, (4, 4), g, g) - nurbs.eval_surface(new, o, g, g)).max() < 1e-9
+    # multi-span along V: one more point, ends fixed, shape moves only a little on a smooth net
+    xs = np.linspace(0, 1, 7)
+    smooth = np.stack(np.meshgrid(xs, xs, indexing="ij") + [0.3 * np.sin(2 * np.meshgrid(xs, xs, indexing="ij")[1])], -1)
+    new, o, exact = insert_line(smooth, (4, 4), 1)
+    assert not exact and new.shape == (7, 8, 3) and o == (4, 4)
+    assert np.allclose(new[:, 0], smooth[:, 0]) and np.allclose(new[:, -1], smooth[:, -1])
+    dev = np.abs(nurbs.eval_surface(smooth, (4, 4), g, g) - nurbs.eval_surface(new, o, g, g)).max()
+    assert dev < 0.02, dev
+
+
 def test_fair_net():
     from core.fair import fair_net
     g = np.linspace(0, 1, 8)

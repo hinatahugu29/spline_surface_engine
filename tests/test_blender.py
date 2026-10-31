@@ -1045,6 +1045,17 @@ def run():
     print("refine", before.shape, "->", after[0].shape, "max dist",
           float(np.abs(nurbs_eval(*after, np.linspace(0, 1, 15)) - pts_before).max()))
     assert np.abs(nurbs_eval(*after, np.linspace(0, 1, 15)) - pts_before).max() < 1e-5
+    # Add Row works in Edit Mode too; one single-span direction is exact
+    bpy.context.view_layer.objects.active = cp_ext
+    n_before = world_net(cp_ext)[0].shape
+    bpy.ops.object.mode_set(mode='EDIT')
+    assert bpy.ops.spline_surface.insert_line(direction='U') == {'FINISHED'}
+    assert bpy.context.mode == 'EDIT_SURFACE'
+    bpy.ops.object.mode_set(mode='OBJECT')
+    n_after = world_net(cp_ext)[0].shape
+    assert n_after[0] == n_before[0] + 1 and n_after[1] == n_before[1], (n_before, n_after)
+    assert bpy.ops.spline_surface.insert_line(direction='V') == {'FINISHED'}
+    assert world_net(cp_ext)[0].shape[1] == n_before[1] + 1
 
     def graded(a, b):
         """Continuity grade of the seam between two patch objects (None if apart)."""
