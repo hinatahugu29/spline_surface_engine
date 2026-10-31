@@ -1398,6 +1398,14 @@ def run():
         return None if sh is None else grade(measure(na, nb, *sh[:3], oa, ob_))
     print("outside flange seams", grade_of(cont, bl_o), grade_of(bl_o, wall_o))
     assert grade_of(cont, bl_o) in ('G1', 'G2') and grade_of(bl_o, wall_o) in ('G1', 'G2')
+    # Copy Bug Report puts versions, settings, recipes and seams on the clipboard
+    select([cont, bl_o])
+    assert bpy.ops.spline_surface.copy_report() == {'FINISHED'}
+    from spline_surface.bugreport import build_report
+    rep = build_report(bpy.context)          # the clipboard itself is not available in background mode
+    assert "Spline Surface 0." in rep and "Blender" in rep and "Settings:" in rep
+    assert cont.name in rep and bl_o.name in rep and '"method": "blend"' in rep and "Seams between them" in rep
+    assert len(rep) < 20000
     # without rounding it is a single sharp wall that follows its source
     bpy.context.scene.cursor.location = (0, 720, 0)
     bpy.ops.spline_surface.add_patch(shape='PLANE', points_u=5, points_v=5)

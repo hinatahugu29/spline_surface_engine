@@ -375,6 +375,8 @@ Inspect 欄の **Control Points** で、固定された点（オレンジ）と�
 
 ## 11. 不具合の報告
 
+報告のときは、サイドバー最上部の **Copy Bug Report** を押すと、バージョン、設定、選んでいる面のレシピと継ぎ目の状態がクリップボードにコピーされます。そのまま貼り付けてください（面は選んだ状態で押します）。
+
 不具合や気になる動きを見つけたら、次の内容を添えて GitHub の Issues に書いてください。
 
 https://github.com/hinatahugu29/spline_surface_engine/issues

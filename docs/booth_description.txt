@@ -101,7 +101,8 @@ Spline Surface は、車のボディのような「どこから見ても滑ら�
 ■ 不具合報告・ご意見
 GitHub の Issues か、ご連絡で受け付けます。
   https://github.com/hinatahugu29/spline_surface_engine/issues
-次の内容を添えていただけると、直すのが早くなります。
+サイドバー最上部の「Copy Bug Report」を押して、コピーされた内容を貼っていただけると、直すのが早くなります。
+加えて、次の内容があると助かります。
 ・Spline Surface と Blender のバージョン
 ・何をしたか(押したボタン、クリックした順)
 ・何が起きたか、出たエラーメッセージ

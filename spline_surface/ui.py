@@ -110,6 +110,7 @@ class SS_PT_main(bpy.types.Panel):
         col.label(text="options in the Adjust Last Operation panel")
         if s.live_note:
             self.layout.label(text=s.live_note, icon='ERROR')
+        self.layout.operator("spline_surface.copy_report", icon='COPYDOWN')
 
 
 class SS_PT_create(_SubPanel, bpy.types.Panel):
