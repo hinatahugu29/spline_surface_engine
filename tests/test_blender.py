@@ -257,7 +257,7 @@ def run():
         pts = [(x, -1, 0), (x, 0, 2 * bmp), (x, 1, 0)]
         secs.append(bezier_curve("sec%d" % k, pts[::-1] if k % 2 else pts))
     select([secs[2], secs[0], secs[3], secs[1]])
-    assert bpy.ops.spline_surface.loft() == {'FINISHED'}
+    assert bpy.ops.spline_surface.loft(rows=0) == {'FINISHED'}
     loft = bpy.context.active_object
     assert json.loads(loft[spline_surface.operators.META_KEY])["sources"] in (
         ["sec0", "sec1", "sec2", "sec3"], ["sec3", "sec2", "sec1", "sec0"])
@@ -272,6 +272,15 @@ def run():
     select([loft])
     assert bpy.ops.spline_surface.regenerate() == {'FINISHED'}
     assert evaluated_verts(loft)[:, 2].max() > 1.5
+    # two sections with the default extra rows: 4 rows across, same surface, kept by Regenerate
+    select([secs[0], secs[3]])
+    assert bpy.ops.spline_surface.loft() == {'FINISHED'}
+    two = bpy.context.active_object
+    assert json.loads(two[spline_surface.operators.META_KEY])["rows"] == 2
+    assert two.data.splines[0].point_count_v == 4
+    select([two])
+    assert bpy.ops.spline_surface.regenerate() == {'FINISHED'}
+    assert two.data.splines[0].point_count_v == 4
 
     # Hand extrusion in edit mode turns a Bezier patch into a 2-span NURBS.
     sel = [c[0], c[1], c[2], c[3]]

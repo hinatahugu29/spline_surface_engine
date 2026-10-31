@@ -18,7 +18,7 @@ from .core.network import build_network
 from .core.offset import offset_net
 from .core.continuity import find_shared_edge, grade, match_net, measure
 from .core.extend import bezier_orders, extend_net
-from .core.loft import loft_net, order_sections
+from .core.loft import add_rows, loft_net, order_sections
 from .core.nurbs import eval_points
 from . import pick
 from . import zebra
@@ -44,7 +44,7 @@ def compute_coons(sources, depsgraph, settings):
     return coons_net(*sides), max(f[1] for f in fits)
 
 
-def compute_loft(sources, depsgraph, settings, keep_order=False):
+def compute_loft(sources, depsgraph, settings, keep_order=False, rows=0):
     """Fit section curves and loft through them.
 
     Returns (net, max_fit_error, ordered source objects).
@@ -53,6 +53,7 @@ def compute_loft(sources, depsgraph, settings, keep_order=False):
     order = order_sections(polys, keep_order)
     fits = [fit_curve(polys[i][::-1] if flip else polys[i], settings.degree) for i, flip in order]
     net, _ = loft_net([f[0] for f in fits], settings.degree)
+    net = add_rows(net, rows, settings.degree)
     return net, max(f[1] for f in fits), [sources[i] for i, _ in order]
 
 
@@ -186,7 +187,7 @@ def compute_from_meta(meta, context):
         msg = "max fit error %.3g" % err
     elif meta["method"] == "loft":
         net, err, _ = compute_loft(sources, context.evaluated_depsgraph_get(), settings,
-                                   keep_order=True)
+                                   keep_order=True, rows=meta.get("rows", 0))
         msg = "max fit error %.3g" % err
     elif meta["method"] == "extend":
         (net, orders), msg = compute_extend(sources[0], meta, settings), meta["continuity"]
@@ -318,6 +319,11 @@ class SS_OT_loft(bpy.types.Operator):
                       "automatically; up to 6 sections are hit exactly)")
     bl_options = {'REGISTER', 'UNDO'}
 
+    rows: bpy.props.IntProperty(
+        name="Extra Rows", default=2, min=0, max=4,
+        description="Control point rows added between the sections without changing the shape "
+                    "(more points to shape with; limited by the Degree setting)")
+
     @classmethod
     def poll(cls, context):
         return context.mode == 'OBJECT'
@@ -329,14 +335,15 @@ class SS_OT_loft(bpy.types.Operator):
             self.report({'ERROR'}, "Select 2 or more section curves (got %d)" % len(sources))
             return {'CANCELLED'}
         try:
-            net, err, ordered = compute_loft(sources, context.evaluated_depsgraph_get(), settings)
+            net, err, ordered = compute_loft(sources, context.evaluated_depsgraph_get(), settings,
+                                             rows=self.rows)
             cu = build_surface_data("LoftPatch", net, settings.resolution)
         except ValueError as e:
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
         ob = bpy.data.objects.new("LoftPatch", cu)
         context.collection.objects.link(ob)
-        store_meta(ob, {"method": "loft", "sources": [o.name for o in ordered]})
+        store_meta(ob, {"method": "loft", "sources": [o.name for o in ordered], "rows": self.rows})
         _make_active(context, ob)
         note = "" if len(sources) <= settings.degree + 1 else \
             " - more sections than Degree+1, middle ones are approximated"

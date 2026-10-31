@@ -1,7 +1,7 @@
 """Loft a single Bezier patch through a sequence of section curves."""
 import numpy as np
 
-from .bezier import bernstein
+from .bezier import bernstein, elevate_curve
 
 
 def order_sections(polys, keep_order=False):
@@ -65,3 +65,17 @@ def loft_net(rows, max_degree=5):
         inner, *_ = np.linalg.lstsq(B[:, 1:-1], rhs, rcond=None)
         ctrl = np.vstack([flat[0], inner, flat[-1]])
     return ctrl.reshape(dv + 1, -1, 3).transpose(1, 0, 2), v
+
+
+def add_rows(net, rows, max_degree=5):
+    """Extra control rows between the sections, without changing the shape.
+
+    The across-section Bezier is raised in degree by `rows` (at most to
+    `max_degree`), so a two-section loft gets evenly spaced points on its
+    straight lines. Returns (n+1, dv'+1, 3).
+    """
+    net = np.asarray(net, dtype=float)
+    target = min(net.shape[1] - 1 + max(int(rows), 0), max_degree)
+    if target <= net.shape[1] - 1:
+        return net
+    return np.stack([elevate_curve(row, target) for row in net])

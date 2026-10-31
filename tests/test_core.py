@@ -7,7 +7,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "spline_surface"))
 from core.bezier import elevate_curve, eval_curve, eval_surface, fit_curve  # noqa: E402
 from core.extend import EDGES, extend_net  # noqa: E402
-from core.loft import loft_net, order_sections  # noqa: E402
+from core.loft import add_rows, loft_net, order_sections  # noqa: E402
 from core import nurbs  # noqa: E402
 from core.continuity import find_shared_edge, grade, match_net, measure  # noqa: E402
 from core.coons import close_loop, coons_net, loop_to_sides, orient_loop, snap_corners  # noqa: E402
@@ -175,6 +175,19 @@ def test_loft_many_sections_and_two():
     assert np.allclose(net[:, 0], secs[0]) and np.allclose(net[:, -1], secs[-1])
     net2, _ = loft_net(secs[:2])
     assert net2.shape == (4, 2, 3)
+
+
+def test_loft_extra_rows_keep_shape():
+    secs = [fit_curve(_section(x, 0.3 * np.sin(x)), 3)[0] for x in (0.0, 2.0)]
+    net, _ = loft_net(secs)
+    more = add_rows(net, 2)
+    assert more.shape == (4, 4, 3)
+    assert np.allclose(more[:, 0], net[:, 0]) and np.allclose(more[:, -1], net[:, -1])
+    t = np.linspace(0, 1, 7)
+    assert np.allclose(eval_surface(more, t, t), eval_surface(net, t, t), atol=1e-12)
+    # evenly spaced on the straight lines between the sections
+    assert np.allclose(more[:, 1], net[:, 0] + (net[:, -1] - net[:, 0]) / 3)
+    assert add_rows(net, 9, max_degree=5).shape[1] == 6 and add_rows(net, 0).shape == net.shape
 
 
 def test_multispan_extend_match_measure():
