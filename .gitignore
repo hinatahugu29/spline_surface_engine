@@ -2,4 +2,5 @@ __pycache__/
 *.pyc
 *.blend
 *.blend1
+!samples/*.blend
 dist/

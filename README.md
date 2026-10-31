@@ -114,6 +114,7 @@ Extend Edge で作った面は、選ぶと元の辺の中央にオレンジの�
 | 計算部分の単体テスト（Blender 不要） | `py tests/test_core.py` |
 | Blender 上での通しの確認（画面なしで実行） | `blender -b --factory-startup --python tests/test_blender.py`（最後に `ALL OK`） |
 | インストール用 ZIP の作成 | `py tools/build_zip.py [--out フォルダ ...]`（既定は `dist/`。`blender_manifest.toml` と `__init__.py` のバージョンが食い違っていると止まる） |
+| Booth 用の一式（アドオン ZIP＋文書＋サンプル）の作成 | `py tools/build_booth_pack.py`（`dist/spline_surface-booth-x.y.z.zip`。サンプルは `tools/build_sample_hood.py` で作る） |
 
 - 幾何の計算は `spline_surface/core/`（Blender に依存しない）に置き、単体テストを書く。Blender 側のつなぎ込み（レシピ、Live Update、Undo）は `test_blender.py` と実機で確認する
 - `test_blender.py` は1本の流れで、途中の節がシーンを消したり Live Update を切ったりする。新しい節は、必要な面をその節の中で作る
