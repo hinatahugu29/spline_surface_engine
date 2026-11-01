@@ -1,0 +1,147 @@
+<!--
+  Superhive product page body for Spline Surface (fragment, no <html>/<body>).
+  Styling is inline only (no <style>, scripts or external files) so it survives editors that strip them.
+  If the editor removes inline styles, the markup still reads fine as plain headings, paragraphs and lists.
+  Replace every [[...]] before publishing (the dashed boxes are image slots).
+-->
+
+<div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;line-height:1.65;color:#222;max-width:860px;margin:0 auto;">
+
+<!-- ============ hero ============ -->
+<div style="background:linear-gradient(135deg,#1f2430 0%,#2b3345 100%);color:#fff;border-radius:14px;padding:36px 32px;margin:0 0 20px;">
+  <div style="display:inline-block;background:#e87d0d;color:#fff;font-size:12px;font-weight:700;letter-spacing:.08em;padding:3px 10px;border-radius:999px;margin-bottom:14px;">BLENDER 5.x ADD-ON</div>
+  <h1 style="margin:0 0 10px;font-size:34px;line-height:1.2;color:#fff;">Spline Surface</h1>
+  <p style="margin:0;font-size:18px;color:#d9deea;">Smooth, car-body-style surfaces, built from curves. No NURBS knowledge required.</p>
+</div>
+
+<div style="border:2px dashed #b9c0cc;border-radius:12px;padding:46px 20px;text-align:center;color:#6b7280;background:#fafbfc;margin:0 0 28px;">
+  [[IMAGE: hero render or viewport shot of the hood + fender sample with Zebra stripes]]
+</div>
+
+<p style="font-size:17px;margin:0 0 28px;">Draw curves, turn them into surfaces, join the surfaces smoothly, check how smooth the seams really are, and export one welded mesh. Every surface remembers how it was made, so you can change a value later instead of rebuilding.</p>
+
+<!-- ============ problem ============ -->
+<h2 style="font-size:24px;border-left:6px solid #e87d0d;padding-left:12px;margin:34px 0 14px;color:#1f2430;">The problem it solves</h2>
+
+<p>Joining two surfaces so that their positions match is easy. Making the join <em>look</em> smooth under reflections is not. A seam can touch perfectly and still show a crease the moment light moves across it.</p>
+
+<p>Spline Surface lets you join patches at the continuity you need, shows you which seams are weak, and keeps everything editable.</p>
+
+<div style="display:flex;flex-wrap:wrap;gap:12px;margin:18px 0;">
+  <div style="flex:1 1 220px;background:#fdecec;border-top:5px solid #d64545;border-radius:8px;padding:14px 16px;color:#222;">
+    <div style="font-size:22px;font-weight:800;color:#b32d2d;">G0</div>
+    <div>The edges meet. A crease is visible.</div>
+  </div>
+  <div style="flex:1 1 220px;background:#fff6dd;border-top:5px solid #e0a800;border-radius:8px;padding:14px 16px;color:#222;">
+    <div style="font-size:22px;font-weight:800;color:#8a6a00;">G1</div>
+    <div>The tangents match. The crease disappears.</div>
+  </div>
+  <div style="flex:1 1 220px;background:#e6f5ea;border-top:5px solid #2f9e57;border-radius:8px;padding:14px 16px;color:#222;">
+    <div style="font-size:22px;font-weight:800;color:#1f7a41;">G2</div>
+    <div>The curvature matches. Reflection stripes flow through the seam.</div>
+  </div>
+</div>
+
+<!-- ============ features ============ -->
+<h2 style="font-size:24px;border-left:6px solid #e87d0d;padding-left:12px;margin:34px 0 14px;color:#1f2430;">What you can do</h2>
+
+<div style="display:flex;flex-wrap:wrap;gap:16px;">
+
+  <div style="flex:1 1 380px;background:#f4f6f9;border-radius:12px;padding:18px 20px;color:#222;">
+    <h3 style="margin:0 0 8px;font-size:18px;color:#1f2430;">1. Build surfaces from curves</h3>
+    <ul style="margin:0;padding-left:20px;">
+      <li><strong>Coons</strong>: a patch from 3 or 4 boundary curves</li>
+      <li><strong>Loft</strong>: through section curves, with optional extra rows</li>
+      <li><strong>Curve Network</strong>: a grid of crossing curves becomes a patch grid, G2 inside, with a checker that shows how your curves are read</li>
+      <li><strong>Sweep</strong>: carry an edge shape along another edge; the straight end can stop at a plane, an edge or a curve</li>
+      <li>Hood, roof and door presets; blueprint planes at real size</li>
+    </ul>
+  </div>
+
+  <div style="flex:1 1 380px;background:#f4f6f9;border-radius:12px;padding:18px 20px;color:#222;">
+    <h3 style="margin:0 0 8px;font-size:18px;color:#1f2430;">2. Join, fill and round</h3>
+    <ul style="margin:0;padding-left:20px;">
+      <li><strong>Extend Edge</strong>, <strong>Bridge Edges</strong>, <strong>Match Edge</strong> at G0, G1 or G2</li>
+      <li><strong>Corner Fill</strong> and <strong>Fill Hole</strong></li>
+      <li><strong>Fillet</strong>: round creases with a chosen radius; corners where fillets meet are filled automatically</li>
+      <li><strong>Flange</strong>: fold a rounded wall off an edge, then change its angle and depth later</li>
+      <li><strong>Offset Surface</strong> and <strong>Split Patch</strong></li>
+    </ul>
+  </div>
+
+  <div style="flex:1 1 380px;background:#f4f6f9;border-radius:12px;padding:18px 20px;color:#222;">
+    <h3 style="margin:0 0 8px;font-size:18px;color:#1f2430;">3. Change things afterwards</h3>
+    <ul style="margin:0;padding-left:20px;">
+      <li><strong>Live Update</strong>: move a source and everything built from it follows</li>
+      <li>Drag a viewport arrow to change an Extend length, an Offset distance or a Fillet radius</li>
+      <li><strong>Mirror Group</strong>, <strong>Cage</strong> (lattice-style bulk deformation) and <strong>Linked Edit</strong></li>
+      <li><strong>Soft Pull</strong>: drag a point, line or control point on a surface; seam-locked points stay put</li>
+    </ul>
+  </div>
+
+  <div style="flex:1 1 380px;background:#f4f6f9;border-radius:12px;padding:18px 20px;color:#222;">
+    <h3 style="margin:0 0 8px;font-size:18px;color:#1f2430;">4. Inspect before you trust it</h3>
+    <ul style="margin:0;padding-left:20px;">
+      <li><strong>Zebra</strong> stripes and <strong>Seam Colors</strong> (G2 green, G1 yellow, G0 red)</li>
+      <li><strong>Curvature Comb</strong> and <strong>Curvature Map</strong></li>
+      <li><strong>Check Continuity</strong>: every seam listed, worst first, with a jump button</li>
+      <li><strong>Panel Gap</strong>: measure gaps and steps between facing panels</li>
+    </ul>
+  </div>
+
+</div>
+
+<div style="display:flex;flex-wrap:wrap;gap:16px;margin:18px 0 0;">
+  <div style="flex:1 1 380px;border:2px dashed #b9c0cc;border-radius:12px;padding:40px 16px;text-align:center;color:#6b7280;background:#fafbfc;">[[IMAGE: Seam Colors / Check Continuity screenshot]]</div>
+  <div style="flex:1 1 380px;border:2px dashed #b9c0cc;border-radius:12px;padding:40px 16px;text-align:center;color:#6b7280;background:#fafbfc;">[[IMAGE: Fillet or Flange example with the viewport arrow]]</div>
+</div>
+
+<!-- ============ output ============ -->
+<h2 style="font-size:24px;border-left:6px solid #e87d0d;padding-left:12px;margin:34px 0 14px;color:#1f2430;">Out comes a normal mesh</h2>
+
+<p><strong>To Mesh</strong> welds every patch into one mesh with matching seams and mostly quads. A <em>Curve Detail</em> setting keeps small rounded patches (flanges, fillets) round instead of faceted. After that, rendering, modifiers and export to other software work as usual.</p>
+
+<!-- ============ workflow ============ -->
+<h2 style="font-size:24px;border-left:6px solid #e87d0d;padding-left:12px;margin:34px 0 14px;color:#1f2430;">A typical flow: a car hood</h2>
+
+<ol style="padding-left:22px;">
+  <li>Stand up top and side blueprints at real size</li>
+  <li>Trace them with curves in both directions</li>
+  <li>Curve Network turns the grid of curves into a surface</li>
+  <li>Extend or Bridge to the fender, matching the seam at G1 or G2</li>
+  <li>Check Seam Colors and Zebra; fix weak spots with Soft Pull</li>
+  <li>Fold the edge with Flange, round the crease</li>
+  <li>Mirror to the other side, then To Mesh</li>
+</ol>
+
+<!-- ============ good to know ============ -->
+<h2 style="font-size:24px;border-left:6px solid #e87d0d;padding-left:12px;margin:34px 0 14px;color:#1f2430;">Good to know</h2>
+
+<div style="background:#fff8ec;border:1px solid #f1d6a8;border-radius:10px;padding:16px 20px;color:#222;">
+  <ul style="margin:0;padding-left:20px;">
+    <li>Requires <strong>Blender 5.x</strong>.</li>
+    <li>Patches are Blender NURBS surfaces and the final output is a mesh. It is not a manufacturing-grade CAD exporter.</li>
+    <li>Patches you edit by hand are marked as hand-edited and are never overwritten by Live Update.</li>
+    <li>Not meant for sculpting or organic characters.</li>
+    <li>Verification on real projects is still in progress. If something goes wrong, the add-on has a <em>Copy Bug Report</em> button that collects the details for you.</li>
+  </ul>
+</div>
+
+<!-- ============ included ============ -->
+<h2 style="font-size:24px;border-left:6px solid #e87d0d;padding-left:12px;margin:34px 0 14px;color:#1f2430;">What is included</h2>
+
+<ul style="padding-left:22px;">
+  <li>The add-on (Preferences &gt; Add-ons &gt; Install from Disk)</li>
+  <li>Manual, feature list and six step-by-step workflows [[currently Japanese; note it here or add English]]</li>
+  <li>Sample .blend: hood and fender</li>
+  <li>Changelog</li>
+</ul>
+
+<!-- ============ license ============ -->
+<h2 style="font-size:24px;border-left:6px solid #e87d0d;padding-left:12px;margin:34px 0 14px;color:#1f2430;">License and support</h2>
+
+<p>Spline Surface is released under the <strong>GNU General Public License v3.0 or later</strong>, like Blender itself. You may use it for personal and commercial work. What you make with it is yours.</p>
+
+<p>Support and bug reports: [[support contact / link]]</p>
+
+</div>

@@ -8,6 +8,9 @@
 2. Blender の「編集 → プリファレンス → アドオン」の右上メニューから「ディスクからインストール」で ZIP を選ぶ
 3. 3D ビューのサイドバー（N キー）に **Spline Surface** タブが出ます
 
+## ライセンス
+GNU General Public License v3.0 以降（GPL-3.0-or-later）。個人・商用のどちらの制作にも使えます。作ったモデルの権利は作った方にあります。
+
 ## 文書
 - [English summary](README_en.md)
 - [説明書](docs/MANUAL.md)：考え方、全機能の説明、操作キー、困ったとき、不具合の報告
