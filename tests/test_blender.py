@@ -1653,6 +1653,8 @@ def run():
         from spline_surface.core.sweep import sweep_net
         (Pa, oa), (Pb, ob_) = world_net(sw_prof), world_net(sw_rail)
         want, wo = sweep_net(Pa, oa, 'U1', Pb, ob_, 'V1')
+        if json.loads(sw[spline_surface.operators.META_KEY]).get("normal_flip"):
+            want = want[::-1]                  # turned over to face like its profile patch
         got, go = world_net(sw)
         assert tuple(go) == tuple(wo) and got.shape == want.shape
         return float(np.abs(got - want).max())
@@ -1672,12 +1674,52 @@ def run():
         from spline_surface.core.sweep import sweep_net
         (Pa, oa), (Pb, ob_) = world_net(sw_prof), world_net(sw_rail)
         want, _ = sweep_net(Pa, oa, 'U1', Pb, ob_, 'V1', straight=True)
+        if json.loads(sw[spline_surface.operators.META_KEY]).get("normal_flip"):
+            want = want[::-1]
         return float(np.abs(world_net(sw)[0] - want).max())
     assert straight_check() < 1e-5
     sw_rail.scale.z = 1.2
     vl.update()
     assert straight_check() < 1e-5
     print("sweep follows profile and rail", sw.name)
+    # ---- v0.60: patches that touch face the same way (Align Normals, new patches, To Mesh)
+    def facing(ob):
+        n, o = world_net(ob)
+        du, dv = n[-1, 0] - n[0, 0], n[0, -1] - n[0, 0]
+        return float(np.cross(du, dv)[2])
+    bpy.context.scene.cursor.location = (0, 1700, 0)
+    bpy.ops.spline_surface.add_patch(shape='PLANE', points_u=4, points_v=4)
+    fa = bpy.context.active_object
+    bpy.context.scene.cursor.location = (0, 1700 + 4, 0)
+    bpy.ops.spline_surface.add_patch(shape='PLANE', points_u=4, points_v=4)
+    fb = bpy.context.active_object
+    # a bridge between the two comes out facing like its first source
+    assert bpy.ops.spline_surface.bridge_edges(source_a=fa.name, edge_a='V1', source_b=fb.name,
+                                               edge_b='V0', continuity='G1') == {'FINISHED'}
+    fbr = bpy.context.active_object
+    assert facing(fbr) * facing(fa) > 0, (facing(fbr), facing(fa))
+    # turn the bridge over by hand: Align Normals brings it back (it is built from nothing else's
+    # edges), and a rebuild keeps it so
+    spline_surface.orienting.turn_over(fbr, bpy.context.scene.spline_surface)
+    assert facing(fbr) * facing(fa) < 0
+    select([fa, fb, fbr])
+    bpy.context.view_layer.objects.active = fa
+    r = bpy.ops.spline_surface.align_normals()
+    print("align normals", r, [round(facing(o), 2) for o in (fa, fb, fbr)])
+    assert facing(fa) * facing(fb) > 0 and facing(fa) * facing(fbr) > 0, "not aligned"
+    assert bpy.ops.spline_surface.align_normals() == {'FINISHED'}            # nothing left to do
+    assert bpy.ops.spline_surface.regenerate() == {'FINISHED'} and facing(fbr) * facing(fa) > 0
+    # a patch that others are built from is not turned; the report says so
+    spline_surface.orienting.turn_over(fb, bpy.context.scene.spline_surface)
+    assert bpy.ops.spline_surface.align_normals() == {'FINISHED'}
+    assert facing(fb) * facing(fa) < 0
+    spline_surface.orienting.turn_over(fb, bpy.context.scene.spline_surface)
+    # To Mesh: one consistent winding across the welded patches
+    select([fa, fbr])
+    assert bpy.ops.spline_surface.to_mesh() == {'FINISHED'}
+    me_f = bpy.context.active_object.data
+    zs = [p.normal.z for p in me_f.polygons]
+    assert all(z > 0 for z in zs) or all(z < 0 for z in zs), "mixed winding"
     spline_surface.unregister()
     print("ALL OK")
 

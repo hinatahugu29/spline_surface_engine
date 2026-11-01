@@ -11,6 +11,7 @@ import json
 import bpy
 
 from . import pick, zebra
+from .orienting import face_like
 from .bridge.write_surface import build_surface_data
 from .operators import compute_flange
 from .recipe import _make_active, store_meta, surface_edges
@@ -116,6 +117,7 @@ class SS_OT_flange(pick.ModalPicker, bpy.types.Operator):
         wall = bpy.data.objects.new(source.name + "_flange", cu)
         context.collection.objects.link(wall)
         store_meta(wall, meta)
+        face_like(wall, source, settings)
         _make_active(context, wall)
         if outside:
             result = bpy.ops.spline_surface.bridge_edges(

@@ -12,6 +12,7 @@ from .core.corner import corner_net
 from .core.fill import fill_patches, side_from_curve, side_from_patch
 from .core.fillet import fillet_net, multi_fillet
 from .core.flange import flange_net
+from .core.orient import facing_flips, flip_net
 from .core.sweep import sweep_net
 from .core.meshing import segment_counts, t_junctions
 from .core.mirror import mirror_net, symmetrize
@@ -255,6 +256,8 @@ def compute_from_meta(meta, context):
         net, fixed = symmetrize(net, sym["axis"], sym.get("offset", 0.0), sym["tol"])
         if fixed:
             msg += ", square to the mirror plane"
+    if meta.get("normal_flip"):                      # turned over by Align Normals: applied last
+        net = np.asarray(net)[::-1]
     return net, orders, msg
 
 
@@ -908,6 +911,8 @@ class _EdgePairPicker(pick.ModalPicker):
         ob = bpy.data.objects.new(name, cu)
         context.collection.objects.link(ob)
         store_meta(ob, meta)
+        from .orienting import face_like     # (orienting needs live, which needs this module)
+        face_like(ob, sources[0], settings)
         _make_active(context, ob)
         return {'FINISHED'}
 
@@ -1320,6 +1325,9 @@ def weld_mesh(name, surfaces, resolution, context=None, quads=True):
             me.transform(ob.matrix_world)
             bm.from_mesh(me)
             bpy.data.meshes.remove(me)
+    # patches that touch face the same way, so the mesh's faces do too
+    flips = facing_flips(patches, min((context or bpy.context).scene.spline_surface.gap_tolerance, 0.02))
+    patches = [(flip_net(net), orders) if f else (net, orders) for (net, orders), f in zip(patches, flips)]
     for (net, orders), (nu, nv) in zip(patches, segment_counts(patches, resolution)):
         size = max(size, np.ptp(net.reshape(-1, 3), axis=0).max())
         U, V = np.meshgrid(np.linspace(0.0, 1.0, nu + 1), np.linspace(0.0, 1.0, nv + 1),

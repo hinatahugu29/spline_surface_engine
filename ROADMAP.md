@@ -191,6 +191,10 @@ Flange に Outside を追加。面を切り詰めず、縁の外側に丸みと�
 
 Sweep に、断面のもう一方の端を元の面の外向きにまっすぐ進ませる Straight（S キー、Length）を追加。
 
+## v0.60 面の向き
+
+つながる面どうしの向き（法線）をそろえる Align Normals を追加。Bridge Edges・Corner Fill・Sweep・Flange は作った時点で元の面に向きを合わせ、To Mesh も向きをそろえて面を作る。
+
 ## 公開準備の進み具合
 
 - 済：説明書・機能一覧・作業の流れ（6例）・更新履歴・不具合報告の導線（Copy Bug Report、Issue 雛形）・Booth 用の文言と一式の作成スクリプト・サンプル .blend・英語の簡易 README

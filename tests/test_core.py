@@ -1215,6 +1215,34 @@ def test_sweep_net():
         raise AssertionError("a degenerate rail must be refused")
 
 
+def test_facing_flips():
+    from core.orient import facing_flips, flip_net
+    g = np.linspace(0, 1, 4)
+    X, Y = np.meshgrid(g, g, indexing="ij")
+
+    def flat(x0, y0, turned=False):
+        net = np.stack([X + x0, Y + y0, 0 * X], -1)         # normal +z
+        return flip_net(net) if turned else net
+
+    def normal_z(net):
+        du, dv = net[-1, 0] - net[0, 0], net[0, -1] - net[0, 0]
+        return np.cross(du, dv)[2]
+
+    # a row of three patches, the middle one turned over; and one above them, turned too
+    patches = [(flat(0, 0), (4, 4)), (flat(1, 0, True), (4, 4)), (flat(2, 0), (4, 4)),
+               (flat(1, 1, True), (4, 4))]
+    assert normal_z(patches[1][0]) < 0
+    assert facing_flips(patches) == [False, True, False, True]
+    # with the root turned instead, everything follows it
+    assert facing_flips(patches, root=1) == [True, False, True, False]
+    # patches that cannot be turned: the group takes the facing that turns none of them
+    assert facing_flips(patches, pinned=[0, 2]) == [False, True, False, True]
+    assert facing_flips(patches, pinned=[1], root=0) == [True, False, True, False]
+    # a lone far-away patch is its own group and is left alone
+    far = patches + [(flat(50, 50, True), (4, 4))]
+    assert facing_flips(far)[-1] is False
+
+
 def test_panel_gap():
     from core.gap import edge_normals, find_gap_pairs, measure_gap
     t = np.linspace(0, 1, 20)
