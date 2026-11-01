@@ -66,7 +66,7 @@ def _split_ngons(bm):
     return cuts
 
 
-def weld_mesh(name, surfaces, resolution, context=None, quads=True):
+def weld_mesh(name, surfaces, resolution, context=None, quads=True, curve_detail=0):
     """One mesh of all patches, sampled uniformly and welded along shared edges.
 
     Each patch gets segments in proportion to its size (the longest side
@@ -101,7 +101,7 @@ def weld_mesh(name, surfaces, resolution, context=None, quads=True):
     # patches that touch face the same way, so the mesh's faces do too
     flips = facing_flips(patches, min((context or bpy.context).scene.spline_surface.gap_tolerance, 0.02))
     patches = [(flip_net(net), orders) if f else (net, orders) for (net, orders), f in zip(patches, flips)]
-    for (net, orders), (nu, nv) in zip(patches, segment_counts(patches, resolution)):
+    for (net, orders), (nu, nv) in zip(patches, segment_counts(patches, resolution, curve_detail=curve_detail)):
         size = max(size, np.ptp(net.reshape(-1, 3), axis=0).max())
         U, V = np.meshgrid(np.linspace(0.0, 1.0, nu + 1), np.linspace(0.0, 1.0, nv + 1),
                            indexing="ij")
@@ -152,7 +152,8 @@ class SS_OT_to_mesh(bpy.types.Operator):
         weld_fallback = []
         if self.weld:
             me, weld_fallback = weld_mesh(surfaces[0].name + "_mesh", surfaces,
-                                          settings.mesh_resolution, context, self.quads)
+                                          settings.mesh_resolution, context, self.quads,
+                                          settings.curve_detail)
             for ob in surfaces:
                 for mat in zebra.real_materials(ob):
                     if mat is not None and mat.name not in me.materials:

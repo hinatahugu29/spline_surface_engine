@@ -279,6 +279,7 @@ Inspect 欄の **Control Points** で、固定された点（オレンジ）と�
 | 機能 | 内容 |
 |---|---|
 | **Mesh Resolution** | 一番長い辺の分割数。ほかの面は、同じくらいの細かさになるよう大きさに合わせて分割されます |
+| **Curve Detail** | 曲がり90°あたりの最低分割数（初期値 6、約15°ごと）。フランジやフィレットのような小さい丸みが、少ない分割で角ばるのを防ぎます。平らな面は変わりません。0 で無効（Mesh Resolution だけで決まります）。溶接する To Mesh のみ |
 | **To Mesh** | 選んだ面を1つのメッシュに溶接します（Weld をオフにすると面ごとに別のメッシュ）。辺を共有する面どうしは分割数がそろい、継ぎ目は割れません。**Quads**（既定でオン）をオンにすると、継ぎ目の頂点をつないだ所にできる5角形以上の面を、四角形と三角形に切り分けます（サブディビジョンがきれいにかかります） |
 
 ### 5.7 矢印（ギズモ）で後から調整する
@@ -340,7 +341,7 @@ Inspect 欄の **Control Points** で、固定された点（オレンジ）と�
 | curves of the same direction cross each other | 同じ方向のカーブどうしが交差しています。Network Check で赤い印の所を直してください |
 | boundary loop is not closed | Coons で、カーブの端どうしが離れています。Snap Ends で端をくっつけるか、Gap Tolerance を上げてください。Blender 標準の Nurbs Path を境界に使っている場合は、既定で Endpoint がオフなので角に隙間ができていることがあります（Create 欄の Line / Arc を使うとこの問題を避けられます） |
 | Live Update で付いてこない面がある | その面は「手で直した面」です。パネル上部に「not updated (hand edited)」と表示されます。Regenerate すると付いてくるようになります（手の修正は消えます） |
-| To Mesh で小さい面が粗い | Mesh Resolution は一番長い辺の分割数です。値を上げてください |
+| To Mesh で小さい面が粗い | 小さい丸み（フランジなど）は Curve Detail を上げてください。それ以外は Mesh Resolution は一番長い辺の分割数なので、値を上げてください |
 | 面の向き（表裏）が逆に見える | ビューポートの Overlays → Face Orientation で確認できます。表裏は、つないだ相手の面に合わせて決まります |
 
 ---

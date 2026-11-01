@@ -821,6 +821,23 @@ def test_t_junctions():
     assert hits == {}
 
 
+def test_curve_detail():
+    from core.meshing import segment_counts
+    # a long flat patch and a small quarter-round strip: by length alone the strip gets 2 facets
+    g = np.linspace(0, 1, 6)
+    flat = (np.stack(np.meshgrid(4 * g, g, [0.0], indexing="ij"), -1)[..., 0, :], (6, 6))
+    ang = np.linspace(0, np.pi / 2, 7)
+    arc = np.stack([0.08 * np.sin(ang), 0.08 * (1 - np.cos(ang))], -1)           # r = 0.08, 90 degrees
+    strip = np.stack([np.stack([[x + 10.0, 0.0, 0.0 + 0.0] for x in arc[:, 0]], 0)] * 2, 1)
+    strip[:, 1, 1] = 0.5
+    strip[:, :, 2] = arc[:, 1][:, None]
+    plain = segment_counts([flat, (strip, (6, 2))], 24)
+    assert plain[1][0] == 2
+    fine = segment_counts([flat, (strip, (6, 2))], 24, curve_detail=6)
+    assert 5 <= fine[1][0] <= 8, fine
+    assert fine[0] == plain[0]                                  # flat patches are untouched
+
+
 def test_segment_counts():
     from core.meshing import segment_counts
 

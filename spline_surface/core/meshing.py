@@ -29,18 +29,45 @@ def _side_lengths(net, orders, samples=24):
     return out
 
 
-def segment_counts(patches, resolution, rel_tol=1e-3):
+def _side_turns(net, orders, samples=48):
+    """Largest turning angle (degrees) of the patch's iso-curves along u and along v."""
+    t = np.linspace(0.0, 1.0, samples)
+    out = []
+    for d in (0, 1):
+        worst = 0.0
+        for c in (0.0, 0.25, 0.5, 0.75, 1.0):
+            cc = np.full(samples, c)
+            pts = eval_points(net, orders, t, cc) if d == 0 else eval_points(net, orders, cc, t)
+            seg = np.diff(pts, axis=0)
+            seg = seg[np.linalg.norm(seg, axis=1) > 1e-12]
+            if len(seg) < 2:
+                continue
+            seg = seg / np.linalg.norm(seg, axis=1)[:, None]
+            cos = np.clip(np.einsum("ij,ij->i", seg[:-1], seg[1:]), -1.0, 1.0)
+            worst = max(worst, float(np.degrees(np.arccos(cos)).sum()))
+        out.append(worst)
+    return out
+
+
+def segment_counts(patches, resolution, rel_tol=1e-3, curve_detail=0):
     """(segments along u, along v) per patch for an even mesh density.
 
     The longest side among all patches gets `resolution` segments and every
-    other side about the same segment length. Patches sharing a whole edge
-    get equal counts along it (largest wins), so their seam vertices meet.
+    other side about the same segment length. With `curve_detail` > 0 a side
+    also gets at least that many segments per 90 degrees it turns, so small
+    rounded patches (flanges, fillets) are not cut into a few flat facets.
+    Patches sharing a whole edge get equal counts along it (largest wins), so
+    their seam vertices meet.
     patches: [(net, orders)].
     """
     lengths = [_side_lengths(n, o) for n, o in patches]
     longest = max((max(l) for l in lengths), default=1.0)
     step = max(longest, 1e-12) / max(int(resolution), 1)
     counts = [[max(2, int(round(l / step))) for l in ls] for ls in lengths]
+    if curve_detail > 0:
+        for c, (n, o) in zip(counts, patches):
+            for d, turn in enumerate(_side_turns(n, o)):
+                c[d] = min(512, max(c[d], int(np.ceil(turn / 90.0 * curve_detail - 1e-9))))
 
     parent = {}
 

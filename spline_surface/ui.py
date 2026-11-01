@@ -51,6 +51,10 @@ class SS_Settings(bpy.types.PropertyGroup):
         name="Mesh Resolution", default=24, min=1, max=256,
         description="To Mesh: segments along the longest patch side; the other patches get "
                     "the same density (unwelded To Mesh: segments per patch)")
+    curve_detail: bpy.props.IntProperty(
+        name="Curve Detail", default=6, min=0, max=32,
+        description="To Mesh: at least this many segments per 90 degrees of curve, so small rounded "
+                    "patches (flanges, fillets) stay round. 0: only the Mesh Resolution decides")
     zebra_frequency: bpy.props.FloatProperty(
         name="Stripes", default=40.0, min=1.0, max=500.0, update=_zebra_update)
     zebra_width: bpy.props.FloatProperty(
@@ -337,6 +341,7 @@ class SS_PT_output(_SubPanel, bpy.types.Panel):
     def draw(self, context):
         s = context.scene.spline_surface
         self.layout.prop(s, "mesh_resolution")
+        self.layout.prop(s, "curve_detail")
         self.layout.operator("spline_surface.to_mesh", icon='MESH_GRID')
 
 
