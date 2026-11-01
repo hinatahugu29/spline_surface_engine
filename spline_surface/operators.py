@@ -66,8 +66,9 @@ def compute_extend(source, meta, settings):
 
 
 def compute_flange(source, meta):
+    # Blender shows the side against du x dv as the front, so folding along it goes to the back
     net, orders = world_net(source)
-    return flange_net(net, meta["edge"], meta["length"], meta["angle"], meta.get("flip", False),
+    return flange_net(net, meta["edge"], meta["length"], meta["angle"], not meta.get("flip", False),
                       orders, meta.get("offset", 0.0))
 
 
@@ -1336,7 +1337,7 @@ def weld_mesh(name, surfaces, resolution, context=None, quads=True):
         verts = [[bm.verts.new(p) for p in row] for row in pts]
         for i in range(nu):
             for j in range(nv):
-                bm.faces.new((verts[i][j], verts[i + 1][j], verts[i + 1][j + 1], verts[i][j + 1]))
+                bm.faces.new((verts[i][j], verts[i][j + 1], verts[i + 1][j + 1], verts[i + 1][j]))   # Blender's front side
     dist = 1e-4 * max(size, 1e-3)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=dist)
     if _stitch_t_junctions(bm, dist):
@@ -1648,7 +1649,7 @@ def primitive_net(shape, size_x, size_y, points_u, points_v, bulge):
         z = bulge * (1.0 - u ** 2) + 0.0 * v
     else:  # DOME
         z = bulge * (1.0 - u ** 2) * (1.0 - v ** 2)
-    x = 0.5 * size_x * u + 0.0 * v
+    x = -0.5 * size_x * u + 0.0 * v                  # u runs toward -x: Blender then shows the top (+z) as the front
     y = 0.5 * size_y * v + 0.0 * u
     return np.stack([x, y, z], axis=-1)
 

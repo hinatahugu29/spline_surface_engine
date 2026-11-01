@@ -765,7 +765,7 @@ def run():
     assert bpy.ops.spline_surface.mirror_group(scope='DOWNSTREAM') == {'FINISHED'}
     assert sc_ext.name + "_mirror" in bpy.data.objects
     # split: cut a mirrored patch with extensions; links follow the pieces
-    bpy.context.scene.cursor.location = (1, 400, 0)
+    bpy.context.scene.cursor.location = (-1, 400, 0)
     bpy.ops.spline_surface.add_patch(shape='DOME')
     sp_base = bpy.context.active_object
     bpy.ops.spline_surface.extend_edge(source=sp_base.name, edge='U1')
@@ -1374,6 +1374,16 @@ def run():
     print("fair curves: shape changed", changed, "crossings drifted", drift)
     assert changed > 1e-3 and drift < 2e-2 and len(faired) == len(bumped)
 
+    # v0.60.1: a new patch shows its top (+z) as the front, as does To Mesh
+    bpy.context.scene.cursor.location = (0, 650, 0)
+    bpy.ops.spline_surface.add_patch(shape='PLANE')
+    front = bpy.context.active_object
+    me_ = front.evaluated_get(bpy.context.evaluated_depsgraph_get()).to_mesh()
+    assert np.mean([f.normal.z for f in me_.polygons]) > 0.9
+    select([front])
+    bpy.ops.spline_surface.to_mesh()
+    assert np.mean([f.normal.z for f in bpy.context.active_object.data.polygons]) > 0.9
+
     # ---- v0.41: Flange folds a rounded wall off a patch edge
     from spline_surface.operators import compute_flange  # noqa: F401
     bpy.context.scene.cursor.location = (0, 700, 0)
@@ -1407,7 +1417,7 @@ def run():
     bpy.ops.spline_surface.add_patch(shape='PLANE')
     plate = bpy.context.active_object
     x_outer = world_net(plate)[0][..., 0].max()
-    assert bpy.ops.spline_surface.flange(source=plate.name, edge='U1', length=0.4, angle=90.0,
+    assert bpy.ops.spline_surface.flange(source=plate.name, edge='U0', length=0.4, angle=90.0,
                                          radius=0.2) == {'FINISHED'}
     old_wall = [o for o in bpy.data.objects if o.name.startswith(plate.name) and o.name.endswith("_flange")][0]
     assert abs(world_net(old_wall)[0][..., 0].max() - x_outer) < 1e-4
