@@ -1206,6 +1206,24 @@ def test_sweep_net():
         assert np.allclose(sn[-1], prof[-1] + rl - rl[0])                      # the rail end follows the rail
     ln, _ = sweep_net(prof_patch, (5, 2), 'V0', rail_patch, (2, 5), 'U0', straight=True, length=0.7)
     assert abs(ln[0, -1, 1] - prof[0][1] - 0.7) < 1e-9
+    # target: a plane square to y, or a polyline, stops the straight end where it arrives
+    tn, _ = sweep_net(prof_patch, (5, 2), 'V0', rail_patch, (2, 5), 'U0', straight=True,
+                      target=('plane', 1, 0.8))
+    assert abs(tn[0, -1, 1] - 0.8) < 1e-9
+    wall = np.array([[-1.0, 0.45, -1.0], [-1.0, 0.45, 1.0], [2.0, 0.45, 1.0]])     # y = 0.45
+    tn, _ = sweep_net(prof_patch, (5, 2), 'V0', rail_patch, (2, 5), 'U0', straight=True,
+                      target=('line', wall))
+    assert abs(tn[0, -1, 1] - 0.45) < 1e-9
+    from core.sweep import straight_run
+    o, d = np.zeros(3), np.array([0.0, 1.0, 0.0])
+    assert abs(straight_run(o, d, ('line', np.array([[1.0, 2.0, 0.5], [1.0, 3.0, 0.5]]))) - 2.0) < 1e-9
+    for bad in (('plane', 0, 1.0), ('plane', 1, -1.0), ('line', np.array([[0.0, -1.0, 0.0], [1.0, -2.0, 0.0]]))):
+        try:
+            straight_run(o, d, bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("an unreachable target must be refused: %s" % (bad,))
     # a rail of zero length is refused
     try:
         sweep_net(prof_patch, (5, 2), 'V0', np.zeros((2, 5, 3)), (2, 5), 'U0')

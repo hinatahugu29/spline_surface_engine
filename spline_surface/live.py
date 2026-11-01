@@ -27,6 +27,8 @@ def _inputs(meta):
     """Names of the objects a recipe reads."""
     names = list(meta.get("sources", []))
     names += [m["ref"] for m in meta.get("matches", [])]
+    if meta.get("target", {}).get("source"):
+        names.append(meta["target"]["source"])
     return names
 
 

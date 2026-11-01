@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Spline Surface",
     "author": "hinata",
-    "version": (0, 60, 1),
+    "version": (0, 61, 0),
     "blender": (5, 0, 0),
     "location": "View3D > Sidebar > Spline Surface",
     "description": "Build smooth NURBS patches from boundary curves",

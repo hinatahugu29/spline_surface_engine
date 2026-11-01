@@ -26,12 +26,52 @@ def greville(n, k):
     return np.array([t[j + 1:j + k].mean() for j in range(n)])
 
 
-def sweep_net(P, orders_p, edge_p, R, orders_r, edge_r, flip=False, straight=False, length=0.0):
+def straight_run(origin, out, target):
+    """How far the ray origin + t*out (t > 0) must run to reach `target`.
+
+    target is ('plane', axis, value): the plane coordinate[axis] == value, or
+    ('line', points): the point of the polyline the ray passes closest to.
+    """
+    origin, out = np.asarray(origin, float), np.asarray(out, float)
+    if target[0] == 'plane':
+        axis, value = int(target[1]), float(target[2])
+        if abs(out[axis]) < 1e-9:
+            raise ValueError("the straight end runs parallel to that plane")
+        t = (value - origin[axis]) / out[axis]
+        if t <= 1e-9:
+            raise ValueError("that plane is behind the straight end")
+        return float(t)
+    pts = np.asarray(target[1], float)
+    best = None
+    for a, b in zip(pts[:-1], pts[1:]):
+        e = b - a
+        w = origin - a
+        de, ee = float(np.dot(out, e)), float(np.dot(e, e))
+        if ee < 1e-18:
+            continue
+        det = de * de - ee
+        s = 0.0 if abs(det) < 1e-12 else (de * float(np.dot(out, w)) - float(np.dot(e, w))) / det
+        s = min(1.0, max(0.0, s))
+        q = a + s * e
+        t = float(np.dot(out, q - origin))
+        if t <= 1e-9:
+            continue
+        d = float(np.linalg.norm(origin + t * out - q))
+        if best is None or d < best[0]:
+            best = (d, t)
+    if best is None:
+        raise ValueError("the target is behind the straight end")
+    return best[1]
+
+
+def sweep_net(P, orders_p, edge_p, R, orders_r, edge_r, flip=False, straight=False, length=0.0,
+              target=None):
     """Net and orders of the profile `edge_p` of net P swept along `edge_r` of net R.
 
     The rail is walked from the end nearest to the profile; flip walks it from the other end.
     straight: the profile's other end runs straight out of P instead, for `length`
     (0: as far as the rail's end has gone in that direction, so the two ends line up).
+    target ('plane', axis, value) or ('line', points) instead stops it where it reaches that.
     Returns (net, orders): u runs along the profile, v along the rail.
     """
     P, R = np.asarray(P, float), np.asarray(R, float)
@@ -57,7 +97,9 @@ def sweep_net(P, orders_p, edge_p, R, orders_r, edge_r, flip=False, straight=Fal
         raise ValueError("the profile edge has no outward direction here")
     out = out / np.linalg.norm(out)
     run = length
-    if run <= 0.0:                                   # line the straight end up with the rail's end
+    if target is not None:
+        run = straight_run(prof[far], out, target)
+    elif run <= 0.0:                                   # line the straight end up with the rail's end
         run = float(np.dot(rail[-1] - rail[0], out))
         if run < 1e-9 * chord:                       # the rail runs sideways or back: use its chord
             run = chord

@@ -1692,6 +1692,46 @@ def run():
     vl.update()
     assert straight_check() < 1e-5
     print("sweep follows profile and rail", sw.name)
+    # ---- v0.61: the straight end stops at a target (plane or edge)
+    ops = spline_surface.operators
+    far_pt = world_net(sw_prof)[0][-1, -1]
+    got_plane = None
+    for axis in range(3):
+        for delta in (0.7, -0.7):
+            value = float(far_pt[axis] + delta)
+            assert bpy.ops.spline_surface.sweep(
+                source_a=sw_prof.name, edge_a='U1', source_b=sw_rail.name, edge_b='V1', straight=True,
+                target_mode='PLANE', target_axis=str(axis), target_value=value) == {'FINISHED'}
+            if ops.sweep_note is None:
+                got_plane = (bpy.context.active_object, axis, value)
+                break
+        if got_plane:
+            break
+    assert got_plane, "no plane target reached"
+    tp, axis, value = got_plane
+    tmeta = json.loads(tp[ops.META_KEY])
+    assert tmeta["target"]["kind"] == "plane" and tmeta["target"]["axis"] == axis
+    value = tmeta["target"]["value"]
+    tnet = world_net(tp)[0]
+    assert np.abs(tnet[[0, -1]][:, [0, -1], axis] - value).min() < 1e-5
+    # an edge target: the sweep depends on it and follows it
+    bpy.context.scene.cursor.location = (0, 1650, 0)
+    bpy.ops.spline_surface.add_patch(shape='PLANE')
+    tgt = bpy.context.active_object
+    assert bpy.ops.spline_surface.sweep(
+        source_a=sw_prof.name, edge_a='U1', source_b=sw_rail.name, edge_b='V1', straight=True,
+        target_mode='EDGE', target_source=tgt.name, target_edge='V0') == {'FINISHED'}
+    te = bpy.context.active_object
+    assert json.loads(te[ops.META_KEY])["target"]["source"] == tgt.name
+    assert tgt.name in spline_surface.live._inputs(json.loads(te[ops.META_KEY]))
+    # a target that cannot be reached falls back to the automatic length with a note
+    notes = []
+    for far_value in (1e6, -1e6):          # one of the two planes lies behind the straight end
+        assert bpy.ops.spline_surface.sweep(
+            source_a=sw_prof.name, edge_a='U1', source_b=sw_rail.name, edge_b='V1', straight=True,
+            target_mode='PLANE', target_axis=str(axis), target_value=far_value) == {'FINISHED'}
+        notes.append(ops.sweep_note)
+    assert any(n and "Target not used" in n for n in notes), notes
     # ---- v0.60: patches that touch face the same way (Align Normals, new patches, To Mesh)
     def facing(ob):
         n, o = world_net(ob)

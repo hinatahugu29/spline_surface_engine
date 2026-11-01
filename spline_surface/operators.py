@@ -72,10 +72,38 @@ def compute_flange(source, meta):
                       orders, meta.get("offset", 0.0))
 
 
+sweep_note = None     # why the last compute_sweep fell back to Auto length (None: it did not)
+
+
+def sweep_target(meta):
+    """('plane', axis, value) / ('line', points) for the recipe's target, or None."""
+    t = meta.get("target")
+    if not t or not meta.get("straight"):
+        return None
+    if t["kind"] == 'plane':
+        return 'plane', t["axis"], t["value"]
+    ob = bpy.data.objects.get(t["source"])
+    if ob is None:
+        raise ValueError("the target %s is gone" % t["source"])
+    if t["edge"] == 'CURVE':
+        return 'line', read_polyline(ob, bpy.context.evaluated_depsgraph_get(), 48)
+    net, orders = world_net(ob)
+    return 'line', edge_polyline(net, orders, t["edge"], 48)
+
+
 def compute_sweep(sources, meta):
+    global sweep_note
+    sweep_note = None
     (Pa, oa), (Pb, ob) = world_net(sources[0]), world_net(sources[1])
-    return sweep_net(Pa, oa, meta["edges"][0], Pb, ob, meta["edges"][1], meta.get("flip", False),
-                     meta.get("straight", False), meta.get("length", 0.0))
+    args = (Pa, oa, meta["edges"][0], Pb, ob, meta["edges"][1], meta.get("flip", False),
+            meta.get("straight", False), meta.get("length", 0.0))
+    try:
+        return sweep_net(*args, target=sweep_target(meta))
+    except ValueError as e:
+        if not meta.get("target"):
+            raise
+        sweep_note = "Target not used (%s); the length is automatic" % e
+        return sweep_net(*args)
 
 
 def compute_corner(sources, meta, settings):
@@ -881,11 +909,17 @@ class _EdgePairPicker(pick.ModalPicker):
                                 "to close it into a loop")
                     return {'RUNNING_MODAL'}
             self._set_pair(self._first, self._hover)
+            if self._more_picks(context):
+                return {'RUNNING_MODAL'}
             self._finish(context)
             return self.execute(context)
         elif self._common_modal(context, event):
             return self._common_result
         return {'RUNNING_MODAL'}
+
+    def _more_picks(self, context):
+        """True if the picked pair still needs another click before execute (Sweep's target)."""
+        return False
 
     def _meta(self):
         return {"method": self._method, "sources": [self.source_a, self.source_b],
@@ -1045,23 +1079,109 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
     length: bpy.props.FloatProperty(
         name="Length", default=0.0, min=0.0, max=1000.0, unit='LENGTH',
         description="How far the straight end runs (0: as far as the rail's end has gone in that direction, so the ends line up)")
+    target_mode: bpy.props.EnumProperty(
+        name="Target", default='NONE',
+        items=[('NONE', "Length", "Auto or typed length"),
+               ('EDGE', "Edge", "Stop where the straight end comes closest to a patch edge or curve"),
+               ('PLANE', "Plane", "Stop where the straight end reaches a plane square to an axis")],
+        description="Where the straight end stops (needs Straight)")
+    target_source: bpy.props.StringProperty(name="Target Object")
+    target_edge: bpy.props.EnumProperty(name="Target Edge", items=[(e, e, "") for e in EDGE_KEYS]
+                                        + [('CURVE', "Curve", "The target is a curve object")])
+    target_axis: bpy.props.EnumProperty(
+        name="Plane Axis", default='2',
+        items=[('0', "X", "The plane YZ at this X"), ('1', "Y", "The plane XZ at this Y"),
+               ('2', "Z", "The plane XY at this Z")])
+    target_value: bpy.props.FloatProperty(name="Plane At", default=0.0, unit='LENGTH',
+                                          description="Coordinate of the plane along its axis")
 
     _method, _suffix, _title = "sweep", "_sweep", "Sweep"
+    _target_stage = False
 
     def _compute(self, sources, meta, settings):
         return compute_sweep(sources, meta)
 
     def _header(self, context):
+        if self._target_stage:
+            context.area.header_text_set("Sweep: click the target edge or curve   T: change target   Esc/RMB: cancel")
+            return
         step = "click the profile edge" if self._first is None else "click the rail edge"
-        context.area.header_text_set("Sweep: %s   F: flip   S: straight %s   Esc/RMB: cancel"
-                                      % (step, "on" if self.straight else "off"))
+        tgt = {'NONE': "length", 'EDGE': "edge",
+               'PLANE': "plane %s=%.3g" % ("XYZ"[int(self.target_axis)], self.target_value)}[self.target_mode]
+        context.area.header_text_set(
+            "Sweep: %s   F: flip   S: straight %s   T: target (%s)%s   Esc/RMB: cancel"
+            % (step, "on" if self.straight else "off", tgt,
+               "   X/Y/Z: plane axis" if self.target_mode == 'PLANE' else ""))
 
     def _meta(self):
-        return {"method": "sweep", "sources": [self.source_a, self.source_b],
+        meta = {"method": "sweep", "sources": [self.source_a, self.source_b],
                 "edges": [self.edge_a, self.edge_b], "flip": self.flip,
                 "straight": self.straight, "length": self.length}
+        if self.target_mode == 'EDGE' and self.target_source:
+            meta["target"] = {"kind": "edge", "source": self.target_source, "edge": self.target_edge}
+        elif self.target_mode == 'PLANE':
+            meta["target"] = {"kind": "plane", "axis": int(self.target_axis), "value": self.target_value}
+        return meta
+
+    def _plane_from_cursor(self, context):
+        self.target_value = float(context.scene.cursor.location[int(self.target_axis)])
+
+    def _more_picks(self, context):
+        if self.target_mode != 'EDGE' or self.target_source:
+            return False
+        self._target_stage = True
+        self._pair_edges = self._edges
+        self._edges = SS_OT_bridge_edges._candidates(self, context)      # curves can be targets too
+        self._first, self._hover, self._preview = None, None, []
+        self._header(context)
+        context.area.tag_redraw()
+        return True
+
+    def _update_preview(self, context):
+        if not self._target_stage:
+            return super()._update_preview(context)
+        self._preview = []
+        if self._hover:
+            self.target_source, self.target_edge = self._hover
+            try:
+                net, orders = compute_sweep([bpy.data.objects[self.source_a],
+                                             bpy.data.objects[self.source_b]], self._meta())
+                self._preview = iso_lines(net, orders)
+            except Exception:
+                pass
+        context.area.tag_redraw()
+
+    def _cycle_target(self, context):
+        order = ['NONE', 'EDGE', 'PLANE']
+        self.target_mode = order[(order.index(self.target_mode) + 1) % 3]
+        if self.target_mode != 'NONE':
+            self.straight = True
+        if self.target_mode == 'PLANE':
+            self._plane_from_cursor(context)
+        self.target_source = ""
+        self._header(context)
+        self._update_preview(context)
 
     def modal(self, context, event):
+        if self._target_stage:
+            if event.type == 'MOUSEMOVE':
+                hover = pick.nearest_polyline(context, self._edges,
+                                              (event.mouse_region_x, event.mouse_region_y))
+                if hover != self._hover:
+                    self._hover = hover
+                    self._update_preview(context)
+            elif event.type == 'LEFTMOUSE' and event.value == 'PRESS' and self._hover:
+                self.target_source, self.target_edge = self._hover
+                self._finish(context)
+                return self.execute(context)
+            elif event.type == 'T' and event.value == 'PRESS':
+                self._target_stage = False
+                self._edges = self._pair_edges
+                self._first = None
+                self._cycle_target(context)
+            elif self._common_modal(context, event):
+                return self._common_result
+            return {'RUNNING_MODAL'}
         if event.type == 'F' and event.value == 'PRESS':
             self.flip = not self.flip
             self._update_preview(context)
@@ -1071,9 +1191,29 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
             self._header(context)
             self._update_preview(context)
             return {'RUNNING_MODAL'}
+        if event.type == 'T' and event.value == 'PRESS':
+            self._cycle_target(context)
+            return {'RUNNING_MODAL'}
+        if event.type in {'X', 'Y', 'Z'} and event.value == 'PRESS' and self.target_mode == 'PLANE':
+            self.target_axis = str("XYZ".index(event.type))
+            self._plane_from_cursor(context)
+            self._header(context)
+            self._update_preview(context)
+            return {'RUNNING_MODAL'}
         if event.type in {'C', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
             return {'PASS_THROUGH'}
         return super().modal(context, event)
+
+    def execute(self, context):
+        if self.target_mode == 'EDGE' and not self.target_source:
+            self.report({'ERROR'}, "Pick a target edge or curve")
+            return {'CANCELLED'}
+        if self.target_mode != 'NONE' and not self.straight:
+            self.straight = True
+        result = super().execute(context)
+        if result == {'FINISHED'} and sweep_note:
+            self.report({'WARNING'}, sweep_note)
+        return result
 
 
 class SS_OT_fill_hole(pick.ModalPicker, bpy.types.Operator):
