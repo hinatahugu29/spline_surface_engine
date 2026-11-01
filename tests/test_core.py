@@ -1261,6 +1261,20 @@ def test_facing_flips():
     assert facing_flips(far)[-1] is False
 
 
+def test_part_flips():
+    from core.orient import flip_net, part_flips
+    g = np.linspace(0, 1, 4)
+    X, Y = np.meshgrid(g, g, indexing="ij")
+    ref = (np.stack([X, Y, 0 * X], -1), (4, 4))
+    beside = np.stack([X + 1, Y, 0 * X], -1)
+    assert part_flips([ref], [(beside, (4, 4)), (flip_net(beside), (4, 4))]) == [False, True]
+    # the parts of one hole face like each other when they touch no ref
+    far = np.stack([X + 9, Y, 0 * X], -1)
+    far2 = flip_net(np.stack([X + 10, Y, 0 * X], -1))
+    assert part_flips([], [(far, (4, 4)), (far2, (4, 4))]) == [False, True]
+    assert part_flips([ref], []) == []
+
+
 def test_panel_gap():
     from core.gap import edge_normals, find_gap_pairs, measure_gap
     t = np.linspace(0, 1, 20)

@@ -1241,6 +1241,11 @@ def run():
     corner_parts = [o for o in made if json.loads(o[META_KEY])["method"] == "fill"]
     print("fillet bridges", len(bridges), "corner parts", len(corner_parts))
     assert len(bridges) == 3 and corner_parts
+    from spline_surface.core.orient import part_flips
+    for br in bridges:                     # v0.62: fillet bridges and corners face like the patches
+        a = bpy.data.objects[json.loads(br[META_KEY])["sources"][0]]
+        assert part_flips([world_net(a)], [world_net(br)], 0.02) == [False], br.name
+    assert not any(part_flips([world_net(b) for b in bridges], [world_net(c) for c in corner_parts], 0.02))
     for br in bridges:
         a, b = json.loads(br[META_KEY])["sources"]
         assert graded(bpy.data.objects[a], br) == 'G2' and graded(bpy.data.objects[b], br) == 'G2'

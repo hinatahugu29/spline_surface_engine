@@ -21,6 +21,7 @@ from .bridge.write_surface import build_surface_data
 from .core.continuity import find_shared_edge
 from .core.fill import fill_patches, side_from_patch
 from .core.fillet import corner_loops, multi_fillet
+from .core.orient import flip_net, part_flips
 from .operators import _seam_tolerance, compute_fill, compute_fillet_trim
 from .recipe import (META_KEY, edge_polyline, hand_edited, hand_edited_net, iso_lines, raw_meta,
                      replace_net, store_meta, world_net)
@@ -302,13 +303,20 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
                   "continuity": self.continuity, "members": sorted(trimmed)}
         live._state["busy"] = True
         made = []
+        tol = min(settings.gap_tolerance, 0.02)
+        # the bridges face like the patch they start from (a turned net keeps its edge names, so
+        # the corner patches built from them below see the same net)
+        bridge_flips = [part_flips([trimmed[a]], [(net, orders)], tol)[0]
+                        for (a, _, _, _), (net, orders, _) in zip(seams, bridges)]
+        bridges = [((flip_net(net) if f else net), orders, tension)
+                   for f, (net, orders, tension) in zip(bridge_flips, bridges)]
         try:
             for name, (P, o) in trimmed.items():
                 src = bpy.data.objects[name]
                 replace_net(src, P, settings, o)
                 store_meta(src, {"method": "fillet_trim", "member": name, "base": bases[name],
                                  "fillet": record, "sources": external})
-            for (a, ea, b, eb), (net, orders, tension) in zip(seams, bridges):
+            for (a, ea, b, eb), (net, orders, tension), turned in zip(seams, bridges, bridge_flips):
                 cu = build_surface_data(a + "_fillet", net, settings.resolution, orders)
                 for mat in zebra.real_materials(bpy.data.objects[a]):
                     cu.materials.append(mat)
@@ -318,7 +326,8 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
                 # and Regenerate keep it following both patches.
                 store_meta(ob, {"method": "blend", "sources": [a, b], "edges": [ea, eb],
                                 "continuity": self.continuity, "tension": tension,
-                                "flip": False, "fillet": fillet_id})
+                                "flip": False, "fillet": fillet_id,
+                                **({"normal_flip": True} if turned else {})})
                 made.append(ob)
             context.view_layer.update()
             corner_count = corner_failed = 0
@@ -334,14 +343,17 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
                     except ValueError:
                         corner_failed += 1
                         continue
-                    for part, (net, orders) in enumerate(parts):
+                    turns = part_flips([(bridges[i][0], bridges[i][1]) for i, _ in loop], parts, tol)
+                    for part, ((net, orders), turned) in enumerate(zip(parts, turns)):
+                        if turned:
+                            net = flip_net(net)
                         cu = build_surface_data(names[loop[0][0]] + "_corner", net,
                                                 settings.resolution, orders)
                         for mat in zebra.real_materials(made[loop[0][0]]):
                             cu.materials.append(mat)
                         cob = bpy.data.objects.new(cu.name, cu)
                         context.collection.objects.link(cob)
-                        store_meta(cob, dict(meta, part=part))
+                        store_meta(cob, dict(meta, part=part, **({"normal_flip": True} if turned else {})))
                         made.append(cob)
                     corner_count += 1
             live.update_chain(sorted(trimmed), context)

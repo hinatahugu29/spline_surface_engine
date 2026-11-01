@@ -62,3 +62,13 @@ def facing_flips(patches, tol_rel=0.01, root=0, pinned=()):
             for k in group:
                 flips[k] = not flips[k]
     return flips
+
+
+def part_flips(refs, parts, tol_rel=0.01):
+    """Which of the new `parts` [(net, orders)] must be turned to face like the existing `refs`
+    (which stay as they are). Parts that touch no ref take their own group's facing."""
+    refs, parts = list(refs), list(parts)
+    if not refs:
+        return facing_flips(parts, tol_rel) if parts else []
+    return facing_flips(refs + parts, tol_rel, 0, range(len(refs)))[len(refs):]
+
