@@ -4,6 +4,7 @@
 
 | バージョン | 日付 | 内容 |
 |---|---|---|
+| 0.64.0 | 2026-11-01 | Edit Flange changes angle and depth afterwards; gizmos no longer vanish until reselected; a flange wall no longer shifts when its fillet is redone |
 | 0.63.1 | 2026-11-01 | Sweep Target (Edge): the third click no longer skipped by a remembered target |
 | 0.63.0 | 2026-11-01 | To Mesh Curve Detail: a minimum number of segments per 90 degrees of curve |
 | 0.62.0 | 2026-11-01 | Fillet bridges and corners, Fill Hole and Curve Network patches face like their neighbours; operators.py split (bridging.py, tomesh.py) |

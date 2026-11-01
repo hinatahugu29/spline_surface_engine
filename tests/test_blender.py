@@ -1411,6 +1411,23 @@ def run():
     assert abs(drop - (-0.4)) < 1e-4, drop
     # the wall hangs below the panel's edge, square to it
     assert np.allclose(wnet[..., 1], edge_y, atol=1e-4)
+    # v0.64: the angle and depth can be changed afterwards; the fold and the wall follow
+    bridge = next(o for o in made if json.loads(o[spline_surface.operators.META_KEY])["method"] == "blend")
+    bpy.context.view_layer.objects.active = wall
+    bridge_before = world_net(bridge)[0].copy()
+    wall_before = world_net(wall)[0].copy()
+    bpy.context.view_layer.objects.active = wall
+    assert bpy.ops.spline_surface.flange_edit(angle=60.0, length=0.4) == {'FINISHED'}
+    z60 = world_net(wall)[0][..., 2].min()
+    assert abs(z60 - (-0.4)) > 0.02, z60
+    assert not np.allclose(world_net(bridge)[0], bridge_before, atol=1e-6), "the fold must follow"
+    assert bpy.ops.spline_surface.flange_edit(angle=90.0, length=0.5) == {'FINISHED'}
+    assert abs(world_net(wall)[0][..., 2].min() - (-0.5)) < 1e-4
+    assert bpy.ops.spline_surface.flange_edit(angle=90.0, length=0.4) == {'FINISHED'}
+    assert abs(world_net(wall)[0][..., 2].min() - (-0.4)) < 1e-4
+    assert np.allclose(world_net(bridge)[0], bridge_before, atol=1e-5)
+    assert np.allclose(world_net(wall)[0], wall_before, atol=1e-5), "editing must not move the wall"
+    print("flange edited afterwards")
     # Return: a second flange off the free edge of the first wall
     assert bpy.ops.spline_surface.flange(source=wall.name, edge='V1', length=0.2, angle=90.0,
                                          radius=0.04) == {'FINISHED'}

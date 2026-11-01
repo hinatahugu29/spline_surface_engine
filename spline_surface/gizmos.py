@@ -24,6 +24,18 @@ MIN_LENGTH = 0.02
 MIN_DISTANCE = 1e-4
 
 
+def _is_method(ob, method):
+    """Cheap, stable test for the group's poll: is `ob` a `method` patch at all? Whether an arrow
+    may rebuild it right now (hand edits...) changes without Blender being told, so that is
+    decided in draw_prepare: a group whose poll said no is not asked again until a notifier."""
+    if ob is None or ob.type != 'SURFACE' or META_KEY not in ob:
+        return False
+    try:
+        return json.loads(ob[META_KEY]).get("method") == method
+    except (ValueError, AttributeError):
+        return False
+
+
 def _recipe(ob, method):
     """(meta, source object) if `ob` is a `method` patch an arrow may rebuild."""
     if ob is None or ob.type != 'SURFACE' or META_KEY not in ob:
@@ -53,7 +65,10 @@ class _RecipeArrow:
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and _recipe(context.active_object, cls.method) is not None
+        return context.mode == 'OBJECT' and _is_method(context.active_object, cls.method)
+
+    def _ready(self, context):
+        return _recipe(context.active_object, self.method) is not None
 
     def setup(self, context):
         gz = self.gizmos.new("GIZMO_GT_arrow_3d")
@@ -100,7 +115,13 @@ class _RecipeArrow:
     def draw_prepare(self, context):
         modal = self.arrow.is_modal
         if not modal:
-            self._place(context)
+            try:
+                self.arrow.hide = not self._ready(context)
+                if not self.arrow.hide:
+                    self._place(context)
+            except Exception:
+                # a half-built or deleted source must hide the arrow, not break the group
+                self.arrow.hide = True
             if self.was_modal:
                 # Not allowed while drawing; a timer runs it right after.
                 message = self.bl_label
@@ -169,7 +190,11 @@ class SS_GGT_fillet_radius(_RecipeArrow, bpy.types.GizmoGroup):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'OBJECT' and _fillet_bridge(context.active_object) is not None
+        ob = context.active_object
+        return context.mode == 'OBJECT' and _is_method(ob, "blend") and "fillet" in json.loads(ob[META_KEY])
+
+    def _ready(self, context):
+        return _fillet_bridge(context.active_object) is not None
 
     def _place(self, context):
         found = _fillet_bridge(context.active_object)

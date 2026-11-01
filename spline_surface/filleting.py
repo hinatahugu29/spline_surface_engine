@@ -71,6 +71,64 @@ def set_fillet_radius(context, fillet_id, radius):
         live._reset()
 
 
+def flange_recipe(meta):
+    """The flange recipe of a wall: its own, or the one a fillet trimmed it from. None if the
+    patch is no flange wall (or was filleted more than once, which can't be edited in place)."""
+    if meta.get("method") == "flange":
+        return meta
+    if meta.get("method") == "fillet_trim" and meta["base"].get("method") == "flange":
+        return meta["base"]
+    return None
+
+
+def set_flange(context, ob, angle=None, length=None):
+    """Change a flange wall's angle / length after the fact. The rounded fold and everything
+    built on the wall follow. Raises ValueError (and changes nothing) if it can't be done."""
+    from . import live  # live imports operators, which this module imports
+    meta = json.loads(ob[META_KEY])
+    if flange_recipe(meta) is None:
+        raise ValueError("%s is not a flange wall" % ob.name)
+    if hand_edited(ob, meta):
+        raise ValueError("%s was edited by hand (Regenerate first)" % ob.name)
+    new = json.loads(json.dumps(meta))
+    target = flange_recipe(new)
+    if angle is not None:
+        target["angle"] = float(angle)
+    if length is not None:
+        target["length"] = float(length)
+    if meta.get("method") == "flange":
+        ob[META_KEY] = json.dumps(new)
+        status, msg = live.rebuild(ob, context)
+        if status != "ok":
+            ob[META_KEY] = json.dumps(meta)
+            raise ValueError(msg)
+        live.update_chain([ob.name], context)
+        return
+    members = fillet_members(meta["fillet"]["id"])
+    edited = [m.name for m, mm in members if hand_edited(m, mm)]
+    if edited:
+        raise ValueError("edited by hand since the fillet (Regenerate first): " + ", ".join(edited))
+    ob[META_KEY] = json.dumps(new)          # the other members read this wall's base from here
+    try:
+        redone = [(m, new if m == ob else mm, compute_fillet_trim(new if m == ob else mm, context))
+                  for m, mm in members]
+    except ValueError:
+        ob[META_KEY] = json.dumps(meta)
+        raise
+    settings = context.scene.spline_surface
+    live._state["busy"] = True
+    try:
+        for m, mm, (net, orders) in redone:
+            if not live._write_in_place(m, net, orders):
+                replace_net(m, net, settings, orders)
+            context.view_layer.update()
+            store_meta(m, mm)
+        live.update_chain([m.name for m, _ in members], context)
+    finally:
+        live._state["busy"] = False
+        live._reset()
+
+
 def compute_multi_fillet(seams, radius, continuity, settings):
     """multi_fillet on the objects named in `seams` [(a, edge_a, b, edge_b)]."""
     names = {n for a, _, b, _ in seams for n in (a, b)}

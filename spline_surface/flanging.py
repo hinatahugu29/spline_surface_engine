@@ -14,7 +14,8 @@ from . import pick, zebra
 from .orienting import face_like
 from .bridge.write_surface import build_surface_data
 from .operators import compute_flange
-from .recipe import _make_active, store_meta, surface_edges
+from .filleting import flange_recipe, set_flange
+from .recipe import META_KEY, _make_active, store_meta, surface_edges
 
 
 # Bridge tension that makes a G1 bridge between the patch edge and the wall's first row
@@ -135,4 +136,45 @@ class SS_OT_flange(pick.ModalPicker, bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (SS_OT_flange,)
+class SS_OT_flange_edit(bpy.types.Operator):
+    bl_idname = "spline_surface.flange_edit"
+    bl_label = "Edit Flange"
+    bl_description = ("Change the angle or depth of the active flange wall afterwards "
+                      "(the rounded fold and anything built on it follow). Tweak in the panel "
+                      "that opens at the bottom left")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    angle: bpy.props.FloatProperty(name="Angle", default=90.0, min=5.0, max=175.0,
+                                   description="Fold angle: 90 is square to the patch")
+    length: bpy.props.FloatProperty(name="Length", default=0.3, min=0.001, max=1000.0,
+                                    unit='LENGTH', description="Depth of the wall")
+
+    @staticmethod
+    def _recipe(context):
+        ob = context.active_object
+        if ob is None or ob.type != 'SURFACE' or META_KEY not in ob:
+            return None
+        try:
+            return flange_recipe(json.loads(ob[META_KEY]))
+        except (ValueError, KeyError, AttributeError):
+            return None
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and cls._recipe(context) is not None
+
+    def invoke(self, context, event):
+        found = self._recipe(context)
+        self.angle, self.length = found["angle"], found["length"]
+        return self.execute(context)
+
+    def execute(self, context):
+        try:
+            set_flange(context, context.active_object, self.angle, self.length)
+        except ValueError as e:
+            self.report({'ERROR'}, str(e))
+            return {'CANCELLED'}
+        return {'FINISHED'}
+
+
+classes = (SS_OT_flange, SS_OT_flange_edit)

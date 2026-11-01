@@ -22,7 +22,7 @@ from .core.extend import bezier_orders, extend_net
 from .core.loft import add_rows, loft_net, order_sections
 from . import pick
 from . import zebra
-from .recipe import (EDGE_KEYS, META_KEY, META_VERSION, OPPOSITE_EDGE, _make_active,
+from .recipe import (EDGE_KEYS, META_KEY, META_VERSION, NET_OVERRIDE, OPPOSITE_EDGE, _make_active,
                      edge_polyline, hand_edited, hand_edited_net, iso_lines, raw_meta,
                      replace_net, set_origin, store_meta, surface_edges, world_net)
 
@@ -174,15 +174,31 @@ def compute_fillet_trim(meta, context):
     """A fillet member's trimmed net: rebuild every member's untrimmed shape
     from its base recipe and fillet them all again (each reach depends on
     both sides of its seam). Returns (net, orders)."""
+    from . import live
     fs = meta["fillet"]
-    patches = {}
+    bases = {}
     for name in fs["members"]:
         ob = bpy.data.objects.get(name)
         if ob is None or META_KEY not in ob:
             raise ValueError("Fillet patch missing: %s" % name)
         member = meta if name == meta["member"] else json.loads(ob[META_KEY])
-        net, orders, _ = compute_from_meta(fillet_base(member, fs["id"]), context)
-        patches[name] = (net, orders)
+        bases[name] = fillet_base(member, fs["id"])
+    # A member built from another member (a flange wall off the patch it was filleted with) must
+    # read that one untrimmed, as it was when the fillet was made, so build in that order.
+    patches, pending = {}, list(bases)
+    try:
+        while pending:
+            ready = [n for n in pending if not (set(live._inputs(bases[n])) & set(pending) - {n})]
+            if not ready:
+                raise ValueError("Fillet members depend on each other in a loop")
+            for name in ready:
+                net, orders, _ = compute_from_meta(bases[name], context)
+                patches[name] = (net, orders)
+                NET_OVERRIDE[name] = (net, orders)
+                pending.remove(name)
+    finally:
+        for name in bases:
+            NET_OVERRIDE.pop(name, None)
     seams = [tuple(s) for s in fs["seams"]]
     tol = max(_seam_tolerance(patches[a][0], patches[b][0], context.scene.spline_surface)
               for a, _, b, _ in seams)

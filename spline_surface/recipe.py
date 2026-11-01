@@ -37,8 +37,14 @@ EDGE_KEYS = ('V1', 'V0', 'U1', 'U0')
 OPPOSITE_EDGE = {'U0': 'U1', 'U1': 'U0', 'V0': 'V1', 'V1': 'V0'}
 
 
+NET_OVERRIDE = {}     # object name -> (net, orders): read a source as it will be, not as it is now
+
+
 def world_net(ob):
     """(world-space control net, (order_u, order_v)) of a NURBS surface patch."""
+    if ob.name in NET_OVERRIDE:
+        net, orders = NET_OVERRIDE[ob.name]
+        return np.array(net), orders
     orders = check_patch(ob)
     net = read_surface_net(ob.data)
     M = np.array(ob.matrix_world)
