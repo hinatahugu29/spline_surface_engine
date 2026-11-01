@@ -1664,6 +1664,19 @@ def run():
     sw_prof.scale.x = 1.5                     # so does the profile
     vl.update()
     assert sweep_check() < 1e-5
+    assert bpy.ops.spline_surface.sweep(source_a=sw_prof.name, edge_a='U1', source_b=sw_rail.name,
+                                        edge_b='V1', straight=True) == {'FINISHED'}
+    sw = bpy.context.active_object
+    assert json.loads(sw[spline_surface.operators.META_KEY]).get("straight") is True
+    def straight_check():
+        from spline_surface.core.sweep import sweep_net
+        (Pa, oa), (Pb, ob_) = world_net(sw_prof), world_net(sw_rail)
+        want, _ = sweep_net(Pa, oa, 'U1', Pb, ob_, 'V1', straight=True)
+        return float(np.abs(world_net(sw)[0] - want).max())
+    assert straight_check() < 1e-5
+    sw_rail.scale.z = 1.2
+    vl.update()
+    assert straight_check() < 1e-5
     print("sweep follows profile and rail", sw.name)
     spline_surface.unregister()
     print("ALL OK")

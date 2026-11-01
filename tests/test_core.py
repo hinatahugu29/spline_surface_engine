@@ -1189,6 +1189,22 @@ def test_sweep_net():
     # flip walks the rail from its other end
     flipped, _ = sweep_net(prof_patch, (5, 2), 'V0', rail_patch, (2, 5), 'U0', flip=True)
     assert np.allclose(flipped[0], prof[0] + (rail[::-1] - rail[-1]))
+    # straight: the profile's far end runs straight out of the patch (+y), the near end follows the rail
+    for fl in (False, True):
+        sn, so = sweep_net(prof_patch, (5, 2), 'V0', rail_patch, (2, 5), 'U0', flip=fl, straight=True)
+        assert so == (5, 5)
+        assert np.allclose(sn[:, 0], prof)                                     # the profile edge is kept
+        rl = rail if not fl else rail[::-1]
+        near = sn[0, :]                                                        # profile end at x = 0 is the far end
+        chord = np.linalg.norm(rl[-1] - rl[0])
+        vs = np.linspace(0, 1, 9)
+        far_pts = nurbs.eval_points(np.stack([sn[0], sn[0]], 0), (2, 5), 0 * vs, vs)
+        assert np.allclose(far_pts[:, [0, 2]], prof[0][[0, 2]], atol=1e-9)    # straight along y only
+        assert np.all(np.diff(far_pts[:, 1]) > 0)
+        assert abs(sn[0, -1, 1] - prof[0][1] - chord) < 1e-9                  # as long as the rail chord
+        assert np.allclose(sn[-1], prof[-1] + rl - rl[0])                      # the rail end follows the rail
+    ln, _ = sweep_net(prof_patch, (5, 2), 'V0', rail_patch, (2, 5), 'U0', straight=True, length=0.7)
+    assert abs(ln[0, -1, 1] - prof[0][1] - 0.7) < 1e-9
     # a rail of zero length is refused
     try:
         sweep_net(prof_patch, (5, 2), 'V0', np.zeros((2, 5, 3)), (2, 5), 'U0')

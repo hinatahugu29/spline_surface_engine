@@ -72,7 +72,8 @@ def compute_flange(source, meta):
 
 def compute_sweep(sources, meta):
     (Pa, oa), (Pb, ob) = world_net(sources[0]), world_net(sources[1])
-    return sweep_net(Pa, oa, meta["edges"][0], Pb, ob, meta["edges"][1], meta.get("flip", False))
+    return sweep_net(Pa, oa, meta["edges"][0], Pb, ob, meta["edges"][1], meta.get("flip", False),
+                     meta.get("straight", False), meta.get("length", 0.0))
 
 
 def compute_corner(sources, meta, settings):
@@ -1019,7 +1020,8 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
     bl_label = "Sweep"
     bl_description = ("Carry the shape of one patch edge (the profile) along another patch edge "
                       "(the rail). Click the profile edge, then the rail edge. "
-                      "F in the viewport: start from the rail's other end")
+                      "F in the viewport: start from the rail's other end; S: let the profile's other end "
+                      "run straight out of its patch instead of following the rail")
     bl_options = {'REGISTER', 'UNDO'}
 
     source_a: bpy.props.StringProperty(name="Profile Patch")
@@ -1030,6 +1032,14 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
         name="Flip", default=False,
         description="Sweep from the rail's far end instead of the end nearest the profile")
 
+    straight: bpy.props.BoolProperty(
+        name="Straight", default=False,
+        description="The profile's other end does not follow the rail but runs straight out of "
+                    "its patch (the profile is stretched between the two)")
+    length: bpy.props.FloatProperty(
+        name="Length", default=0.0, min=0.0, max=1000.0, unit='LENGTH',
+        description="How far the straight end runs (0: as far as the rail is long)")
+
     _method, _suffix, _title = "sweep", "_sweep", "Sweep"
 
     def _compute(self, sources, meta, settings):
@@ -1037,15 +1047,22 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
 
     def _header(self, context):
         step = "click the profile edge" if self._first is None else "click the rail edge"
-        context.area.header_text_set("Sweep: %s   F: flip   Esc/RMB: cancel" % step)
+        context.area.header_text_set("Sweep: %s   F: flip   S: straight %s   Esc/RMB: cancel"
+                                      % (step, "on" if self.straight else "off"))
 
     def _meta(self):
         return {"method": "sweep", "sources": [self.source_a, self.source_b],
-                "edges": [self.edge_a, self.edge_b], "flip": self.flip}
+                "edges": [self.edge_a, self.edge_b], "flip": self.flip,
+                "straight": self.straight, "length": self.length}
 
     def modal(self, context, event):
         if event.type == 'F' and event.value == 'PRESS':
             self.flip = not self.flip
+            self._update_preview(context)
+            return {'RUNNING_MODAL'}
+        if event.type == 'S' and event.value == 'PRESS':
+            self.straight = not self.straight
+            self._header(context)
             self._update_preview(context)
             return {'RUNNING_MODAL'}
         if event.type in {'C', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
