@@ -12,6 +12,7 @@ from .core.corner import corner_net
 from .core.fill import fill_patches, side_from_curve, side_from_patch
 from .core.fillet import fillet_net, multi_fillet
 from .core.flange import flange_net
+from .core.sweep import sweep_net
 from .core.meshing import segment_counts, t_junctions
 from .core.mirror import mirror_net, symmetrize
 from .core.network import build_network
@@ -67,6 +68,11 @@ def compute_flange(source, meta):
     net, orders = world_net(source)
     return flange_net(net, meta["edge"], meta["length"], meta["angle"], meta.get("flip", False),
                       orders, meta.get("offset", 0.0))
+
+
+def compute_sweep(sources, meta):
+    (Pa, oa), (Pb, ob) = world_net(sources[0]), world_net(sources[1])
+    return sweep_net(Pa, oa, meta["edges"][0], Pb, ob, meta["edges"][1], meta.get("flip", False))
 
 
 def compute_corner(sources, meta, settings):
@@ -194,6 +200,9 @@ def compute_from_meta(meta, context):
     elif meta["method"] == "flange":
         net, orders = compute_flange(sources[0], meta)
         msg = "flange %.4g at %.4g deg" % (meta["length"], meta["angle"])
+    elif meta["method"] == "sweep":
+        net, orders = compute_sweep(sources, meta)
+        msg = "sweep along %s" % sources[1].name
     elif meta["method"] == "corner":
         net, orders = compute_corner(sources, meta, settings)
         msg = meta["continuity"]
@@ -1005,6 +1014,45 @@ class SS_OT_bridge_edges(_EdgePairPicker, bpy.types.Operator):
         return super().modal(context, event)
 
 
+class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
+    bl_idname = "spline_surface.sweep"
+    bl_label = "Sweep"
+    bl_description = ("Carry the shape of one patch edge (the profile) along another patch edge "
+                      "(the rail). Click the profile edge, then the rail edge. "
+                      "F in the viewport: start from the rail's other end")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    source_a: bpy.props.StringProperty(name="Profile Patch")
+    edge_a: bpy.props.EnumProperty(name="Profile Edge", items=[(e, e, "") for e in EDGE_KEYS])
+    source_b: bpy.props.StringProperty(name="Rail Patch")
+    edge_b: bpy.props.EnumProperty(name="Rail Edge", items=[(e, e, "") for e in EDGE_KEYS])
+    flip: bpy.props.BoolProperty(
+        name="Flip", default=False,
+        description="Sweep from the rail's far end instead of the end nearest the profile")
+
+    _method, _suffix, _title = "sweep", "_sweep", "Sweep"
+
+    def _compute(self, sources, meta, settings):
+        return compute_sweep(sources, meta)
+
+    def _header(self, context):
+        step = "click the profile edge" if self._first is None else "click the rail edge"
+        context.area.header_text_set("Sweep: %s   F: flip   Esc/RMB: cancel" % step)
+
+    def _meta(self):
+        return {"method": "sweep", "sources": [self.source_a, self.source_b],
+                "edges": [self.edge_a, self.edge_b], "flip": self.flip}
+
+    def modal(self, context, event):
+        if event.type == 'F' and event.value == 'PRESS':
+            self.flip = not self.flip
+            self._update_preview(context)
+            return {'RUNNING_MODAL'}
+        if event.type in {'C', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
+            return {'PASS_THROUGH'}
+        return super().modal(context, event)
+
+
 class SS_OT_fill_hole(pick.ModalPicker, bpy.types.Operator):
     bl_idname = "spline_surface.fill_hole"
     bl_label = "Fill Hole"
@@ -1621,7 +1669,7 @@ class SS_OT_add_patch(bpy.types.Operator):
 
 
 classes = (SS_OT_add_patch, SS_OT_add_boundary_curve, SS_OT_coons, SS_OT_loft, SS_OT_snap_ends,
-           SS_OT_regenerate, SS_OT_extend_edge, SS_OT_corner_fill, SS_OT_bridge_edges,
+           SS_OT_regenerate, SS_OT_extend_edge, SS_OT_corner_fill, SS_OT_bridge_edges, SS_OT_sweep,
            SS_OT_fill_hole, SS_OT_offset_surface, SS_OT_add_curve_grid,
            SS_OT_curve_network,
            SS_OT_match_edge, SS_OT_seam_jump, SS_OT_check_continuity, SS_OT_to_mesh)

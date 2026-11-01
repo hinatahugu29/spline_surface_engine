@@ -184,6 +184,7 @@ class SS_PT_grow(_SubPanel, bpy.types.Panel):
         col = layout.column(align=True)
         col.operator("spline_surface.extend_edge", icon='MOD_SOLIDIFY')
         col.operator("spline_surface.bridge_edges", icon='MOD_CURVE')
+        col.operator("spline_surface.sweep", icon='CURVE_PATH')
         col.operator("spline_surface.match_edge", icon='AUTOMERGE_ON')
         col = layout.column(align=True)
         row = col.row(align=True)

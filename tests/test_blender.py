@@ -1636,6 +1636,35 @@ def run():
         print("to mesh quads", flag, "faces", len(me_.polygons), "n-gons", big)
         if flag:
             assert big == 0
+    # ---- v0.58: Sweep carries a profile edge along a rail edge and follows both through Live Update
+    bpy.context.scene.cursor.location = (0, 1500, 0)
+    bpy.ops.spline_surface.add_patch(shape='ARC', points_u=6, points_v=4, bulge=0.4)
+    sw_prof = bpy.context.active_object
+    bpy.context.scene.cursor.location = (0, 1503, 0)
+    bpy.ops.spline_surface.add_patch(shape='DOME', points_u=5, points_v=5)
+    sw_rail = bpy.context.active_object
+    select([sw_prof, sw_rail])
+    assert bpy.ops.spline_surface.sweep(source_a=sw_prof.name, edge_a='U1', source_b=sw_rail.name,
+                                        edge_b='V1') == {'FINISHED'}
+    sw = bpy.context.active_object
+    smeta = json.loads(sw[spline_surface.operators.META_KEY])
+    assert smeta["method"] == "sweep" and smeta["sources"] == [sw_prof.name, sw_rail.name]
+    def sweep_check():
+        from spline_surface.core.sweep import sweep_net
+        (Pa, oa), (Pb, ob_) = world_net(sw_prof), world_net(sw_rail)
+        want, wo = sweep_net(Pa, oa, 'U1', Pb, ob_, 'V1')
+        got, go = world_net(sw)
+        assert tuple(go) == tuple(wo) and got.shape == want.shape
+        return float(np.abs(got - want).max())
+    assert sweep_check() < 1e-5
+    assert not spline_surface.operators.hand_edited(sw, smeta)
+    sw_rail.scale.z = 2.0                     # the rail moves: the sweep is rebuilt
+    vl.update()
+    assert sweep_check() < 1e-5
+    sw_prof.scale.x = 1.5                     # so does the profile
+    vl.update()
+    assert sweep_check() < 1e-5
+    print("sweep follows profile and rail", sw.name)
     spline_surface.unregister()
     print("ALL OK")
 

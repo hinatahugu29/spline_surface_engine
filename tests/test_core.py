@@ -1162,6 +1162,42 @@ def test_flange_wall():
         raise AssertionError("angle %s must be refused" % bad)
 
 
+def test_sweep_net():
+    from core.sweep import sweep_net
+    g = np.linspace(0, 1, 5)
+    # profile: the V1 edge of a patch, a bump along x at y = 0 (u runs along x)
+    prof_patch = np.stack([np.stack([g, 0 * g, 0.3 * np.sin(np.pi * g)], -1)] * 2, 1)   # (5, 2, 3)
+    prof_patch[:, 1, 1] = -1.0                       # second column: the patch lies at y = -1
+    # rail: a V0 edge starting at the profile's end (1, 0, 0) and bending up
+    rail_patch = np.stack([np.stack([1 + 0.4 * g, g, 0.5 * g ** 2], -1)] * 2, 0)         # (2, 5, 3): U edges
+    rail_patch[1] += [0, 0, 1.0]
+    net, orders = sweep_net(prof_patch, (5, 2), 'V0', rail_patch, (2, 5), 'U0')
+    assert orders == (5, 5) and net.shape == (5, 5, 3)
+    prof = prof_patch[:, 0]
+    rail = rail_patch[0]
+    # exact: S(u, v) = profile(u) + rail(v) - rail(0), here with the rail starting at x = 1
+    for i in range(5):
+        for j in range(5):
+            assert np.allclose(net[i, j], prof[i] + rail[j] - rail[0]), (i, j)
+    # the surface really is the sum of the two curves
+    u, v = np.array([0.3, 0.7, 0.5]), np.array([0.2, 0.9, 0.5])
+    S = nurbs.eval_points(net, orders, u, v)
+    pc = nurbs.eval_points(np.stack([prof, prof], 1), (5, 2), u, 0 * u)
+    rc = nurbs.eval_points(np.stack([rail, rail]), (2, 5), 0 * v, v)
+    r0 = nurbs.eval_points(np.stack([rail, rail]), (2, 5), np.zeros(1), np.zeros(1))[0]
+    assert np.allclose(S, pc + rc - r0, atol=1e-9)
+    # flip walks the rail from its other end
+    flipped, _ = sweep_net(prof_patch, (5, 2), 'V0', rail_patch, (2, 5), 'U0', flip=True)
+    assert np.allclose(flipped[0], prof[0] + (rail[::-1] - rail[-1]))
+    # a rail of zero length is refused
+    try:
+        sweep_net(prof_patch, (5, 2), 'V0', np.zeros((2, 5, 3)), (2, 5), 'U0')
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a degenerate rail must be refused")
+
+
 def test_panel_gap():
     from core.gap import edge_normals, find_gap_pairs, measure_gap
     t = np.linspace(0, 1, 20)
