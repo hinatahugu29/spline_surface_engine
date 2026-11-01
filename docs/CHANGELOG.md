@@ -4,6 +4,22 @@
 
 | バージョン | 日付 | 内容 |
 |---|---|---|
+| 0.62.0 | 2026-11-01 | Fillet bridges and corners, Fill Hole and Curve Network patches face like their neighbours; operators.py split (bridging.py, tomesh.py) |
+| 0.61.0 | 2026-11-01 | Sweep Straight stops at a target (edge, curve or plane) |
+| 0.60.1 | 2026-11-01 | Add Patch faces up in Blender; To Mesh winding matches Blender's front |
+| 0.60.0 | 2026-11-01 | Align Normals; new patches and To Mesh face like their neighbours |
+| 0.59.1 | 2026-11-01 | Sweep Straight lines its end up with the rail's end |
+| 0.59.0 | 2026-11-01 | Sweep Straight - the profile's other end runs straight out of its patch |
+| 0.58.0 | 2026-11-01 | Sweep carries a profile edge along a rail edge |
+| 0.57.1 | 2026-11-01 | Copy Bug Report moves to a collapsed Help panel at the bottom |
+| 0.57.0 | 2026-11-01 | patches keep their object transform when rebuilt; Origin to Center; Add Patch origin at the 3D cursor |
+| 0.56.0 | 2026-11-01 | Unlink Mirror and Remove Mirror |
+| 0.55.0 | 2026-11-01 | Copy Bug Report button |
+| 0.54.0 | 2026-11-01 | Flange Outside adds the rounded fold outside the edge without cutting the patch back |
+| 0.53.0 | 2026-11-01 | Mirror Group scope; no mirroring back of patches built from mirrored ones |
+| 0.52.1 | 2026-10-31 | Line, Arc and Curve Grid objects get their origin at the 3D cursor |
+| 0.52.0 | 2026-10-31 | Add Row U/V adds one control point line, also in Edit Mode |
+| 0.51.0 | 2026-10-31 | Loft Extra Rows adds control rows between sections |
 | 0.50.0 | 2026-10-31 | lighter Live Update (cached dependency graph, early cutoff) |
 | 0.49.0 | 2026-10-31 | continuity report over all patches, worst first, with jump to seam |
 | 0.48.0 | 2026-10-31 | Zebra width and soft edges |

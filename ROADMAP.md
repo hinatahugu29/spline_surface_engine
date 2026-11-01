@@ -200,5 +200,6 @@ Sweep に、断面のもう一方の端を元の面の外向きにまっすぐ�
 - 済：説明書・機能一覧・作業の流れ（6例）・更新履歴・不具合報告の導線（Copy Bug Report、Issue 雛形）・Booth 用の文言と一式の作成スクリプト・サンプル .blend・英語の簡易 README
 - 残：掲載用のスクリーンショット、利用条件（ライセンス）の確定、Blender Extensions 掲載の要件確認、実機での通し確認
 
+- v0.62.0: Fillet のブリッジとコーナー、Fill Hole、Curve Network の面も、作った時点で隣の面と向きをそろえる。`operators.py` から `bridging.py`（Corner Fill / Bridge Edges / Sweep）と `tomesh.py`（To Mesh）を分離。
 - v0.61.0: Sweep Straight に Target（T キー）。まっすぐ進む端を、選んだ辺・カーブに最も近づく点、または軸に垂直な平面で止める。
 - v0.60.1: Add Patch の上面(+Z)が Blender の表(青側)になるよう向きを反転。To Mesh の面の向きも Blender の表示に合わせ、Flange の既定の折れ方向は裏側のまま維持。
