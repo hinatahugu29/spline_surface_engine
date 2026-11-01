@@ -31,7 +31,7 @@ def sweep_net(P, orders_p, edge_p, R, orders_r, edge_r, flip=False, straight=Fal
 
     The rail is walked from the end nearest to the profile; flip walks it from the other end.
     straight: the profile's other end runs straight out of P instead, for `length`
-    (0: as far as the rail's own chord).
+    (0: as far as the rail's end has gone in that direction, so the two ends line up).
     Returns (net, orders): u runs along the profile, v along the rail.
     """
     P, R = np.asarray(P, float), np.asarray(R, float)
@@ -56,7 +56,11 @@ def sweep_net(P, orders_p, edge_p, R, orders_r, edge_r, flip=False, straight=Fal
     if np.linalg.norm(out) < 1e-12:
         raise ValueError("the profile edge has no outward direction here")
     out = out / np.linalg.norm(out)
-    run = length if length > 0.0 else chord
+    run = length
+    if run <= 0.0:                                   # line the straight end up with the rail's end
+        run = float(np.dot(rail[-1] - rail[0], out))
+        if run < 1e-9 * chord:                       # the rail runs sideways or back: use its chord
+            run = chord
     line = run * greville(len(rail), orders[1])[:, None] * out[None, :]      # A(v) - A(0)
     s = greville(len(prof), orders[0])
     if near_i == 0:                                  # s = 1 at the rail end

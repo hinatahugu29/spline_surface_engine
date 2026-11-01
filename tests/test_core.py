@@ -1201,7 +1201,8 @@ def test_sweep_net():
         far_pts = nurbs.eval_points(np.stack([sn[0], sn[0]], 0), (2, 5), 0 * vs, vs)
         assert np.allclose(far_pts[:, [0, 2]], prof[0][[0, 2]], atol=1e-9)    # straight along y only
         assert np.all(np.diff(far_pts[:, 1]) > 0)
-        assert abs(sn[0, -1, 1] - prof[0][1] - chord) < 1e-9                  # as long as the rail chord
+        reach = (rl[-1] - rl[0])[1]                                            # the rail's progress along +y; backwards: its chord
+        assert abs(sn[0, -1, 1] - prof[0][1] - (reach if reach > 0 else chord)) < 1e-9
         assert np.allclose(sn[-1], prof[-1] + rl - rl[0])                      # the rail end follows the rail
     ln, _ = sweep_net(prof_patch, (5, 2), 'V0', rail_patch, (2, 5), 'U0', straight=True, length=0.7)
     assert abs(ln[0, -1, 1] - prof[0][1] - 0.7) < 1e-9

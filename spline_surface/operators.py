@@ -1038,7 +1038,7 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
                     "its patch (the profile is stretched between the two)")
     length: bpy.props.FloatProperty(
         name="Length", default=0.0, min=0.0, max=1000.0, unit='LENGTH',
-        description="How far the straight end runs (0: as far as the rail is long)")
+        description="How far the straight end runs (0: as far as the rail's end has gone in that direction, so the ends line up)")
 
     _method, _suffix, _title = "sweep", "_sweep", "Sweep"
 
