@@ -4,6 +4,7 @@
 
 | バージョン | 日付 | 内容 |
 |---|---|---|
+| 0.63.1 | 2026-11-01 | Sweep Target (Edge): the third click no longer skipped by a remembered target |
 | 0.63.0 | 2026-11-01 | To Mesh Curve Detail: a minimum number of segments per 90 degrees of curve |
 | 0.62.0 | 2026-11-01 | Fillet bridges and corners, Fill Hole and Curve Network patches face like their neighbours; operators.py split (bridging.py, tomesh.py) |
 | 0.61.0 | 2026-11-01 | Sweep Straight stops at a target (edge, curve or plane) |

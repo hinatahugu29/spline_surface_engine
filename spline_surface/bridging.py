@@ -332,13 +332,20 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
     def _plane_from_cursor(self, context):
         self.target_value = float(context.scene.cursor.location[int(self.target_axis)])
 
+    def invoke(self, context, event):
+        self.target_source = ""        # Blender remembers the last run's properties: pick afresh
+        self._target_stage = False
+        self._mouse = (event.mouse_region_x, event.mouse_region_y) if event else (0, 0)
+        return super().invoke(context, event)
+
     def _more_picks(self, context):
-        if self.target_mode != 'EDGE' or self.target_source:
+        if self.target_mode != 'EDGE':
             return False
         self._target_stage = True
         self._pair_edges = self._edges
         self._edges = SS_OT_bridge_edges._candidates(self, context)      # curves can be targets too
-        self._first, self._hover, self._preview = None, None, []
+        self._first, self._preview = None, []
+        self._hover = pick.nearest_polyline(context, self._edges, self._mouse)   # already under the cursor
         self._header(context)
         context.area.tag_redraw()
         return True
@@ -369,14 +376,20 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
         self._update_preview(context)
 
     def modal(self, context, event):
+        if event.type in {'MOUSEMOVE', 'LEFTMOUSE'}:
+            self._mouse = (event.mouse_region_x, event.mouse_region_y)
         if self._target_stage:
             if event.type == 'MOUSEMOVE':
-                hover = pick.nearest_polyline(context, self._edges,
-                                              (event.mouse_region_x, event.mouse_region_y))
+                hover = pick.nearest_polyline(context, self._edges, self._mouse)
                 if hover != self._hover:
                     self._hover = hover
                     self._update_preview(context)
-            elif event.type == 'LEFTMOUSE' and event.value == 'PRESS' and self._hover:
+            elif event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+                # decide from the click's own position, not from the last mouse move
+                self._hover = pick.nearest_polyline(context, self._edges, self._mouse)
+                if self._hover is None:
+                    self.report({'WARNING'}, "No edge or curve under the cursor")
+                    return {'RUNNING_MODAL'}
                 self.target_source, self.target_edge = self._hover
                 self._finish(context)
                 return self.execute(context)
