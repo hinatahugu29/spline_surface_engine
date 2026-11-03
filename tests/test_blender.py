@@ -1428,6 +1428,22 @@ def run():
     assert np.allclose(world_net(bridge)[0], bridge_before, atol=1e-5)
     assert np.allclose(world_net(wall)[0], wall_before, atol=1e-5), "editing must not move the wall"
     print("flange edited afterwards")
+    # a Fillet that fails part-way must not leave Live Update switched off
+    import spline_surface.filleting as filleting_mod
+    real_part_flips = filleting_mod.part_flips
+    def broken(*args, **kwargs):
+        raise ValueError("forced failure")
+    filleting_mod.part_flips = broken
+    bpy.context.scene.cursor.location = (0, 760, 0)
+    bpy.ops.spline_surface.add_patch(shape='PLANE', points_u=4, points_v=4)
+    try:
+        bpy.ops.spline_surface.flange(source=bpy.context.active_object.name, edge='V1', length=0.3,
+                                      angle=90.0, radius=0.05)
+    except Exception:
+        pass
+    finally:
+        filleting_mod.part_flips = real_part_flips
+    assert spline_surface.live._state["busy"] is False, "Live Update was left switched off"
     # Return: a second flange off the free edge of the first wall
     assert bpy.ops.spline_surface.flange(source=wall.name, edge='V1', length=0.2, angle=90.0,
                                          radius=0.04) == {'FINISHED'}

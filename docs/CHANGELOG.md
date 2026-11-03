@@ -4,6 +4,7 @@
 
 | バージョン | 日付 | 内容 |
 |---|---|---|
+| 0.64.1 | 2026-11-03 | Live Update no longer stays off after a Fillet fails part-way; undo/load switch it back on |
 | 0.64.0 | 2026-11-01 | Edit Flange changes angle and depth afterwards; gizmos no longer vanish until reselected; a flange wall no longer shifts when its fillet is redone |
 | 0.63.1 | 2026-11-01 | Sweep Target (Edge): the third click no longer skipped by a remembered target |
 | 0.63.0 | 2026-11-01 | To Mesh Curve Detail: a minimum number of segments per 90 degrees of curve |

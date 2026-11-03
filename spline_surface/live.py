@@ -265,6 +265,7 @@ def _on_depsgraph(scene, depsgraph):
 
 
 def _reset(*_):
+    _state["busy"] = False      # a stuck flag would leave Live Update off until Blender restarts
     _state["fps"].clear()
     from . import linked
     linked.reset()

@@ -359,7 +359,6 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
         fillet_id = uuid.uuid4().hex[:8]
         record = {"id": fillet_id, "seams": seams, "radius": self.radius,
                   "continuity": self.continuity, "members": sorted(trimmed)}
-        live._state["busy"] = True
         made = []
         tol = min(settings.gap_tolerance, 0.02)
         # the bridges face like the patch they start from (a turned net keeps its edge names, so
@@ -368,6 +367,7 @@ class SS_OT_fillet(pick.ModalPicker, bpy.types.Operator):
                         for (a, _, _, _), (net, orders, _) in zip(seams, bridges)]
         bridges = [((flip_net(net) if f else net), orders, tension)
                    for f, (net, orders, tension) in zip(bridge_flips, bridges)]
+        live._state["busy"] = True      # right before the try: anything that raises must not leave it set
         try:
             for name, (P, o) in trimmed.items():
                 src = bpy.data.objects[name]
