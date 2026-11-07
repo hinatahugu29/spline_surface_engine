@@ -557,6 +557,18 @@ def run():
     after = world_net(cp)[0]
     print("curve live", float(np.abs(after - before).max()))
     assert np.abs(after - before).max() > 0.3
+    # after undo/redo the patches are rebuilt from their sources: an undo step holds
+    # the curve one edit ahead of its patch (simulated here with Live Update off)
+    sc_ = bpy.context.scene.spline_surface
+    sc_.live_update = False
+    cs[0].data.splines[0].bezier_points[1].co.z = 0.3
+    vl.update()
+    assert np.abs(world_net(cp)[0] - after).max() < 1e-6     # patch lagging behind
+    sc_.live_update = True
+    from spline_surface import live as live_mod
+    live_mod._on_undo()
+    print("undo resync", float(np.abs(world_net(cp)[0] - before).max()))
+    assert np.abs(world_net(cp)[0] - before).max() < 1e-4
     # a source living only in another scene is reported (its edits never reach the patch)
     from spline_surface import live as live_mod
     assert live_mod.off_scene_inputs([cp.name], bpy.context.scene) == []

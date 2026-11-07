@@ -291,6 +291,34 @@ def _reset(*_):
     linked.reset()
 
 
+def resync(context):
+    """Rebuild every live patch from its sources.
+
+    Blender stores an undo step when the transform ends, before Live Update
+    reshapes the patches, so each step holds the sources one edit ahead of
+    their patches. After undo/redo the patches are brought back in line."""
+    settings = getattr(context.scene, "spline_surface", None)
+    if settings is None or not settings.live_update or context.mode != 'OBJECT':
+        return None
+    down = dependency_graph()
+    names = [n for n in down if n in bpy.data.objects]
+    if not names:
+        return None
+    _state["busy"] = True
+    try:
+        return update_chain(names, context)
+    except Exception:
+        traceback.print_exc()
+        return None
+    finally:
+        _state["busy"] = False
+
+
+def _on_undo(*_):
+    _reset()
+    resync(bpy.context)
+
+
 # ---------------------------------------------------------------- operators
 
 class SS_OT_regenerate_all(bpy.types.Operator):
@@ -370,17 +398,19 @@ classes = (SS_OT_regenerate_all, SS_OT_select_group)
 def register():
     if _on_depsgraph not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph)
-    for hs in (bpy.app.handlers.load_post, bpy.app.handlers.undo_post,
-               bpy.app.handlers.redo_post):
-        if _reset not in hs:
-            hs.append(_reset)
+    if _reset not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_reset)
+    for hs in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post):
+        if _on_undo not in hs:
+            hs.append(_on_undo)
 
 
 def unregister():
     if _on_depsgraph in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph)
-    for hs in (bpy.app.handlers.load_post, bpy.app.handlers.undo_post,
-               bpy.app.handlers.redo_post):
-        if _reset in hs:
-            hs.remove(_reset)
+    if _reset in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_reset)
+    for hs in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post):
+        if _on_undo in hs:
+            hs.remove(_on_undo)
     _reset()
