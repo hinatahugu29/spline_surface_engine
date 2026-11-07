@@ -4,3 +4,4 @@ __pycache__/
 *.blend1
 !samples/*.blend
 dist/
+blender.crash.txt
