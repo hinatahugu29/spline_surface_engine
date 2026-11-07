@@ -499,6 +499,17 @@ def run():
             assert grade(m) == 'G2', m
         assert bpy.ops.spline_surface.regenerate() == {'FINISHED'}
         assert np.allclose(world_net(br)[0], nf, atol=1e-5)
+    # edit continuity afterwards: G2 -> G1 -> G2, the seams follow without re-picking edges
+    for g in ('G1', 'G2'):
+        assert bpy.ops.spline_surface.edit_continuity(continuity=g) == {'FINISHED'}
+        assert json.loads(br["spline_surface"])["continuity"] == g
+        nf, of = world_net(br)
+        for src in (pa, pb):
+            ns, os_ = world_net(src)
+            sh = find_shared_edge(ns, nf, 1e-4, os_, of)
+            got = grade(measure(ns, nf, sh[0], sh[1], sh[2], os_, of))
+            print("edit continuity", g, src.name, got, nf.shape)
+            assert got == g, (g, got)
     # live update: move the base, the extension chain follows and stays G2
     bpy.context.scene.cursor.location = (0, 90, 0)
     bpy.ops.spline_surface.add_patch(shape='DOME')

@@ -200,6 +200,18 @@ class SS_PT_grow(_SubPanel, bpy.types.Panel):
         row.operator("spline_surface.flange_edit", text="Edit", icon='GREASEPENCIL')
         col.operator("spline_surface.split_patch", icon='MOD_EDGESPLIT')
         layout.operator("spline_surface.offset_surface", icon='MOD_OFFSET')
+        from .live import continuity_recipe
+        meta = continuity_recipe(context.active_object)
+        if meta is not None:
+            box = layout.box()
+            box.label(text="%s: %s, tension %.2f" % (context.active_object.name,
+                      meta["continuity"], meta.get("tension", 1.0)), icon='MOD_CURVE')
+            row = box.row(align=True)
+            for g in ('G0', 'G1', 'G2'):
+                op = row.operator("spline_surface.edit_continuity", text=g,
+                                  depress=(g == meta["continuity"]))
+                op.continuity = g
+                op.tension = meta.get("tension", 1.0)
 
 
 class SS_PT_group(_SubPanel, bpy.types.Panel):

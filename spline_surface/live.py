@@ -525,7 +525,96 @@ class SS_OT_select_group(bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (SS_OT_regenerate_all, SS_OT_select_group)
+# Recipes whose seam continuity / tension can be changed after the fact.
+CONTINUITY_METHODS = {"extend": "Extend", "blend": "Bridge", "corner": "Corner Fill"}
+
+
+def continuity_recipe(ob):
+    """The recipe of `ob` if its continuity can be edited, else None."""
+    if ob is None or ob.type != 'SURFACE' or META_KEY not in ob:
+        return None
+    meta = _meta(ob)
+    if meta and meta.get("method") in CONTINUITY_METHODS and "continuity" in meta:
+        return meta
+    return None
+
+
+def set_continuity(context, ob, continuity, tension=None):
+    """Rebuild `ob` with another continuity (and tension); what reads it follows.
+    Raises ValueError and leaves everything as it was if that can't be done."""
+    meta = continuity_recipe(ob)
+    if meta is None:
+        raise ValueError("%s has no editable continuity" % getattr(ob, "name", "?"))
+    if hand_edited(ob, meta):
+        raise ValueError("%s was edited by hand (Regenerate first)" % ob.name)
+    new = dict(meta, continuity=continuity)
+    if tension is not None:
+        new["tension"] = float(tension)
+    old_raw = ob[META_KEY]
+    ob[META_KEY] = json.dumps(new)
+    _state["busy"] = True
+    try:
+        status, msg = rebuild(ob, context)
+        if status != "ok":
+            ob[META_KEY] = old_raw
+            raise ValueError(msg)
+        return update_chain([ob.name], context)
+    finally:
+        _state["busy"] = False
+        _reset()
+
+
+class SS_OT_edit_continuity(bpy.types.Operator):
+    bl_idname = "spline_surface.edit_continuity"
+    bl_label = "Edit Continuity"
+    bl_description = ("Change the continuity (G0/G1/G2) or tension of the active Extend, "
+                      "Bridge or Corner Fill patch without picking the edges again. "
+                      "Patches built on it follow")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    continuity: bpy.props.EnumProperty(
+        name="Continuity",
+        items=[('G0', "G0", "Position only"),
+               ('G1', "G1", "Tangent continuous"),
+               ('G2', "G2", "Curvature continuous")],
+        default='G2')
+    tension: bpy.props.FloatProperty(name="Tension", default=1.0, min=0.05, max=5.0,
+                                     description="How far the seam's shape reaches in")
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and continuity_recipe(context.active_object) is not None
+
+    def invoke(self, context, event):
+        meta = continuity_recipe(context.active_object)
+        if not self.properties.is_property_set("continuity"):
+            self.continuity = meta["continuity"]
+        if not self.properties.is_property_set("tension"):
+            self.tension = meta.get("tension", 1.0)
+        return self.execute(context)
+
+    def draw(self, context):
+        layout = self.layout
+        layout.row().prop(self, "continuity", expand=True)
+        layout.prop(self, "tension")
+
+    def execute(self, context):
+        ob = context.active_object
+        try:
+            res = set_continuity(context, ob, self.continuity, self.tension)
+        except ValueError as e:
+            self.report({'ERROR'}, str(e))
+            return {'CANCELLED'}
+        bad = res["skipped"] + res["error"]
+        if bad:
+            self.report({'WARNING'}, "%s is %s; not updated: %s"
+                        % (ob.name, self.continuity, ", ".join(bad)))
+        else:
+            self.report({'INFO'}, "%s is %s" % (ob.name, self.continuity))
+        return {'FINISHED'}
+
+
+classes = (SS_OT_regenerate_all, SS_OT_select_group, SS_OT_edit_continuity)
 
 
 def register():
