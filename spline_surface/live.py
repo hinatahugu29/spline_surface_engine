@@ -104,6 +104,23 @@ def connected(names):
     return seen
 
 
+def off_scene_inputs(names, scene):
+    """Inputs of the patches `names` that exist but are not in `scene`.
+
+    A recipe names its sources; if those objects live in another scene (e.g. a
+    full scene copy made by another add-on), editing the look-alike in this
+    scene never reaches the patch, and nothing else would say why."""
+    out = set()
+    for name in names:
+        ob = bpy.data.objects.get(name)
+        meta = _meta(ob) if ob is not None else None
+        for src in _inputs(meta or {}):
+            sob = bpy.data.objects.get(src)
+            if sob is not None and scene.objects.get(src) is None:
+                out.add(src)
+    return sorted(out)
+
+
 def _write_in_place(ob, net, orders):
     """Move the control points without rebuilding the datablock (fast path)."""
     cu = ob.data
@@ -256,6 +273,9 @@ def _on_depsgraph(scene, depsgraph):
             notes.append("not updated (hand edited): " + ", ".join(result["skipped"]))
         if result["error"]:
             notes.append("failed or looped: " + ", ".join(result["error"]))
+        away = off_scene_inputs(result["ok"] + result["unchanged"], scene)
+        if away:
+            notes.append("sources not in this scene: " + ", ".join(away))
         settings.live_note = "; ".join(notes)
     except Exception:
         traceback.print_exc()
@@ -308,8 +328,12 @@ class SS_OT_regenerate_all(bpy.types.Operator):
         finally:
             _state["busy"] = False
             _reset()
+        away = off_scene_inputs(order, context.scene)
         if failed:
             self.report({'ERROR'}, "Rebuilt %d, failed: %s" % (done, ", ".join(failed)))
+        elif away:
+            self.report({'WARNING'}, "Rebuilt %d, but these sources are in another scene "
+                        "(edits here will not reach the patches): %s" % (done, ", ".join(away)))
         elif skipped:
             self.report({'WARNING'}, "Rebuilt %d, skipped hand-edited: %s"
                         % (done, ", ".join(skipped)))

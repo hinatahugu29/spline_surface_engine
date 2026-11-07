@@ -557,6 +557,18 @@ def run():
     after = world_net(cp)[0]
     print("curve live", float(np.abs(after - before).max()))
     assert np.abs(after - before).max() > 0.3
+    # a source living only in another scene is reported (its edits never reach the patch)
+    from spline_surface import live as live_mod
+    assert live_mod.off_scene_inputs([cp.name], bpy.context.scene) == []
+    away = bpy.data.scenes.new("AwayScene")
+    away.collection.objects.link(cs[0])
+    for coll in list(cs[0].users_collection):
+        if coll is not away.collection:
+            coll.objects.unlink(cs[0])
+    assert live_mod.off_scene_inputs([cp.name], bpy.context.scene) == [cs[0].name]
+    bpy.context.scene.collection.objects.link(cs[0])
+    away.collection.objects.unlink(cs[0])
+    bpy.data.scenes.remove(away)
     # cage: deform a group with a lattice, bake, seams come back G2
     bpy.context.scene.cursor.location = (0, 150, 0)
     bpy.ops.spline_surface.add_patch(shape='DOME')
