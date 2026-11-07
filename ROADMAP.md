@@ -131,7 +131,7 @@ v0.37〜v0.40 の実機確認は並行継続中。
 
 | 順 | 版 | 内容 | 完了の目安 |
 |---|---|---|---|
-| 1 | v0.65.0 | **名前の変更でレシピが切れない**：source の名前を変えたら、それを読むレシピの名前も書き換える（依存グラフの名前と `session_uid` を照らし合わせ、消えた名前と増えた名前の組を探す）。追えなかった切れ目は live_note と Regenerate で「source が見つからない」と出す | 名前を変えたカーブを動かしても Loft／Bridge が追従する。`test_blender.py` に節を追加 |
+| 1 | v0.65.0 ← 完了 | **名前の変更でレシピが切れない**：source の名前を変えたら、それを読むレシピの名前も書き換える（依存グラフの名前と `session_uid` を照らし合わせ、消えた名前と増えた名前の組を探す）。追えなかった切れ目は live_note と Regenerate で「source が見つからない」と出す | 名前を変えたカーブを動かしても Loft／Bridge が追従する。`test_blender.py` に節を追加 |
 | 2 | v0.65.x | **実機確認**：v0.64.3 の Undo／Redo（Loft・Bridge・Coons でカーブ移動 → Ctrl+Z → Ctrl+Shift+Z）、Shot Manager と併用した追従、v0.65.0 の名前変更 | 3件とも実機で問題なし。出たものはここに追記 |
 | 3 | v0.66.0 | **公開の必須物**：`LICENSE`（GPL-3.0-or-later）をリポジトリと ZIP に同梱、Blender Extensions の掲載要件の確認（マニフェストの項目、権限、外部依存なし） | `build_zip.py` の ZIP に LICENSE が入る。要件の確認結果をここに記録 |
 | 4 | v0.66.x | **掲載素材**：スクリーンショット（Loft／Fillet／Zebra／To Mesh など）、サンプル .blend での通し確認 | 掲載ページに必要な画像がそろう |

@@ -569,6 +569,37 @@ def run():
     live_mod._on_undo()
     print("undo resync", float(np.abs(world_net(cp)[0] - before).max()))
     assert np.abs(world_net(cp)[0] - before).max() < 1e-4
+    # renaming a source curve keeps the patch following it
+    from spline_surface import live as live_mod
+    ops = spline_surface.operators
+    old_name = cs[1].name
+    cs[1].name = "RenamedSide"
+    vl.update()
+    meta_ = json.loads(cp[ops.META_KEY])
+    assert "RenamedSide" in meta_["sources"] and old_name not in meta_["sources"], meta_
+    before = world_net(cp)[0].copy()
+    cs[1].data.splines[0].bezier_points[1].co.z = 1.0
+    vl.update()
+    print("rename live", float(np.abs(world_net(cp)[0] - before).max()))
+    assert np.abs(world_net(cp)[0] - before).max() > 0.3
+    assert not live_mod.hand_edited(cp, json.loads(cp[ops.META_KEY]))
+    cs[1].data.splines[0].bezier_points[1].co.z = 0.3
+    vl.update()
+    # a deleted source is reported instead of failing silently
+    ga = bezier_curve("ghostA", [(0, 300, 0), (2, 300, 0)])
+    gb = bezier_curve("ghostB", [(0, 302, 0), (2, 302, 0)])
+    select([ga, gb])
+    assert bpy.ops.spline_surface.loft() == {'FINISHED'}
+    gp = bpy.context.active_object
+    vl.update()
+    bpy.data.objects.remove(gb)
+    vl.update()
+    assert "ghostB" in live_mod._missing, live_mod._missing
+    assert "ghostB" in bpy.context.scene.spline_surface.live_note
+    bpy.data.objects.remove(gp)
+    bpy.data.objects.remove(ga)
+    vl.update()
+    assert not live_mod._missing
     # a source living only in another scene is reported (its edits never reach the patch)
     from spline_surface import live as live_mod
     assert live_mod.off_scene_inputs([cp.name], bpy.context.scene) == []

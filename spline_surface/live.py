@@ -191,6 +191,100 @@ def update_chain(names, context):
     return result
 
 
+# ---------------------------------------------------------------- renames
+
+# Recipe fields that hold settings, never object names.
+_NOT_NAMES = {"method", "edge", "edges", "continuity", "kind", "axis", "fp", "ver",
+              "layout", "net", "orders"}
+_uids = {}      # object name -> session_uid, for every object some recipe reads
+_missing = set()    # recipe inputs that are gone and could not be traced
+
+
+def _rename_in(value, old, new, key=None):
+    if key in _NOT_NAMES:
+        return value, False
+    if isinstance(value, str):
+        return (new, True) if value == old else (value, False)
+    if isinstance(value, list):
+        out, hit = [], False
+        for v in value:
+            v, h = _rename_in(v, old, new)
+            out.append(v)
+            hit |= h
+        return out, hit
+    if isinstance(value, dict):
+        out, hit = {}, False
+        for k, v in value.items():
+            v, h = _rename_in(v, old, new, k)
+            out[k] = v
+            hit |= h
+        return out, hit
+    return value, False
+
+
+def rename_input(old, new):
+    """Point every recipe that reads `old` at `new`. Returns the patches changed."""
+    changed = []
+    for ob in bpy.data.objects:
+        if META_KEY not in ob:
+            continue
+        meta = _meta(ob)
+        if meta is None:
+            continue
+        meta, hit = _rename_in(meta, old, new)
+        if hit:
+            ob[META_KEY] = json.dumps(meta)   # the fingerprint stays: the shape did not change
+            changed.append(ob.name)
+    if old in _state["fps"]:
+        _state["fps"][new] = _state["fps"].pop(old)
+    return changed
+
+
+def follow_renames():
+    """Rewrite recipes whose inputs were renamed; remember the ones that vanished.
+
+    Recipes name their inputs, so renaming a curve would cut it loose without a
+    word. Each input's session_uid is remembered; when a name disappears, the
+    object still carrying that uid under a new name takes its place."""
+    down = dependency_graph()
+    by_uid = None
+    gone = []
+    for name in list(down):
+        ob = bpy.data.objects.get(name)
+        if ob is not None:
+            _uids[name] = ob.session_uid
+        else:
+            gone.append(name)
+    renamed = []
+    still = set()
+    for name in gone:
+        uid = _uids.get(name)
+        if uid is not None:
+            if by_uid is None:
+                by_uid = {o.session_uid: o for o in bpy.data.objects}
+            ob = by_uid.get(uid)
+            if ob is not None and ob.name != name:
+                rename_input(name, ob.name)
+                _uids.pop(name, None)
+                _uids[ob.name] = uid
+                renamed.append((name, ob.name))
+                continue
+        still.add(name)
+    _missing.clear()
+    _missing.update(still)
+    return renamed
+
+
+def missing_inputs(names):
+    """Inputs of the patches `names` that no longer exist."""
+    out = set()
+    for name in names:
+        ob = bpy.data.objects.get(name)
+        meta = _meta(ob) if ob is not None else None
+        out.update(n for n in _inputs(meta or {}) if n not in bpy.data.objects)
+    return sorted(out)
+
+
 # ---------------------------------------------------------------- live update
 
 _state = {"busy": False, "fps": {}}
@@ -234,14 +328,21 @@ def _on_depsgraph(scene, depsgraph):
             touched.update(o.name for o in bpy.data.objects if o.data == idb)
     from . import linked
     _state["busy"] = True
+    missing_before = set(_missing)
     try:
         linked.on_update(touched, ctx)
+        for old, new in follow_renames():
+            touched.add(new)
+            print("[Spline Surface] recipes now read %s (was %s)" % (new, old))
     except Exception:
         # Never let a geometry-math bug escape the handler: an uncaught
         # exception here reprints on every future scene edit.
         traceback.print_exc()
     finally:
         _state["busy"] = False
+    if _missing != missing_before:
+        settings.live_note = ("sources missing (renamed in another way or deleted): "
+                              + ", ".join(sorted(_missing))) if _missing else ""
     if not settings.live_update:
         return
     down = dependency_graph()
@@ -273,6 +374,8 @@ def _on_depsgraph(scene, depsgraph):
             notes.append("not updated (hand edited): " + ", ".join(result["skipped"]))
         if result["error"]:
             notes.append("failed or looped: " + ", ".join(result["error"]))
+        if _missing:
+            notes.append("sources missing: " + ", ".join(sorted(_missing)))
         away = off_scene_inputs(result["ok"] + result["unchanged"], scene)
         if away:
             notes.append("sources not in this scene: " + ", ".join(away))
@@ -314,6 +417,12 @@ def resync(context):
         _state["busy"] = False
 
 
+def _on_load(*_):
+    # session_uids belong to the previous file
+    _uids.clear()
+    _missing.clear()
+
+
 def _on_undo(*_):
     _reset()
     resync(bpy.context)
@@ -337,6 +446,7 @@ class SS_OT_regenerate_all(bpy.types.Operator):
         return context.mode == 'OBJECT' and context.selected_objects
 
     def execute(self, context):
+        follow_renames()
         group = connected([o.name for o in context.selected_objects])
         down = dependency_graph()
         roots = [n for n in group if not (_meta(bpy.data.objects[n]) or {}).get("sources")
@@ -357,6 +467,10 @@ class SS_OT_regenerate_all(bpy.types.Operator):
             _state["busy"] = False
             _reset()
         away = off_scene_inputs(order, context.scene)
+        gone = missing_inputs(order)
+        if gone:
+            failed.append("sources missing (deleted, or renamed before this session): "
+                          + ", ".join(gone))
         if failed:
             self.report({'ERROR'}, "Rebuilt %d, failed: %s" % (done, ", ".join(failed)))
         elif away:
@@ -400,6 +514,8 @@ def register():
         bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph)
     if _reset not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_reset)
+    if _on_load not in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.append(_on_load)
     for hs in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post):
         if _on_undo not in hs:
             hs.append(_on_undo)
@@ -410,6 +526,8 @@ def unregister():
         bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph)
     if _reset in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_reset)
+    if _on_load in bpy.app.handlers.load_post:
+        bpy.app.handlers.load_post.remove(_on_load)
     for hs in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post):
         if _on_undo in hs:
             hs.remove(_on_undo)

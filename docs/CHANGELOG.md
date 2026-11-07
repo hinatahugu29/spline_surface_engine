@@ -4,6 +4,7 @@
 
 | バージョン | 日付 | 内容 |
 |---|---|---|
+| 0.65.0 | 2026-11-07 | Renaming a source curve or patch keeps the patches built from it following; deleted sources are reported |
 | 0.64.3 | 2026-11-07 | Undo/Redo rebuild live patches from their curves, so they no longer lag one step behind |
 | 0.64.2 | 2026-11-07 | Regenerate / Live Update warn when a patch's sources are in another scene |
 | 0.64.1 | 2026-11-03 | Live Update no longer stays off after a Fillet fails part-way; undo/load switch it back on |
