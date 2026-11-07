@@ -558,7 +558,20 @@ def set_continuity(context, ob, continuity, tension=None):
         if status != "ok":
             ob[META_KEY] = old_raw
             raise ValueError(msg)
-        return update_chain([ob.name], context)
+        res = update_chain([ob.name], context)
+        # A button press runs outside any depsgraph pass: tag what moved and redraw,
+        # or the viewport keeps showing the old shape until something else updates.
+        for name in [ob.name] + res["ok"]:
+            o = bpy.data.objects.get(name)
+            if o is not None:
+                o.data.update_tag()
+                o.update_tag(refresh={'OBJECT', 'DATA'})
+        context.view_layer.update()
+        for win in getattr(context.window_manager, "windows", ()):
+            for area in win.screen.areas:
+                if area.type == 'VIEW_3D':
+                    area.tag_redraw()
+        return res
     finally:
         _state["busy"] = False
         _reset()
