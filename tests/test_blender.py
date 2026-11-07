@@ -567,6 +567,9 @@ def run():
     sc_.live_update = True
     from spline_surface import live as live_mod
     live_mod._on_undo()
+    assert bpy.app.timers.is_registered(live_mod._deferred_resync)
+    bpy.app.timers.unregister(live_mod._deferred_resync)
+    live_mod._deferred_resync()      # what the timer runs once the undo has finished
     print("undo resync", float(np.abs(world_net(cp)[0] - before).max()))
     assert np.abs(world_net(cp)[0] - before).max() < 1e-4
     # renaming a source curve keeps the patch following it

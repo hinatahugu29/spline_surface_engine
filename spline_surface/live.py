@@ -140,8 +140,11 @@ def _write_in_place(ob, net, orders):
     return True
 
 
-def rebuild(ob, context, force=False):
-    """Regenerate one patch. Returns (status, message); status in ok/skipped/error."""
+def rebuild(ob, context, force=False, in_place_only=False):
+    """Regenerate one patch. Returns (status, message); status in ok/skipped/error.
+
+    `in_place_only`: never rebuild the datablock (which runs edit-mode operators
+    and adds/removes a Curve); a patch whose point count changed is skipped."""
     meta = _meta(ob)
     if meta is None:
         return "skipped", "no recipe"
@@ -150,6 +153,8 @@ def rebuild(ob, context, force=False):
     try:
         net, orders, msg = compute_from_meta(meta, context)
         if not _write_in_place(ob, net, orders):
+            if in_place_only:
+                return "skipped", "point count changed"
             replace_net(ob, net, context.scene.spline_surface, orders)
     except ValueError as e:
         return "error", str(e)
@@ -157,7 +162,7 @@ def rebuild(ob, context, force=False):
     return "ok", msg
 
 
-def update_chain(names, context):
+def update_chain(names, context, in_place_only=False):
     """Rebuild everything downstream of `names`. Returns {status: [object names]}.
 
     A patch whose rebuild came out identical stops the chain there: what only
@@ -182,7 +187,7 @@ def update_chain(names, context):
             result["unchanged"].append(name)
             continue
         before = _signature(ob)
-        status, _ = rebuild(ob, context)
+        status, _ = rebuild(ob, context, in_place_only=in_place_only)
         result[status].append(name)
         if status != "ok":
             blocked.add(name)
@@ -399,7 +404,11 @@ def resync(context):
 
     Blender stores an undo step when the transform ends, before Live Update
     reshapes the patches, so each step holds the sources one edit ahead of
-    their patches. After undo/redo the patches are brought back in line."""
+    their patches. After undo/redo the patches are brought back in line.
+
+    Only control points are moved: rebuilding a datablock runs operators and
+    adds/removes IDs, which right after an undo corrupts Blender's undo memory
+    (the next Ctrl+Z crashed in curve_foreach_id)."""
     settings = getattr(context.scene, "spline_surface", None)
     if settings is None or not settings.live_update or context.mode != 'OBJECT':
         return None
@@ -409,7 +418,7 @@ def resync(context):
         return None
     _state["busy"] = True
     try:
-        return update_chain(names, context)
+        return update_chain(names, context, in_place_only=True)
     except Exception:
         traceback.print_exc()
         return None
@@ -423,9 +432,19 @@ def _on_load(*_):
     _missing.clear()
 
 
+def _deferred_resync():
+    try:
+        resync(bpy.context)
+    except Exception:
+        traceback.print_exc()
+    return None     # run once
+
+
 def _on_undo(*_):
     _reset()
-    resync(bpy.context)
+    # leave the undo system alone while it is still restoring; fix up right after
+    if not bpy.app.timers.is_registered(_deferred_resync):
+        bpy.app.timers.register(_deferred_resync, first_interval=0.0)
 
 
 # ---------------------------------------------------------------- operators
