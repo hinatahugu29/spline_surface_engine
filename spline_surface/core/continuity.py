@@ -21,6 +21,18 @@ def _framed(P, orders, edge):
     return edge_frame(P, edge)[0], frame_orders(orders or bezier_orders(P), edge)
 
 
+def _edge_curve(P, orders, e, t):
+    C, (ka, _) = _framed(P, orders, e)
+    return eval_curve(C[:, -1], ka, t)
+
+
+def edge_pair_gap(Pa, Pb, edge_a, edge_b, reversed_, orders_a=None, orders_b=None, samples=16):
+    """Mean distance between edge_a of Pa and edge_b of Pb (b walked backwards if reversed_)."""
+    t = np.linspace(0.0, 1.0, samples)
+    ca, cb = _edge_curve(Pa, orders_a, edge_a, t), _edge_curve(Pb, orders_b, edge_b, t)
+    return float(np.linalg.norm(ca - (cb[::-1] if reversed_ else cb), axis=1).mean())
+
+
 def find_shared_edge(Pa, Pb, tol, orders_a=None, orders_b=None, samples=16):
     """Best matching edge pair between two patches.
 
@@ -30,20 +42,16 @@ def find_shared_edge(Pa, Pb, tol, orders_a=None, orders_b=None, samples=16):
     """
     t = np.linspace(0.0, 1.0, samples)
 
-    def curve(P, orders, e):
-        C, (ka, _) = _framed(P, orders, e)
-        return eval_curve(C[:, -1], ka, t)
-
     def collapsed(c):  # a patch edge squeezed to a point (pole of a cap, corner fill)
         return np.linalg.norm(np.diff(c, axis=0), axis=1).sum() <= tol
 
     best = None
     for ea in EDGES:
-        ca = curve(Pa, orders_a, ea)
+        ca = _edge_curve(Pa, orders_a, ea, t)
         if collapsed(ca):
             continue
         for eb in EDGES:
-            cb = curve(Pb, orders_b, eb)
+            cb = _edge_curve(Pb, orders_b, eb, t)
             if collapsed(cb):
                 continue
             for rev in (False, True):
@@ -75,13 +83,22 @@ def _describe(n, k):
     return "%d points, order %d (%d span%s)" % (n, k, spans, "" if spans == 1 else "s")
 
 
+def _spread_weights(m):
+    """1 on the seam row, easing to 0 on the opposite edge row (smoothstep)."""
+    s = np.linspace(0.0, 1.0, m)
+    return 1.0 - s * s * (3.0 - 2.0 * s)
+
+
 def match_net(target, ref, edge_t, edge_r, reversed_, continuity,
-              orders_t=None, orders_r=None):
+              orders_t=None, orders_r=None, spread=False):
     """Make `target`'s `edge_t` meet `ref` on `edge_r` with G0/G1/G2.
 
     Returns (net, orders) of the modified target. Only the first one to three
     control rows next to the edge are changed and the target's tangent scale
-    is preserved. Along the edge both patches must share the same structure;
+    is preserved. With `spread`, the move of the seam row is first eased into
+    the whole patch (fading out towards the opposite edge, which stays put),
+    so a seam pulled far away bends the patch smoothly instead of leaving a
+    ridge three rows in. Along the edge both patches must share the same structure;
     two Bezier edges of different degree are reconciled by degree elevation.
     Across the edge a Bezier target is elevated if it has too few rows to keep
     the opposite edge untouched.
@@ -114,10 +131,14 @@ def match_net(target, ref, edge_t, edge_r, reversed_, continuity,
     e1 = basis_matrix(m_t, kc_t, 0.0, 1)[0]
     e2 = basis_matrix(m_t, kc_t, 0.0, 2)[0]
 
+    if spread:
+        D += _spread_weights(m_t)[None, :, None] * (C[:, -1] - D[:, 0])[:, None, :]
+    # The target's own tangent scale, read before its seam row moves: measured
+    # after, a seam pulled far away would blow the tangents up.
+    cur = np.einsum("j,ijd->id", e1, D)
     D[:, 0] = C[:, -1]
     if level >= 1:
         Tr, Ar = edge_derivatives(C, kc_r)
-        cur = np.einsum("j,ijd->id", e1, D)
         lam = np.linalg.norm(cur, axis=1).mean() / max(np.linalg.norm(Tr, axis=1).mean(), 1e-12)
         D[:, 1] = (lam * Tr - e1[0] * D[:, 0]) / e1[1]
     if level >= 2:

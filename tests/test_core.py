@@ -145,6 +145,38 @@ def test_measure_and_match():
         assert np.allclose(far, far_ref, atol=1e-9), cont
 
 
+
+def test_match_far_and_spread():
+    """A seam pulled far away: tangents keep their scale; Spread bends the patch
+    smoothly and keeps the opposite edge."""
+    from core.extend import edge_frame
+    A = _bumpy(6, 5)
+    T, _ = extend_net(A, "V1", 0.6, "G2", degree=4)
+    shared = find_shared_edge(T, A, tol=1e-6)
+    A2 = A + np.array([0.0, 0.0, 1.5])     # the reference moves far, beyond any tolerance
+    assert find_shared_edge(T, A2, tol=0.1) is None
+
+    def framed(M):                          # seam row first, opposite edge last
+        return edge_frame(np.asarray(M), shared[0])[0][:, ::-1]
+
+    def first_step(M):
+        F = framed(M)
+        return np.linalg.norm(F[:, 1] - F[:, 0], axis=1).mean()
+
+    F0 = framed(T)
+    for cont in ("G1", "G2"):
+        plain, _ = match_net(T, A2, *shared[:3], cont)
+        soft, _ = match_net(T, A2, *shared[:3], cont, spread=True)
+        for M in (plain, soft):
+            g = grade(measure(M, A2, *shared[:3]))
+            assert g == cont or (cont == "G1" and g == "G2"), (cont, g)
+            assert np.allclose(framed(M)[:, -1], F0[:, -1])      # opposite edge kept
+        # The target's own tangent scale: read after the seam row moved, it shot off.
+        assert first_step(plain) < 3 * first_step(T), (first_step(plain), first_step(T))
+        # Spread: the rows inside follow the seam part of the way (no ridge).
+        mid = F0.shape[1] // 2
+        assert np.abs(framed(soft)[:, mid] - F0[:, mid]).max() > 0.2
+
 def _section(x, bump, n=40):
     y = np.linspace(-1, 1, n)
     return np.stack([np.full(n, x), y, bump * (1 - y * y)], axis=1)

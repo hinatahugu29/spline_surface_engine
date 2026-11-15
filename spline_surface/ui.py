@@ -212,6 +212,40 @@ class SS_PT_grow(_SubPanel, bpy.types.Panel):
                                   depress=(g == meta["continuity"]))
                 op.continuity = g
                 op.tension = meta.get("tension", 1.0)
+        _draw_match_links(layout, context.active_object)
+
+
+def _draw_match_links(layout, ob):
+    """The Match Edge links of the active patch: what it follows, what follows it."""
+    from .live import match_entries, match_followers
+    if ob is None or ob.type != 'SURFACE':
+        return
+    entries = match_entries(ob)
+    followers = match_followers(ob.name)
+    if not entries and not followers:
+        return
+    box = layout.box()
+    if entries:
+        box.label(text="%s follows" % ob.name, icon='LINKED')
+        for m in entries:
+            ref = m.get("ref", "?")
+            g = m.get("continuity", "G2")
+            spread = bool(m.get("spread", False))
+            row = box.row(align=True)
+            gone = ref not in bpy.data.objects
+            sub = row.row(align=True)
+            sub.alert = gone
+            sub.label(text=ref + (" (missing)" if gone else ""))
+            for cg in ('G0', 'G1', 'G2'):
+                op = row.operator("spline_surface.match_link_edit", text=cg, depress=(cg == g))
+                op.ref, op.continuity, op.spread = ref, cg, spread
+            op = row.operator("spline_surface.match_link_edit", text="",
+                              icon='SMOOTHCURVE' if spread else 'SHARPCURVE', depress=spread)
+            op.ref, op.continuity, op.spread = ref, g, not spread
+            row.operator("spline_surface.match_link_remove", text="", icon='X').ref = ref
+    if followers:
+        box.label(text="Followed by: " + ", ".join("%s (%s)" % f for f in followers),
+                  icon='DECORATE_LINKED')
 
 
 class SS_PT_group(_SubPanel, bpy.types.Panel):

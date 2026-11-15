@@ -76,7 +76,10 @@ def retarget(source, piece_b, direction, net_a, orders_a, net_b, orders_b):
                 # reference, not loosely "close enough" after the split.
                 if find_shared_edge(tnet, rnet, 1e-4 * np.ptp(rnet.reshape(-1, 3), 0).max(),
                                     torders, rord):
-                    matches.append(dict(m, ref=ref.name))
+                    # The remembered edge pair named the unsplit patch's edges.
+                    kept = {k: v for k, v in m.items()
+                            if k not in ("edge_t", "edge_r", "reversed")}
+                    matches.append(dict(kept, ref=ref.name))
                     break
             changed = True
         if "matches" in meta:

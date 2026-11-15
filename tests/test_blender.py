@@ -50,6 +50,82 @@ def nurbs_eval(net, orders, g):
     return eval_surface(net, orders, g, g).reshape(-1, 3)
 
 
+def match_links_far_move():
+    """Match Edge keeps following a reference moved far beyond Gap Tolerance;
+    links can be listed, changed and removed afterwards."""
+    from spline_surface import live as live_mod
+    from spline_surface.bridge.write_surface import build_surface_data
+    from spline_surface.core.continuity import find_shared_edge, grade, measure
+    from spline_surface.core.extend import extend_net
+    from spline_surface.recipe import META_KEY, raw_meta, store_meta
+    ctx = bpy.context
+    settings = ctx.scene.spline_surface
+    xs, ys = np.meshgrid(np.linspace(0, 3, 4), np.linspace(-300, -297, 4), indexing="ij")
+    A = np.stack([xs, ys, 0.3 * np.sin(xs) * np.cos(ys - ys.min())], -1)
+    B, _ = extend_net(A, "V1", 1.5, "G1", degree=3)
+    B = np.array(B)
+    B[:, 1:, 2] += 0.4                              # a kink at the seam
+    obs = []
+    for name, net in (("FarRef", A), ("FarFollow", B)):
+        cu = build_surface_data(name, net, settings.resolution)
+        ob = bpy.data.objects.new(name, cu)
+        ctx.collection.objects.link(ob)
+        store_meta(ob, raw_meta(net, world_net(ob)[1]))
+        obs.append(ob)
+    ref, fol = obs
+
+    def seam():
+        (Pf, of_), (Pr, or_) = world_net(fol), world_net(ref)
+        size = np.ptp(np.concatenate([Pf.reshape(-1, 3), Pr.reshape(-1, 3)]), 0).max()
+        sh = find_shared_edge(Pf, Pr, 1e-3 * size, of_, or_)
+        assert sh is not None, "seam lost"
+        return grade(measure(Pf, Pr, *sh[:3], of_, or_))
+
+    select([fol, ref])
+    ctx.view_layer.objects.active = fol
+    assert bpy.ops.spline_surface.match_edge(continuity='G2') == {'FINISHED'}
+    entry = json.loads(fol[META_KEY])["matches"][0]
+    assert entry["spread"] is True and {"edge_t", "edge_r", "reversed"} <= set(entry), entry
+    assert seam() == "G2"
+    assert live_mod.match_followers(ref.name) == [(fol.name, "G2")]
+    # Far beyond Gap Tolerance (10% of the size): the match used to be lost here.
+    for dz in (0.2, 1.0, 2.5):
+        ref.location.z = dz
+        ctx.view_layer.update()
+        res = live_mod.update_chain([ref.name], ctx)
+        assert fol.name in res["ok"], (dz, res)
+        assert seam() == "G2", dz
+    print("match follows a far move: G2 at dz=2.5")
+    # Change the link afterwards: G1 without Spread.
+    select([fol])
+    assert bpy.ops.spline_surface.match_link_edit(ref=ref.name, continuity='G1',
+                                                  spread=False) == {'FINISHED'}
+    entry = json.loads(fol[META_KEY])["matches"][0]
+    assert entry["continuity"] == "G1" and entry["spread"] is False
+    assert seam() in ("G1", "G2")
+    # Legacy link (no remembered edge pair): still works when close, and learns the pair.
+    ref.location.z = 0.0
+    ctx.view_layer.update()
+    meta = json.loads(fol[META_KEY])
+    meta["matches"] = [{"ref": ref.name, "continuity": "G2"}]
+    fol[META_KEY] = json.dumps(meta)
+    status, _ = live_mod.rebuild(fol, ctx, force=True)
+    assert status == "ok"
+    assert "edge_t" in json.loads(fol[META_KEY])["matches"][0]
+    # Unlink: a free patch stays where it is and stops following.
+    shape = world_net(fol)[0]
+    assert bpy.ops.spline_surface.match_link_remove(ref=ref.name) == {'FINISHED'}
+    meta = json.loads(fol[META_KEY])
+    assert meta["method"] == "raw" and not meta.get("matches")
+    assert np.allclose(world_net(fol)[0], shape)
+    assert live_mod.match_followers(ref.name) == []
+    ref.location.z = 1.0
+    ctx.view_layer.update()
+    res = live_mod.update_chain([ref.name], ctx)
+    assert fol.name not in res["ok"]
+    assert np.allclose(world_net(fol)[0], shape)
+
+
 def run():
     spline_surface.register()
     for o in list(bpy.data.objects):
@@ -246,7 +322,9 @@ def run():
     # Icons used by the panel exist.
     icons = bpy.types.UILayout.bl_rna.functions["label"].parameters["icon"].enum_items.keys()
     from spline_surface.ui import GRADE_ICONS
-    for name in list(GRADE_ICONS.values()) + ['VIEWZOOM', 'AUTOMERGE_ON', 'MOD_SOLIDIFY', 'SNAP_ON']:
+    for name in list(GRADE_ICONS.values()) + ['VIEWZOOM', 'AUTOMERGE_ON', 'MOD_SOLIDIFY', 'SNAP_ON',
+                                              'LINKED', 'DECORATE_LINKED', 'SMOOTHCURVE',
+                                              'SHARPCURVE', 'X']:
         assert name in icons, name
 
     # Loft through 4 shuffled, mixed-direction sections.
@@ -1877,6 +1955,7 @@ def run():
     me_f = bpy.context.active_object.data
     zs = [p.normal.z for p in me_f.polygons]
     assert all(z > 0 for z in zs) or all(z < 0 for z in zs), "mixed winding"
+    match_links_far_move()
     spline_surface.unregister()
     print("ALL OK")
 

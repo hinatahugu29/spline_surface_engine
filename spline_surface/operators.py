@@ -17,7 +17,7 @@ from .core.sweep import sweep_net
 from .core.mirror import mirror_net, symmetrize
 from .core.network import build_network
 from .core.offset import offset_net
-from .core.continuity import find_shared_edge, grade, match_net, measure
+from .core.continuity import edge_pair_gap, find_shared_edge, grade, match_net, measure
 from .core.extend import bezier_orders, extend_net
 from .core.loft import add_rows, loft_net, order_sections
 from . import pick
@@ -292,7 +292,8 @@ def compute_from_meta(meta, context):
         ref = bpy.data.objects.get(match["ref"])
         if ref is None:
             raise ValueError("Matched patch missing: %s" % match["ref"])
-        net, orders = apply_match(net, orders, *world_net(ref), match["continuity"], settings)
+        net, orders = apply_match(net, orders, *world_net(ref), match["continuity"], settings,
+                                  match)
         msg += ", %s to %s" % (match["continuity"], ref.name)
     sym = meta.get("symmetry")
     if sym:
@@ -309,13 +310,42 @@ def _seam_tolerance(Pa, Pb, settings):
     return max(np.ptp(pts, axis=0).max() * settings.gap_tolerance, 1e-6)
 
 
-def apply_match(net, orders, ref_net, ref_orders, continuity, settings):
-    shared = find_shared_edge(net, ref_net, _seam_tolerance(net, ref_net, settings),
-                              orders, ref_orders)
-    if shared is None:
+MATCH_PAIR_KEYS = ("edge_t", "edge_r", "reversed")
+
+
+def match_pair(net, orders, ref_net, ref_orders, settings, match=None):
+    """(edge_t, edge_r, reversed) a match works on, or None if it can't tell.
+
+    The edge pair is remembered in the match the first time it is found. A
+    remembered pair that still lies close is used as is; otherwise the closest
+    pair within Gap Tolerance (after a split, say, the remembered names may be
+    stale); otherwise the remembered pair again: the reference has moved
+    further away than the tolerance, and the seam must follow it anyway
+    (searching alone, the match was lost once a source moved ~10% away)."""
+    tol = _seam_tolerance(net, ref_net, settings)
+    rec = None
+    if match is not None and all(k in match for k in MATCH_PAIR_KEYS):
+        rec = (match["edge_t"], match["edge_r"], bool(match["reversed"]))
+        if edge_pair_gap(net, ref_net, *rec, orders, ref_orders) <= tol:
+            return rec
+    shared = find_shared_edge(net, ref_net, tol, orders, ref_orders)
+    return tuple(shared[:3]) if shared is not None else rec
+
+
+def apply_match(net, orders, ref_net, ref_orders, continuity, settings, match=None,
+                spread=None):
+    """Match `net` to `ref_net`. With a recipe `match` entry, its edge pair is
+    used and recorded in it, and its "spread" flag read (old entries: off)."""
+    pair = match_pair(net, orders, ref_net, ref_orders, settings, match)
+    if pair is None:
         raise ValueError("no edge lies close to the reference patch "
                          "(raise Gap Tolerance or move the patches together)")
-    return match_net(net, ref_net, *shared[:3], continuity, orders, ref_orders)
+    if spread is None:
+        spread = bool(match.get("spread", False)) if match is not None else False
+    out = match_net(net, ref_net, *pair, continuity, orders, ref_orders, spread=spread)
+    if match is not None:
+        match.update(zip(MATCH_PAIR_KEYS, pair))
+    return out
 
 
 class SS_OT_coons(bpy.types.Operator):
@@ -499,6 +529,11 @@ class SS_OT_match_edge(bpy.types.Operator):
         items=[('G0', "G0", "Close the gap (position)"),
                ('G1', "G1", "Match tangents"),
                ('G2', "G2", "Match tangents and curvature")])
+    spread: bpy.props.BoolProperty(
+        name="Spread", default=True,
+        description="Ease the seam's move into the whole patch (the opposite edge stays put) "
+                    "instead of only the 1-3 rows next to the seam. Keeps the patch smooth "
+                    "when the other patch is later moved far")
 
     @classmethod
     def poll(cls, context):
@@ -511,9 +546,11 @@ class SS_OT_match_edge(bpy.types.Operator):
         ref = next(o for o in _selected_surfaces(context) if o is not target)
         settings = context.scene.spline_surface
         meta = json.loads(target[META_KEY]) if META_KEY in target else None
+        entry = {"ref": ref.name, "continuity": self.continuity, "spread": self.spread}
         try:
             tnet, torders = world_net(target)
-            net, orders = apply_match(tnet, torders, *world_net(ref), self.continuity, settings)
+            net, orders = apply_match(tnet, torders, *world_net(ref), self.continuity, settings,
+                                      entry)
             replace_net(target, net, settings, orders)
         except ValueError as e:
             self.report({'ERROR'}, str(e))
@@ -523,7 +560,7 @@ class SS_OT_match_edge(bpy.types.Operator):
             old_matches = meta.get("matches", []) if meta else []
             meta = raw_meta(tnet, torders, matches=old_matches)
         matches = [m for m in meta.get("matches", []) if m["ref"] != ref.name]
-        matches.append({"ref": ref.name, "continuity": self.continuity})
+        matches.append(entry)
         meta["matches"] = matches
         store_meta(target, meta)
         self.report({'INFO'}, "%s matched to %s (%s)" % (target.name, ref.name, self.continuity))

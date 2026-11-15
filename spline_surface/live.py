@@ -12,8 +12,8 @@ import bpy
 import numpy as np
 
 from .operators import compute_from_meta
-from .recipe import (ADDON_WRITES, META_KEY, ROUND_DECIMALS, hand_edited, replace_net,
-                     store_meta, world_net)
+from .recipe import (ADDON_WRITES, META_KEY, ROUND_DECIMALS, hand_edited, raw_meta,
+                     replace_net, store_meta, world_net)
 
 
 def _meta(ob):
@@ -200,7 +200,7 @@ def update_chain(names, context, in_place_only=False):
 
 # Recipe fields that hold settings, never object names.
 _NOT_NAMES = {"method", "edge", "edges", "continuity", "kind", "axis", "fp", "ver",
-              "layout", "net", "orders"}
+              "layout", "net", "orders", "edge_t", "edge_r"}
 _uids = {}      # object name -> session_uid, for every object some recipe reads
 _missing = set()    # recipe inputs that are gone and could not be traced
 
@@ -559,22 +559,170 @@ def set_continuity(context, ob, continuity, tension=None):
             ob[META_KEY] = old_raw
             raise ValueError(msg)
         res = update_chain([ob.name], context)
-        # A button press runs outside any depsgraph pass: tag what moved and redraw,
-        # or the viewport keeps showing the old shape until something else updates.
-        for name in [ob.name] + res["ok"]:
-            o = bpy.data.objects.get(name)
-            if o is not None:
-                o.data.update_tag()
-                o.update_tag(refresh={'OBJECT', 'DATA'})
-        context.view_layer.update()
-        for win in getattr(context.window_manager, "windows", ()):
-            for area in win.screen.areas:
-                if area.type == 'VIEW_3D':
-                    area.tag_redraw()
+        _redraw(context, [ob.name] + res["ok"])
         return res
     finally:
         _state["busy"] = False
         _reset()
+
+
+def _redraw(context, names):
+    """A button press runs outside any depsgraph pass: tag what moved and redraw,
+    or the viewport keeps showing the old shape until something else updates."""
+    for name in names:
+        o = bpy.data.objects.get(name)
+        if o is not None:
+            o.data.update_tag()
+            o.update_tag(refresh={'OBJECT', 'DATA'})
+    context.view_layer.update()
+    for win in getattr(context.window_manager, "windows", ()):
+        for area in win.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()
+
+
+# ---------------------------------------------------------------- match links
+
+def match_entries(ob):
+    """The Match Edge links of `ob` (patches it follows), [] if none."""
+    if ob is None or ob.type != 'SURFACE' or META_KEY not in ob:
+        return []
+    return list((_meta(ob) or {}).get("matches", []))
+
+
+def match_followers(name):
+    """[(patch, continuity)] of the patches matched to `name` (that follow it)."""
+    out = []
+    for dep in sorted(dependency_graph().get(name, ())):
+        ob = bpy.data.objects.get(dep)
+        for m in (_meta(ob) or {}).get("matches", []) if ob is not None else ():
+            if m.get("ref") == name:
+                out.append((dep, m.get("continuity", "?")))
+    return out
+
+
+def _frozen(ob, meta, matches):
+    """`ob`'s current shape as a raw recipe carrying `matches` (and its symmetry)."""
+    net, orders = world_net(ob)
+    extra = {"symmetry": meta["symmetry"]} if meta.get("symmetry") else {}
+    return raw_meta(net, orders, matches=matches, **extra)
+
+
+def set_match(context, ob, ref, continuity=None, spread=None, remove=False):
+    """Change (or with `remove`, drop) `ob`'s Match Edge link to the patch `ref`.
+
+    A changed link rebuilds `ob` and what reads it. Dropping a link keeps the
+    patch where it is when its recipe is its own net (a free or hand-edited
+    patch); a generated patch is rebuilt from its recipe without the link.
+    Raises ValueError and leaves everything as it was if that can't be done."""
+    meta = _meta(ob) if ob is not None and META_KEY in ob else None
+    entries = (meta or {}).get("matches", [])
+    if not any(m.get("ref") == ref for m in entries):
+        raise ValueError("%s does not follow %s" % (getattr(ob, "name", "?"), ref))
+    old_raw = ob[META_KEY]
+    if remove:
+        rest = [m for m in entries if m.get("ref") != ref]
+        if meta.get("method") == "raw" or hand_edited(ob, meta):
+            new, keep = _frozen(ob, meta, rest), True
+        else:
+            new, keep = dict(meta, matches=rest), False
+    else:
+        changed = []
+        for m in entries:
+            m = dict(m)
+            if m.get("ref") == ref:
+                if continuity is not None:
+                    m["continuity"] = continuity
+                if spread is not None:
+                    m["spread"] = bool(spread)
+            changed.append(m)
+        if hand_edited(ob, meta):
+            new = _frozen(ob, meta, changed)
+        else:
+            new = dict(meta, matches=changed)
+        keep = False
+    _state["busy"] = True
+    try:
+        if keep:
+            store_meta(ob, new)
+            res = {"ok": [], "skipped": [], "error": [], "unchanged": []}
+        else:
+            ob[META_KEY] = json.dumps(new)
+            status, msg = rebuild(ob, context)
+            if status != "ok":
+                ob[META_KEY] = old_raw
+                raise ValueError(msg)
+            res = update_chain([ob.name], context)
+        _redraw(context, [ob.name] + res["ok"])
+        return res
+    finally:
+        _state["busy"] = False
+        _reset()
+
+
+class SS_OT_match_link_edit(bpy.types.Operator):
+    bl_idname = "spline_surface.match_link_edit"
+    bl_label = "Edit Match Link"
+    bl_description = ("Change how the active patch follows a patch it was matched to "
+                      "(continuity, Spread). Patches built on it follow")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    ref: bpy.props.StringProperty(name="Reference")
+    continuity: bpy.props.EnumProperty(
+        name="Continuity",
+        items=[('G0', "G0", "Position only"),
+               ('G1', "G1", "Tangent continuous"),
+               ('G2', "G2", "Curvature continuous")],
+        default='G2')
+    spread: bpy.props.BoolProperty(
+        name="Spread", default=True,
+        description="Ease the seam's move into the whole patch instead of only the rows "
+                    "next to the seam")
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and bool(match_entries(context.active_object))
+
+    def execute(self, context):
+        ob = context.active_object
+        try:
+            res = set_match(context, ob, self.ref, self.continuity, self.spread)
+        except ValueError as e:
+            self.report({'ERROR'}, str(e))
+            return {'CANCELLED'}
+        bad = res["skipped"] + res["error"]
+        msg = "%s follows %s (%s%s)" % (ob.name, self.ref, self.continuity,
+                                        ", spread" if self.spread else "")
+        if bad:
+            self.report({'WARNING'}, msg + "; not updated: " + ", ".join(bad))
+        else:
+            self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
+
+class SS_OT_match_link_remove(bpy.types.Operator):
+    bl_idname = "spline_surface.match_link_remove"
+    bl_label = "Unlink Match"
+    bl_description = ("Stop the active patch following a patch it was matched to. A free or "
+                      "hand-edited patch stays where it is; a generated patch goes back to "
+                      "the shape its own recipe gives")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    ref: bpy.props.StringProperty(name="Reference")
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and bool(match_entries(context.active_object))
+
+    def execute(self, context):
+        ob = context.active_object
+        try:
+            set_match(context, ob, self.ref, remove=True)
+        except ValueError as e:
+            self.report({'ERROR'}, str(e))
+            return {'CANCELLED'}
+        self.report({'INFO'}, "%s no longer follows %s" % (ob.name, self.ref))
+        return {'FINISHED'}
 
 
 class SS_OT_edit_continuity(bpy.types.Operator):
@@ -627,7 +775,8 @@ class SS_OT_edit_continuity(bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (SS_OT_regenerate_all, SS_OT_select_group, SS_OT_edit_continuity)
+classes = (SS_OT_regenerate_all, SS_OT_select_group, SS_OT_edit_continuity,
+           SS_OT_match_link_edit, SS_OT_match_link_remove)
 
 
 def register():

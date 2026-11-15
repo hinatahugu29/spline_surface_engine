@@ -4,6 +4,7 @@
 
 | バージョン | 日付 | 内容 |
 |---|---|---|
+| 0.67.0 | 2026-11-16 | Match Edge keeps following when the other patch moves far (it was lost beyond ~10% of the size: the matched edge pair is now remembered); Spread eases the seam's move into the whole patch; the panel lists Match links to change G0/G1/G2 or unlink |
 | 0.66.1 | 2026-11-08 | The G0/G1/G2 buttons redraw the patch right away (it only updated after touching the redo panel) |
 | 0.66.0 | 2026-11-08 | Change the continuity (G0/G1/G2) of an Extend, Bridge or Corner Fill patch afterwards from the Grow & Connect panel; patches built on it follow |
 | 0.65.1 | 2026-11-07 | Fix a crash on Ctrl+Z after Live Update: the post-undo rebuild only moves control points and waits for the undo to finish |
