@@ -3,10 +3,18 @@
 車のボディのような滑らかな曲面を、NURBS に慣れていなくても作れるようにする Blender 5.x 用アドオンです。
 面は Blender の NURBS サーフェスで作り、最後にメッシュにして使います。
 
+![Zebra で見たボンネットとフェンダー（同梱のサンプル）](docs/images/hero_zebra.jpg)
+
+| 継ぎ目の連続性（Seam Colors） | 追従関係（Follow Arrows） | メッシュにした結果（To Mesh） |
+|---|---|---|
+| ![Seam Colors](docs/images/seam_colors.jpg) | ![Follow Arrows](docs/images/follow_arrows.jpg) | ![To Mesh](docs/images/to_mesh.jpg) |
+
 ## インストール
 1. `dist/` にある最新の `spline_surface-x.y.z.zip` を用意する
 2. Blender の「編集 → プリファレンス → アドオン」の右上メニューから「ディスクからインストール」で ZIP を選ぶ
 3. 3D ビューのサイドバー（N キー）に **Spline Surface** タブが出ます
+
+![サイドバーのパネル](docs/images/ui_overview.jpg)
 
 ## ライセンス
 GNU General Public License v3.0 以降（GPL-3.0-or-later）。個人・商用のどちらの制作にも使えます。作ったモデルの権利は作った方にあります。

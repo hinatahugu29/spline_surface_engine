@@ -29,6 +29,8 @@ from spline_surface.recipe import META_KEY  # noqa: E402
 extra = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
 out = extra[0] if extra else os.path.join(ROOT, "samples", "hood_fender.blend")
 spline_surface.register()
+for _ob in [o for o in bpy.data.objects if o.type == 'MESH']:   # the factory startup cube
+    bpy.data.objects.remove(_ob)
 sc = bpy.context.scene.spline_surface
 vl = bpy.context.view_layer
 

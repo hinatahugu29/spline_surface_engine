@@ -33,8 +33,10 @@ class SS_Settings(bpy.types.PropertyGroup):
         description="Rebuild dependent patches automatically when a source patch or curve changes")
     live_note: bpy.props.StringProperty(options={'HIDDEN'})
     follow_scope: bpy.props.EnumProperty(
-        name="Follow Map Scope", default='GROUP', update=lambda self, ctx: _follow_update(),
-        items=[('GROUP', "Selection's Group", "Links of the patches connected to the selection"),
+        name="Follow Map Scope", default='SELECTED', update=lambda self, ctx: _follow_update(),
+        items=[('SELECTED', "Selected", "What the selected patches follow and what follows them"),
+               ('GROUP', "Selection's Group", "Every link among the patches connected to the "
+                "selection"),
                ('ALL', "All", "Every link in the file")])
     follow_list: bpy.props.BoolProperty(
         name="List Links", default=False,

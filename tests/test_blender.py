@@ -85,11 +85,14 @@ def follow_map_checks(fol, ref):
     rows, _ = followmap.list_rows(ctx)
     assert any(r["src"] == ref.name and r["dst"] == fol.name and r["kind"] == "match"
                for r in rows)
-    # Group scope: only the selection's group.
+    # Group scope: only the selection's group; Selected: links touching the selection.
+    for scope, picked in (('GROUP', fol), ('SELECTED', fol), ('SELECTED', ref)):
+        settings.follow_scope = scope
+        select([picked])
+        rows, more = followmap.list_rows(ctx)
+        assert {(r["src"], r["dst"]) for r in rows} == {(ref.name, fol.name)} and more == 0,             (scope, rows)
     settings.follow_scope = 'GROUP'
     select([fol])
-    rows, more = followmap.list_rows(ctx)
-    assert {(r["src"], r["dst"]) for r in rows} == {(ref.name, fol.name)} and more == 0, rows
     # States: failed, hand edited, missing source.
     live_mod.FAILED[fol.name] = "forced"
     followmap.compute(ctx)

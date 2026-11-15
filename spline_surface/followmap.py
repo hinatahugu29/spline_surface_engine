@@ -93,13 +93,35 @@ def links(names=None):
 
 
 def scope_names(context):
-    """The patches the map shows: the selection's group, or everything."""
-    from .live import connected
+    """The patches whose links the map shows (None: everything).
+
+    SELECTED: the selected patches and the patches directly linked to them
+    (links between two neighbours that are both unselected are left out by
+    scope_links). GROUP: everything connected to the selection."""
+    from .live import connected, dependency_graph
     settings = context.scene.spline_surface
     if settings.follow_scope == 'ALL':
         return None
-    sel = [o.name for o in context.selected_objects]
-    return connected(sel) if sel else set()
+    sel = {o.name for o in context.selected_objects}
+    if not sel:
+        return set()
+    if settings.follow_scope == 'GROUP':
+        return connected(sel)
+    out = set(sel)
+    for src, deps in dependency_graph().items():
+        if src in sel:
+            out |= deps
+    return out
+
+
+def scope_links(context):
+    """links() limited to the current scope."""
+    names = scope_names(context)
+    rows = links(names)
+    if context.scene.spline_surface.follow_scope == 'SELECTED':
+        sel = {o.name for o in context.selected_objects}
+        rows = [r for r in rows if r["src"] in sel or r["dst"] in sel]
+    return rows
 
 
 def link_state(link):
@@ -210,11 +232,8 @@ def _source_edge(link):
 def compute(context):
     """Lines (3D) and arrowheads/labels (anchored in 3D) for the visible links."""
     visible = {o.name for o in context.visible_objects}
-    names = scope_names(context)
-    if names is not None:
-        names = names & visible
     draw, labels = [], []
-    for link in links(names):
+    for link in scope_links(context):
         if link["dst"] not in visible:
             continue
         state = link_state(link)
@@ -388,9 +407,8 @@ def _remove_handlers():
 def list_rows(context):
     """Rows for the panel: (links shown, how many more). Followers in dependency order."""
     from .live import downstream_order
-    names = scope_names(context)
-    rows = links(names)
-    if names is None or rows:
+    rows = scope_links(context)
+    if rows:
         order, looped = downstream_order([r["src"] for r in rows])
         rank = {n: i for i, n in enumerate(order + looped)}
         rows.sort(key=lambda r: (rank.get(r["dst"], -1), r["dst"], r["kind"] != "match", r["src"]))
@@ -415,7 +433,7 @@ def draw_list(layout, context):
     rows, more = list_rows(context)
     if not rows:
         layout.label(text="Nothing follows anything here" if settings.follow_scope == 'ALL'
-                     else "Select a patch to list its group", icon='INFO')
+                     else "Select a patch to list its links", icon='INFO')
         return
     from .live import FAILED
     col = layout.column(align=True)

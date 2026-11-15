@@ -4,6 +4,7 @@
 
 | バージョン | 日付 | 内容 |
 |---|---|---|
+| 0.70.0 | 2026-11-16 | Release candidate. Follow Arrows gets a Selected scope (the default): only what the selected patches follow and what follows them. The sample is rebuilt with the current version (the stray default cube is gone). Screenshots in docs/images and the README. ROADMAP rewritten around the release |
 | 0.69.1 | 2026-11-16 | Fix: undoing an edit that changed a source's point count (Add Row, etc.) could leave a dependent patch empty or crash Blender. Such rebuilds now run right after the edit and store their own undo step (one extra Ctrl+Z). Fix a gizmo error on startup. New GUI test (tests/test_gui.py) with real undo/redo |
 | 0.69.0 | 2026-11-16 | Live Update no longer switches to edit mode inside Blender's update handler: a patch that changes its point count copies a same-size surface, or is finished right after the drag ends. LICENSE (GPL-3.0-or-later) ships in the zip; the manifest declares its clipboard and files permissions |
 | 0.68.0 | 2026-11-16 | Follow Arrows: who follows whom drawn in the viewport (Match links as chevrons on the seam, built-from links as arcs; grey dashed hand edited, red failed, magenta missing source) and listed in the Group panel with a button to go to each link |

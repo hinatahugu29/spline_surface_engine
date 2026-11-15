@@ -3,33 +3,49 @@
 車のような滑らかな曲面を、NURBS の慣れなしで作れるようにする Blender 5.x アドオン。
 最終出力はメッシュ。操作はボタンとクリック選択が基本で、ギズモは操作が固まってから載せる。
 
-## できていること（〜 v0.40）
+## 現在地（2026-11-16、v0.70.0）
 
-| 分類 | 機能 |
+**v0.70.0 を公開候補（Release Candidate）とする。** 第1〜第4段階の作業はすべて終わり、残りは人の手でしかできない確認と、公開の手続きだけ。
+
+| 段階 | 目的 | 状況 |
+|---|---|---|
+| 第1段階 v0.41〜 | 実機で固める（基準モデルを通しで作る） | ✅ 完了。基準モデル＝同梱のサンプル（ボンネット＋フェンダー、`tools/build_sample_hood.py`）が最後まで詰まらずに作れる |
+| 第2段階 v0.5x | 車体パネルを作る道具（縁と付き方） | ✅ 完了（Flange、Panel Gap、Presets、Blueprints） |
+| 第3段階 v0.6x | 開口部と投影 | ✅ 完了（Project Curve。トリムは試作して見送り） |
+| 第4段階 v0.7x | 品質と配布 | ✅ 作業は完了（下の「公開の準備」）。公開の手続きが残り |
+
+### 公開の準備
+
+| 項目 | 状況 |
 |---|---|
-| 作る | Add Patch（Plane / Arc / Dome）、Line / Arc（Add Boundary Curve、境界用の直線・円弧）、Coons、Loft、Curve Network（＋ Add Curve Grid）、Snap Ends |
-| 伸ばす・つなぐ | Extend Edge、Bridge Edges、Match Edge（G0/G1/G2）、Corner Fill、Fill Hole（3辺以上、カーブ混在、G0 は平らなフタ）、Flange（辺から壁を立ち上げて折れ目を丸める）、Fillet（複数の継ぎ目、トリム、コーナーパッチ）、Split Patch、Offset Surface |
-| まとめて扱う | Live Update、Linked Edit、Edge Chain、Merge Patches、Cage、Mirror Group |
-| 面の内側の編集 | Soft Pull（起点：点／線／制御点、減衰5種、連続ストローク）、Control Mesh、Fair、Refine |
-| 確認 | Zebra、Seam Colors、Curvature Comb、Curvature Map、Control Points、Check Continuity（対応する辺の名前つき） |
-| ギズモ | Extend の長さ、Offset Surface の距離 |
-| 出力 | To Mesh（面の大きさに合わせた均一な密度、継ぎ目の T 字頂点をつないで溶接） |
-| 基盤 | 複数スパンの NURBS、面ごとの作り方の記録（レシピ）と Regenerate、手で直した面の検出 |
+| ライセンス | ✅ GPL-3.0-or-later。`LICENSE` をリポジトリ・ZIP・Booth 一式に同梱（v0.69.0） |
+| Blender Extensions の要件 | ✅ マニフェストに copyright と権限（clipboard：Copy Bug Report、files：Blueprints の画像読み込み）。`blender --command extension validate` と `extension build` が通り、別の設定フォルダに入れて有効化できることを確認。外部への通信・`sys.path` の書き換え・同梱バイナリなし |
+| 説明書・機能一覧・作業の流れ・更新履歴 | ✅ `docs/` |
+| 不具合報告の導線 | ✅ Copy Bug Report、Issue の雛形 |
+| サンプル .blend | ✅ 現行版で作り直し、開いて全体を作り直しても失敗ゼロ（v0.70.0。紛れ込んでいた既定の Cube を除いた） |
+| 掲載用のスクリーンショット | ✅ `docs/images/`（Zebra、Seam Colors、Follow Arrows、To Mesh、パネル全体）。README に掲載 |
+| 自動テスト | ✅ `tests/test_core.py`（計算）、`tests/test_blender.py`（Blender、バックグラウンド）、`tests/test_gui.py`（Blender の画面つき：本物の Undo／Redo、名前の変更、大きな移動、点の数が変わる作り直し） |
+| 手での通し確認 | ⬜ **人の作業**。自動では操作感（ドラッグ中の追従の滑らかさ、モーダル操作のキー、パネルの見え方）を確かめられない。下の「手で確かめること」 |
+| 他のアドオンとの併用 | ⬜ **人の作業**。Shot Manager など、シーンを複製するアドオンと一緒に使ったときの追従 |
+| 公開の手続き | ⬜ **人の作業**。Blender Extensions への登録（アカウント）、Booth／Superhive のページ更新（`docs/booth_description.txt`、`docs/superhive_page.html` の画像の差し替え先は `docs/images/`）。マニフェストの `website` は、公開するページが決まったら入れる |
 
-## これまでの経過
+### 手で確かめること（公開前に一度）
 
-| 版 | 内容 |
-|---|---|
-| v0.13〜v0.21 | Mirror、Split、5辺以上・カーブ混在の穴埋め、使い勝手の整理、Seam Colors と Offset、Curve Network、Fill Hole の Radial、Linked Edit / Edge Chain / Merge |
-| v0.24〜v0.27 | 面の内側の編集：ロック領域（G0/G1/G2 で 1〜3 列を固定）、Soft Pull、Control Mesh、Fair と Refine |
-| v0.28 | Fillet：ぴったり接して折れた継ぎ目を1クリックで選び、半径分トリムして G1/G2 でつなぐ |
-| v0.29 | Curvature Comb / Curvature Map |
-| v0.30〜v0.32 | Soft Pull の拡張：線起点、連続ストローク、減衰カーブ、制御点起点 |
-| v0.33 | ギズモ（Extend の長さ、Offset の距離）、To Mesh の T 字頂点の接続と密度の均一化 |
-| v0.34〜v0.35 | Fillet を複数の継ぎ目でまとめて、コーナーパッチ、Fill Hole G0 の平らなフタ |
-| v0.40 | **Add Boundary Curve**：境界用の直線・円弧をベジェで追加（Create 欄に Line / Arc。Arc の Angle を 180 にすると半円）。Blender 標準の Path は既定で Endpoint オフのため境界に使うと角に隙間ができることがあり、それを避けられる。あわせて、Fillet 半径ギズモが元の面を削除した後も例外を出し続けていたのを修正 |
+1. サンプルを開き、Hood を G で動かす → つながった面が付いてくる。Ctrl+Z／Ctrl+Shift+Z で行き来しても形が崩れない
+2. 2枚の面を Match Edge（G2）→ 相手を大きく動かしても付いてくる。パネルの追従の一覧で G1 に変える・解除する
+3. Follow Arrows を Selected／Group／All で切り替えて見やすいか
+4. 面に Add Row → その面から作った面（Offset など）が作り直される。Ctrl+Z を2回で Add Row の前に戻る（1回目は Live Update の作り直しの分）
+5. Fillet・Flange・Fill Hole のモーダル操作（クリック、ホイール、C キー、Esc）
+6. To Mesh の結果に穴や裏返りがない
 
-## 設計の原則（引き続き）
+## 方針
+
+- **機能を足すより、実際に1つのものを作って詰まりを拾う**。機能の網羅は一段落した
+- 計算は `core/`（Blender 非依存）に置いて単体テストを書く。Blender 側は `test_blender.py`／`test_gui.py` と実機確認で補う
+- 設計の原則（下）は変えない
+- **Live Update は Blender の更新ハンドラの中で制御点を動かすだけにする**。データの作り替え（点の数が変わる作り直し）はタイマーで行い、Undo の区切りを足す（v0.69.1）。ハンドラの中で作ったデータは Undo の記録に入らず、Undo すると面が空になったり Blender が落ちたりする
+
+## 設計の原則
 
 | 用途 | 方式 |
 |---|---|
@@ -39,202 +55,71 @@
 | 状態の表示 | GPU オーバーレイ（描画のみ） |
 | 作った後の値の直接ドラッグ | ギズモ（レシピの値を書き換えて作り直す） |
 
-- 計算は `core/`（Blender 非依存）に置いて単体テストを書く。Blender 側のつなぎ込み（レシピ、Live Update、Undo）は実機確認で補う
-- 実機確認は並行で継続し、ロードマップの進行はブロックしない
+## できていること（v0.70.0）
 
-## 完了した整理（v0.36〜v0.40）
-
-| 版 | 内容 |
+| 分類 | 機能 |
 |---|---|
-| v0.36 | コードの整理（Fillet を `filleting.py` へ）、`tools/build_zip.py`、`test_blender.py` の拡充 |
-| v0.37 | Network Check、カーブの曲率コーム、Curve Network の許容誤差の見直し |
-| v0.38 | Fillet のやり直し（`fillet_trim` レシピ、半径の変更、半径ギズモ） |
-| v0.39 | Move Crossing、Fair Curves（Curve Network の編集） |
-| v0.40 | Add Boundary Curve（Line / Arc）、Fillet 半径ギズモの例外修正 |
+| 作る | Add Patch（Plane / Arc / Dome）、Presets（Hood／Roof／Door／Hood + Fender）、Blueprints（下絵）、Line / Arc（境界用のカーブ）、Coons、Loft（Extra Rows）、Curve Network（＋ Add Curve Grid、Network Check、Move Crossing、Fair Curves）、Snap Ends、Project Curve |
+| 伸ばす・つなぐ | Extend Edge、Bridge Edges、Sweep（Straight、Target）、Match Edge（G0/G1/G2、Spread、大きく動かしても切れない追従）、Corner Fill、Fill Hole（3辺以上、カーブ混在、G0 は平らなフタ）、Flange（Outside、Edit Flange）、Fillet（複数の継ぎ目、トリム、コーナーパッチ、半径の変更）、Split Patch、Offset Surface、Continuity の後からの変更 |
+| まとめて扱う | Live Update、Linked Edit、Edge Chain、Merge Patches、Cage、Mirror Group（Scope、Unlink、Remove）、Select／Regenerate Group、Follow Arrows／List Links（追従関係の表示） |
+| 面の内側の編集 | Soft Pull（起点：点／線／制御点、減衰5種、連続ストローク）、Control Mesh、Fair、Refine、Add Row、Origin to Center、Align Normals |
+| 確認 | Zebra（Width、Soft）、Seam Colors、Curvature Comb、Curvature Map、Control Points、Check Continuity（悪い順、ジャンプ）、Panel Gap |
+| ギズモ | Extend の長さ、Offset Surface の距離、Fillet の半径 |
+| 出力 | To Mesh（均一な密度、T 字頂点の接続と溶接、四角形化、Curve Detail、面の向きの統一）、Trim to Mesh（見た目の確認用の試作） |
+| 基盤 | 複数スパンの NURBS、面ごとの作り方の記録（レシピ）と Regenerate、手で直した面の検出、名前の変更の追従、Undo／Redo 後の同期、Copy Bug Report |
 
-v0.37〜v0.40 の実機確認は並行継続中。
+## 公開後の候補（v0.7x〜、必要になったら）
 
-## 方針
+公開後は、使った人から出た詰まりを最優先にする。それまでの候補：
 
-- **機能を足すより、実際に1つのものを作って詰まりを拾う**。機能の網羅は一段落したので、これからは「作ってみて分かった不便」が最優先
-- 計算は `core/`（Blender 非依存）に置いて単体テストを書く。Blender 側は `test_blender.py` と実機確認で補う
-- 設計の原則（ボタン／モーダル／制御メッシュ／オーバーレイ／ギズモの使い分け）は変えない
+| 候補 | 内容 |
+|---|---|
+| Panel Gap をそろえる操作 | 今は測って表示するだけ。どちらの面を動かすかの決め方を、実機で使ってから決める |
+| Sweep の断面の回転 | レールの向きに合わせて断面を回すモード（今は平行移動のみ） |
+| Presets の追加 | Roof の側面、Trunk、Bumper など |
+| 相互の追従 | Match Edge の追従は一方向のみ（相互にするとループで両方作り直されない）。両側を同時に合わせる仕組みが要るかは使ってから |
+| Follow Arrows の弧 | 弧の膨らみは視点によらず固定。真上に重なる面（Offset など）は見る向きによって短く見える |
 
-## 段階
-
-### 第1段階 v0.41〜 実機で固める
-目的：今の機能で「1枚のパネルから、つながった数枚のパネルまで」を通しで作れるか確かめる。
-- **基準モデルを1つ決めて作る**（例：ボンネット＋フェンダー、または小さな車体の半分）。作る過程で詰まった所を ROADMAP の残課題に追記する。サンプル .blend としてそのまま同梱できる
-- `test_blender.py` を v0.37〜v0.40 の分まで拡充して通す（Network Check、Move Crossing、Fair Curves、Fillet のやり直し、Line/Arc）
-- 残課題の解消：2本だけ丸めた角のコーナーを斜めにならないように／Fill Hole の4辺以外の穴の G2／曲率表示を変わった面だけ再計算
-- 完了の目安：基準モデルを、途中でバグに当たらず最後まで作れる
-
-### 第2段階 v0.5x 車体パネルを作る道具
-目的：車らしいパネルの「縁」と「付き方」を扱えるようにする。
-- ~~Flange / Return~~ → v0.41 で完了（Return は壁の辺にもう一度 Flange）
-- ~~Panel Gap~~ → v0.42 で測定と表示まで完了（そろえる操作は実機で使ってから）
-- ~~Presets~~ → v0.43 で完了（Hood／Roof／Door／Hood + Fender）
-- ~~下絵配置の補助~~ → v0.44 で完了
-- 完了の目安：パネルを作ってから、縁の見切りまでを一通り Spline Surface 内で終えられる
-
-### 第3段階 v0.6x 開口部と投影 ← 完了（トリムは見送り）
-- Project Curve（v0.45）は完了。Trim は v0.46 で試作して見送り：窓・ライトは別パッチで囲む組み方で代える（マニュアルの作例 C）。切り抜いた縁の丸めは Flange／Fillet をそのまま使う
-
-### 第4段階 v0.7x 品質と配布
-目的：他の人に渡せる状態にする。
-- 面が数十枚でも重くならない（曲率表示、Live Update の差分更新）
-- 解析の拡充：Reflection Lines、継ぎ目全体の連続性レポート（G0/G1/G2 の一覧と問題箇所へのジャンプ）
-- ~~To Mesh の品質~~ → v0.47 で完了（5角形以上を四角形と三角形に）
-- Blender Extensions への公開に向けて：マニュアルの整備、サンプル .blend、バージョンの扱い、エラー報告の導線
-
-## v0.41 Flange（縁の折り返し） ← 完了
-- 開いた辺から壁（`core.flange`、折る向きと角度と深さ）を立ち上げ、折れ目を Fillet で丸める（`spline_surface.flange`）。壁は新しいレシピ `flange` で、元の面に連動する。丸めた折れ目は通常の Fillet なので半径を後から変えられる
-- 制約：壁は元の辺の制御点ごとに折る向きを決めるまっすぐな帯（曲がった辺では近似）。2回目の折り返し（Return）は、壁の辺にもう一度 Flange をかける
-
-## v0.47 To Mesh の四角形化 ← 完了
-- To Mesh の Quads（既定でオン）：継ぎ目の T 字頂点をつないだ所の5角形以上の面を、いちばん真っ直ぐな頂点から向かい側へ切って、四角形と三角形にする（5角形の Fill Hole で 220 面 → 0 面）。面の数は少し増える。オフにすると従来どおり
-
-## v0.46 Trim の試作 ← 完了（これ以上は進めない）
-- 閉じたカーブを面に載せ、その輪郭で穴を開けたメッシュを作る（`core.trim`、`spline_surface.trim_mesh`）。面を (u, v) の格子で切り、輪郭に触れるセルを取り除いて、穴の縁の頂点を輪郭へ寄せる
-- **分かったこと**：(1) 輪郭の長さ・面積は正確（長方形の穴で面積が一致、反転したセルなし）。楕円でも 40 角形の近似の範囲。(2) 輪郭を覆うセルが縁で最大 2 割ほど細くなるが、つぶれはしない。(3) メッシュ出力に限れば成り立つ。ただし**パッチ自体にトリムを持たせていない**ので、穴あきパッチを Mirror・Fillet・隣の面との溶接に使うことはできない
-- **結論：続けない**。トリムをパッチのレシピに持たせるのは To Mesh の再設計に近い大きな作業で、効果に見合わない。窓・ライトは**別パッチで囲む**組み方（マニュアルの作例 C）にする。作例 C の手順（外周・開口部・つなぎのカーブから Coons で4枚）が、継ぎ目まで閉じることをテストで確認した。Trim to Mesh は、見た目の確認用の試作として残す
-
-## v0.45 Project Curve ← 完了
-- カーブを面に載せた新しいカーブを作る（`core.project`、`spline_surface.project_curve`）。方向は最寄り点／X・Y・Z／視線。ニュートン法で面上の (u, v) を求め、届かない点は除く。結果は面の上の通常のベジェカーブ（スナップショット）で、境界カーブとしてそのまま使える
-
-## v0.44 Blueprints ← 完了
-- 下絵の画像（側面・正面・上面）を、指定した実寸で立てて置く（`spline_surface.add_blueprint`）。画像エンプティとして、地面を z=0・中心線を x=0・車の前を +y にそろえ、側面・正面は下辺の中央、上面は中央を原点にする。Length（側面・上面は全長、正面は車幅）・Offset・Opacity・Mirror
-- 制約：寸法の配置はテストで確かめたが、画面での見え方（透け具合、回転して見たとき）は実機での確認が要る。位置合わせの微調整は Blender の通常の移動・拡大で行う
-
-## v0.43 Presets ← 完了
-- Create 欄に車体パネルの出発点を置くボタン：Hood／Roof／Door／Hood + Fender（`core.presets`、`spline_surface.add_preset`）。座標は x＝車幅（中心線が x=0）、y＝前後、z＝上下。Hood + Fender は右半分のボンネットとフェンダーの壁を作り、肩を Fillet で丸める。サイズ・クラウン・半径は調整パネルから
-- 置かれるのは通常のパッチ（raw）なので、そのまま Soft Pull などで整えられる。今は4種類。Roof の側面や Trunk、Bumper などは必要になったら足す
-
-## v0.42 Panel Gap ← 完了
-- 向かい合う別々の面の辺（パネルの継ぎ目）を自動で見つけ、隙間（面に沿った距離）と段差（法線方向のずれ）を測る（`core.gap`、`spline_surface.panel_gap`）。目標と許容を決めると、隙間を横切る線が緑／オレンジで出て、継ぎ目ごとの最小・最大・平均が一覧に出る。編集に合わせて更新
-- 今は測って確かめるだけ。隙間を目標にそろえる操作は未実装（面を動かす先を決める必要があるため、実機で使ってみてから決める）
-
-## v0.40.3 Fill Hole の自由カーブの端の向き ← 完了
-- 基準モデルの穴埋めで、閉じ用カーブ側の継ぎ目の法線が最大 59° ずれていた原因を特定：カーブ辺は最小二乗でフィットされ、端の向きが自由だったため、カーブが隣の面の接平面に沿って出ていても、フィットで端が大きく傾いていた。`core.nurbs.fit_polyline_tangent` を追加し、`side_from_curve` で使用（端の向きを保つ）
-- 結果：ノーズ側の継ぎ目は 59° → 0°（G1）。単体テスト `test_fit_polyline_keeps_end_tangents` を追加
-
-## v0.40.4 曲率表示の差分更新 ← 完了
-- Curvature Comb / Map の計算結果を、面の制御点の値をキーに面ごとに記憶。動かした面だけ計算し直す（面40枚で 0.62 秒 → 0.03 秒）
-
-## v0.40.5 2本だけ丸めた角 ← 完了
-- 角の3辺のうち2辺だけを丸めると、2本のつなぎ面の端がそれぞれ斜めの弧で終わり、端点だけ共有して形が合わず角が割れていた。2本の端を同じ曲線（2つの円柱の交線にあたるマイター）に置き換えて隙間を閉じる（`core.fillet._miter_ends`）。つなぎ面と元の面の G2 は保たれる。単体テスト `test_two_fillets_meet_in_a_mitre`
-- 制約：端の形は両方の弧のずれを足し合わせた近似。丸める辺が直角でなく、元の面が曲面の場合、角の端のごく近くで G2 がわずかに崩れることがある
-
-## 次の作業（v0.65〜、2026-11-07 の見直しから）
-
-方針：**「黙って止まる」をなくす → 公開に必要なものをそろえる → 資料を整える**の順。
-
-| 順 | 版 | 内容 | 完了の目安 |
-|---|---|---|---|
-| 1 | v0.65.0 ← 完了 | **名前の変更でレシピが切れない**：source の名前を変えたら、それを読むレシピの名前も書き換える（依存グラフの名前と `session_uid` を照らし合わせ、消えた名前と増えた名前の組を探す）。追えなかった切れ目は live_note と Regenerate で「source が見つからない」と出す | 名前を変えたカーブを動かしても Loft／Bridge が追従する。`test_blender.py` に節を追加 |
-| 2 | v0.65.x | **実機確認**：v0.64.3 の Undo／Redo（Loft・Bridge・Coons でカーブ移動 → Ctrl+Z → Ctrl+Shift+Z）、Shot Manager と併用した追従、v0.65.0 の名前変更 | 3件とも実機で問題なし。出たものはここに追記 |
-| 3 | v0.66.0 | **公開の必須物**：`LICENSE`（GPL-3.0-or-later）をリポジトリと ZIP に同梱、Blender Extensions の掲載要件の確認（マニフェストの項目、権限、外部依存なし） | `build_zip.py` の ZIP に LICENSE が入る。要件の確認結果をここに記録 |
-| 4 | v0.66.x | **掲載素材**：スクリーンショット（Loft／Fillet／Zebra／To Mesh など）、サンプル .blend での通し確認 | 掲載ページに必要な画像がそろう |
-| 5 | — | **ROADMAP の整理**：冒頭の「できていること」を現行（v0.64）に更新、末尾の v0.60〜v0.64 の箇条を版順に並べ直す | 公開前に読まれて困らない状態 |
-
-### v0.67.0 Match Edge の追従を切れなくする ← 完了
-- **不具合**：Match Edge の後、相手の面を一定量（両面の大きさの約10%、Gap Tolerance）以上動かすと追従が切れていた。作り直しのたびに「一番近い辺の組」を Gap Tolerance 内で探し直していたため、離れると辺が見つからずエラーで止まっていた
-- **修正**：合わせた辺の組（`edge_t`／`edge_r`／`reversed`）を match に記録。近くにあれば記録どおり、記録が古ければ（分割の後など）探し直し、離れすぎていれば記録どおりに合わせる（`operators.match_pair`）。古いファイルの match は、最初に作り直したときに辺の組を覚える
-- **大きく動かしたときの形**：G1/G2 の接線の長さを、継ぎ目の列を動かす前の形から測るよう修正（動かした後で測っていたので、遠くへ引くと接線が伸びすぎた）。**Spread**（新しい match では既定オン、古い match はオフのまま）で、継ぎ目の動きを反対側の辺へ向けてなだらかに減らしながら面全体に配る（`core.continuity.match_net(spread=)`）
-- **追従の確認・変更・解除**：パネルに追従先の一覧、G0/G1/G2・Spread の切り替え、解除（`spline_surface.match_link_edit`／`match_link_remove`）。その面に追従している面も表示
-- テスト：`test_match_far_and_spread`（core）、`match_links_far_move`（Blender、相手を高さ 2.5 まで動かしても G2）
-- 残り：追従は一方向のみ（相互に Match するとループになり、両方とも作り直されない）。Linked Edit（落ち込みで周りを引きずる）とは別の仕組み
-
-### v0.68.0 追従関係を見えるようにする（Follow Arrows／List Links） ← 完了
-- ビューポートの矢印（`followmap.py`）：Match は継ぎ目の上に山形、作った面は元から弧。状態で色分け（追従中／手で編集＝灰の破線／失敗＝赤／元が消えた＝赤紫）。範囲は選んだ面のグループか全部。変更があったときだけ計算し直す（Seam Colors と同じタイマー方式）
-- 失敗の記録：`live.FAILED`（`rebuild` が失敗の理由を覚え、成功で消す）。これまでは画面下の一行に出るだけだった
-- Group パネルに一覧（List Links）。行のボタンで2つを選んで画面に映す（`follow_jump`）
-- 案として出した「ノードエディタでのグラフ図」は見送り。矢印と一覧で足りなければ検討する
-- 制約：弧の膨らみは視点によらず固定なので、真上に重なる面（Offset など）は見る向きによって短く見える
-
-その他の気づき（必要になったら）：
-- **Live Update 中の作り直し**：制御点の数が変わる作り直し（`replace_net`）は、depsgraph ハンドラの中で編集モードの操作（extrude）を実行し、Curve を作って消す。v0.65.1 で Undo 直後はこれをやめたが、通常の編集中は残っている。Undo の記録を壊す恐れがあるので、タイマーへ逃がすか、操作を使わない作り方に置き換えるのが望ましい
-- 別のシーンにしかない source は v0.64.2 で警告するようになった。シーンの複製（他のアドオンの FULL_COPY を含む）で同名の別物ができた場合の扱いは、実機で起きてから決める
+### 残っている近似（必要になったら）
+- Fillet：切り詰める量は継ぎ目全体で一定（角度が辺に沿って大きく変わる形では近似）
+- Fill Hole の角：端点付近（コーナーのごく近く）だけ、隣の面との法線が 0.6〜1.2° ずれて G0 判定になる（G1 判定のしきい値 0.1°）。角の近くを平均して作る仕組み上の近似で、内側は 0° にそろう。サンプルでも Fender と Fill の継ぎ目4本がこれ
+- Fill Hole：4辺以外の穴は中心点の付近で G2 がわずかに崩れる（最大 1° 程度）
+- 2本だけ丸めた角：端の形は両方の弧のずれを足し合わせた近似。元の面が曲面だと、角の端のごく近くで G2 がわずかに崩れることがある
 
 ## 遠い目標（案）
 
-実現するかは第1〜第4段階の結果を見てから決める。
-
 | 目標 | 内容 | 前提 |
 |---|---|---|
-| 車体1台を通しで作る | 左右対称の車体全体（ボディ、パネル、開口部）をこのアドオンだけで作る。製品として見せられる作例にする | 第1〜第3段階 |
-| 真の NURBS 出力 | メッシュではなく、Blender の Surface オブジェクトや STEP / IGES などに書き出す。CAD や他ツールにつなげる | 内部の NURBS 表現の整理、トリムの扱い |
-| 履歴つきの編集 | 作り方の記録（レシピ）をたどって、上流の境界を動かすと全体が作り直される。いまの Live Update を全体に広げ、手動修正との共存ルールを決める | レシピの網羅、手で直した面の扱い |
+| 車体1台を通しで作る | 左右対称の車体全体（ボディ、パネル、開口部）をこのアドオンだけで作る。製品として見せられる作例にする | 公開後の詰まりの解消 |
+| 真の NURBS 出力 | メッシュではなく、STEP / IGES などに書き出す。CAD や他ツールにつなげる | 内部の NURBS 表現の整理、トリムの扱い |
+| 履歴つきの編集 | レシピをたどって、上流の境界を動かすと全体が作り直される。いまの Live Update を全体に広げ、手動修正との共存ルールを決める | レシピの網羅、手で直した面の扱い |
 | スケッチから面へ | 下絵の上に描いたカーブから、ネットワークと面を自動で提案する | Curve Network の判定の頑健化 |
 | 品質の自動診断 | 継ぎ目の連続性、曲率の跳び、反射線の乱れを自動で見つけて直し方を提案する（Class-A 的な基準） | 解析機能の拡充 |
 | Geometry Nodes 連携 | 面や制御点を Geometry Nodes から読める形で出し、パラメトリックなバリエーションを作れるようにする | 出力形式の整理 |
 
-## 残課題（必要になったら）
-- Fillet：切り詰める量は継ぎ目全体で一定（角度が辺に沿って大きく変わる形では近似）
-- Fill Hole の角：端点付近（コーナーのごく近く）だけ、隣の面との法線が 0.6〜1.2° ずれて G0 判定になる（G1 判定のしきい値 0.1°）。角の近くを平均して作る仕組み上の近似で、内側は 0° に揃う
-- Fill Hole：4辺以外の穴は中心点の付近で G2 がわずかに崩れる（最大 1° 程度）
+## これまでの経過
 
-## v0.48 Zebra の調整
+細かな内容は `docs/CHANGELOG.md` とコミットログ。
 
-反射線は既存の Zebra が担う。縞の明暗の比率（Width）と縁のぼかし（Soft）を追加し、細い縞でもちらつきにくくした。
-
-## v0.49 連続性レポート
-
-Check Continuity を、選択が2枚未満なら表示中の全パッチを調べるようにし、悪い継ぎ目から順に並べた。各行の矢印で該当の2枚へ移動できる。
-
-## v0.50 Live Update の軽量化
-
-依存関係のグラフはレシピが変わるまで作り直さず、再生成が同じ形になった所で後続の更新を止める（変わっていない面は触らない）。パッチ数が多いシーンでの編集中の負荷を減らす。
-
-## v0.51 Loft の間の制御点
-
-Loft に Extra Rows（既定 2）を追加。断面の間に、形を変えずに制御点の行を足す（次数上げ）。レシピに保存され、Regenerate でも保たれる。
-
-## v0.52 Add Row
-
-制御点を1行（列）だけ足す。編集モードでも使える。1区間の方向は次数上げで厳密、複数区間は当て直しで形がわずかに動く（量を表示）。位置の指定はできない（均等ノットの制約）。
-
-## v0.53 Mirror の Scope
-
-Mirror Group に Scope を追加（Group／Selected／Selected + Built From Them）。鏡側の面から作った面が、元の側へ鏡写しで戻って重複する問題を直した（Selected を除く）。
-
-## v0.54 Flange Outside
-
-Flange に Outside を追加。面を切り詰めず、縁の外側に丸みと壁を付け足す。先にフランジで切り詰めた面につながる隣の面に、フランジを続けるときの隙間を解消する。
-
-## v0.55 Copy Bug Report
-
-不具合報告用に、バージョン・設定・選んだ面のレシピと継ぎ目をクリップボードへコピーするボタンを追加。
-
-## v0.56 Mirror の Unlink / Remove
-
-鏡側を元から切り離す Unlink Mirror と、鏡側を消す Remove Mirror を追加。
-
-## v0.57 面の原点
-
-面の作り直し（Live Update・Regenerate など）でオブジェクトの位置・回転・拡大縮小を保つようにし、Origin to Center を追加。Add Patch の面の原点は 3D カーソルに置く。
-
-## v0.58 Sweep
-
-辺の形（断面）を別の辺（レール）に沿って運ぶ Sweep を追加。レールに沿って平行移動するだけなので形は正確で、Live Update で追従する。レールに合わせて断面を回すモードは未実装。
-
-## v0.59 Sweep の Straight
-
-Sweep に、断面のもう一方の端を元の面の外向きにまっすぐ進ませる Straight（S キー、Length）を追加。
-
-## v0.60 面の向き
-
-つながる面どうしの向き（法線）をそろえる Align Normals を追加。Bridge Edges・Corner Fill・Sweep・Flange は作った時点で元の面に向きを合わせ、To Mesh も向きをそろえて面を作る。
-
-## 公開準備の進み具合
-
-- 済：説明書・機能一覧・作業の流れ（6例）・更新履歴・不具合報告の導線（Copy Bug Report、Issue 雛形）・Booth 用の文言と一式の作成スクリプト・サンプル .blend・英語の簡易 README
-- 残：掲載用のスクリーンショット、（ライセンスは GPL-3.0-or-later に確定。LICENSE ファイルの同梱は未）、Blender Extensions 掲載の要件確認、実機での通し確認
-
-- v0.63.1: Sweep の Target(Edge) で、前回の Target が残って3回目のクリックが出ないことがあったのを修正。3回目は、クリックした位置で辺を拾う。
-- v0.64.0: フランジの角度・深さを後から変えられる Edit Flange を追加（Flange の隣の Edit ボタン、または実行後の調整パネル）。丸め(フィレット)と壁は追従する。ギズモは、手編集の判定を描画のたびに見る形にして、条件が一時的に外れたあと選び直すまで出なくなる可能性を除いた。フィレット半径の変更・再生成で、フランジの壁が半径分ずれていた不具合も修正。※ 角度の変更は壁のフィレットが1段のとき。二重にフィレットした壁は Regenerate が必要。
-- v0.64.1: Fillet が途中で失敗すると、Live Update が止まったままになる不具合を修正（v0.62.0 から）。「作業中」の旗が立ったまま戻らず、元の面やカーブを動かしても追従しなくなっていた。Undo／ファイルを開き直したときにも旗を戻すようにした。
-- v0.63.0: To Mesh の Curve Detail。曲がり90°あたりの最低分割数を決め、小さい丸み（フランジ・フィレット）が角ばらないようにする。
-- v0.62.0: Fillet のブリッジとコーナー、Fill Hole、Curve Network の面も、作った時点で隣の面と向きをそろえる。`operators.py` から `bridging.py`（Corner Fill / Bridge Edges / Sweep）と `tomesh.py`（To Mesh）を分離。
-- v0.61.0: Sweep Straight に Target（T キー）。まっすぐ進む端を、選んだ辺・カーブに最も近づく点、または軸に垂直な平面で止める。
-- v0.60.1: Add Patch の上面(+Z)が Blender の表(青側)になるよう向きを反転。To Mesh の面の向きも Blender の表示に合わせ、Flange の既定の折れ方向は裏側のまま維持。
+| 版 | 内容 |
+|---|---|
+| v0.13〜v0.21 | Mirror、Split、5辺以上・カーブ混在の穴埋め、Seam Colors と Offset、Curve Network、Fill Hole の Radial、Linked Edit / Edge Chain / Merge |
+| v0.24〜v0.27 | 面の内側の編集：ロック領域（G0/G1/G2 で 1〜3 列を固定）、Soft Pull、Control Mesh、Fair と Refine |
+| v0.28〜v0.35 | Fillet（1クリックで選び、半径分トリムして G1/G2 でつなぐ。複数の継ぎ目、コーナーパッチ）、Curvature Comb / Map、Soft Pull の拡張、ギズモ、To Mesh の T 字頂点の接続 |
+| v0.36〜v0.40 | 整理（Fillet を `filleting.py` へ、`tools/build_zip.py`）、Network Check、Fillet のやり直しと半径ギズモ、Move Crossing・Fair Curves、Add Boundary Curve（Line / Arc） |
+| v0.40.3〜v0.40.5 | Fill Hole の自由カーブの端の向き（59° → 0°）、曲率表示の差分更新（面40枚で 0.62 秒 → 0.03 秒）、2本だけ丸めた角のマイター |
+| v0.41 | Flange（辺から壁を立ち上げ、折れ目を Fillet で丸める） |
+| v0.42〜v0.45 | Panel Gap（測定と表示）、Presets、Blueprints、Project Curve |
+| v0.46 | Trim の試作。パッチにトリムを持たせるのは To Mesh の再設計に近く見送り。窓・ライトは別パッチで囲む組み方（マニュアルの作例 C） |
+| v0.47 | To Mesh の四角形化 |
+| v0.48〜v0.50 | Zebra の Width／Soft、連続性レポート（悪い順、ジャンプ）、Live Update の軽量化（グラフのキャッシュ、同じ形で止める） |
+| v0.51〜v0.57 | Loft の Extra Rows、Add Row、Mirror の Scope、Flange Outside、Copy Bug Report、Mirror の Unlink / Remove、面の原点を保つ・Origin to Center |
+| v0.58〜v0.61 | Sweep（Straight、Target） |
+| v0.60〜v0.62 | 面の向き（Align Normals、作った面と To Mesh の向きをそろえる）、`bridging.py`・`tomesh.py` の分離 |
+| v0.63〜v0.64 | To Mesh の Curve Detail、Edit Flange、Fillet の途中失敗で Live Update が止まる不具合の修正、Undo／Redo で作り直しが一歩遅れる問題の修正 |
+| v0.65 | 名前を変えた source に追従する。消えた source を知らせる。Undo 後の作り直しで落ちる不具合の修正 |
+| v0.66 | Extend・Bridge・Corner Fill の連続性を後から変える |
+| v0.67 | Match Edge の追従を切れなくする（合わせた辺の組を記録。それまでは相手が大きさの約10%以上動くと切れていた）。Spread。追従の一覧・変更・解除 |
+| v0.68 | Follow Arrows／List Links（追従関係を矢印と一覧で表示。状態の色分け） |
+| v0.69 | LICENSE の同梱、マニフェストの権限。Live Update のデータの作り替えをハンドラの外へ移し、Undo すると依存する面が空になって落ちる不具合を修正（v0.68 以前からあった）。`tests/test_gui.py`。ギズモの起動時のエラーの修正 |
+| v0.70 | 公開候補。Follow Arrows の Selected 範囲（既定）、サンプルの作り直し、掲載用スクリーンショット、ROADMAP の整理 |
