@@ -10,6 +10,7 @@ from .bridge.write_surface import build_surface_data
 from .core.continuity import find_shared_edge
 from .core.nurbs import eval_points
 from .core.split import iso_line, split_net
+from .projecting import make_bezier_curve
 from .recipe import META_KEY, _make_active, raw_meta, replace_net, store_meta, world_net
 
 # Which edges of the original end up on which piece, per cut direction.
@@ -266,4 +267,190 @@ class SS_OT_split_patch(pick.ModalPicker, bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (SS_OT_split_patch,)
+class SS_OT_duplicate_edge_curve(pick.ModalPicker, bpy.types.Operator):
+    bl_idname = "spline_surface.duplicate_edge_curve"
+    bl_label = "Duplicate Edge as Curve"
+    bl_description = ("Copy an iso-line of a patch out as its own curve, usable like any boundary "
+                      "curve (Coons, Network, Fill Hole, Project Curve). Click on the patch where "
+                      "to cut; Shift+click to pick several edges (across any visible patches) "
+                      "before finishing with Enter. The patch itself is left untouched")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    source: bpy.props.StringProperty(name="Patch")
+    direction: bpy.props.EnumProperty(
+        name="Cut", default='U',
+        items=[('U', "Across U", "Duplicate the iso-line u = t"),
+               ('V', "Across V", "Duplicate the iso-line v = t")])
+    t: bpy.props.FloatProperty(name="Position", default=0.5, min=0.0, max=1.0, subtype='FACTOR')
+    snap: bpy.props.BoolProperty(
+        name="Snap to Spans", default=True,
+        description="On multi-span patches snap to span boundaries (exact at the control net); "
+                    "off: anywhere on the patch")
+    samples: bpy.props.IntProperty(name="Points", default=32, min=3, max=200,
+                                   description="How many points of the new curve are sampled")
+    edges: bpy.props.StringProperty(
+        name="Edges", default="",
+        description="JSON [[patch, direction, t], ...]; non-empty overrides source/direction/t "
+                    "(used for Shift-click multi-pick, and to repeat the operator from the redo panel)")
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and any(
+            o.type == 'SURFACE' for o in context.visible_objects)
+
+    # -------------------------------------------------------------- modal
+    def invoke(self, context, event):
+        if context.area is None or context.area.type != 'VIEW_3D':
+            return self.execute(context)
+        self._patches = {}
+        for ob in context.visible_objects:
+            if ob.type == 'SURFACE':
+                try:
+                    self._patches[ob.name] = world_net(ob)
+                except ValueError:
+                    pass
+        if not self._patches:
+            self.report({'ERROR'}, "No patches to duplicate an edge from")
+            return {'CANCELLED'}
+        g = np.linspace(0.0, 1.0, 33)
+        self._U, self._V = (a.ravel() for a in np.meshgrid(g, g, indexing="ij"))
+        self._grid = {n: eval_points(net, o, self._U, self._V)
+                      for n, (net, o) in self._patches.items()}
+        self._hover = None
+        self._line = None
+        self._picked = []  # [(name, direction, t, line)], accumulated by Shift-click
+        self._picker = pick.Overlay(context, self._draw_lines, self._label)
+        context.window_manager.modal_handler_add(self)
+        self._header(context)
+        return {'RUNNING_MODAL'}
+
+    def _header(self, context):
+        context.area.header_text_set(
+            "Duplicate Edge as Curve: click to copy (and finish)   Shift+click: add and keep "
+            "picking (%d so far)   Enter: finish the picked edges   D: direction (%s)   "
+            "S: snap to spans (%s)   Esc/RMB: cancel"
+            % (len(self._picked), self.direction, "on" if self.snap else "off"))
+
+    def _label(self):
+        if self._line is None:
+            return None
+        name, u, v = self._hover
+        return ("%s  at %.3f" % (name, self._edge_t(name, u, v)), self._line[len(self._line) // 2])
+
+    def _draw_lines(self):
+        lines = [(line, pick.COLOR_SELECTED, 3.0) for _, _, _, line in self._picked]
+        if self._line is not None:
+            lines.append((self._line, pick.COLOR_HOVER, 3.0))
+        return lines
+
+    def _edge_t(self, name, u, v):
+        net, orders = self._patches[name]
+        t = u if self.direction == 'U' else v
+        axis = 0 if self.direction == 'U' else 1
+        spans = net.shape[axis] - orders[axis] + 1
+        if self.snap and spans > 1:
+            t = round(t * spans) / spans
+        return t
+
+    def _update(self, context, mouse):
+        region, rv3d = context.region, context.region_data
+        best, best_d = None, pick.PICK_RADIUS
+        for name, pts in self._grid.items():
+            for i, q in enumerate(pts):
+                p = location_3d_to_region_2d(region, rv3d, q)
+                if p is not None:
+                    d = (p[0] - mouse[0]) ** 2 + (p[1] - mouse[1]) ** 2
+                    if d < best_d ** 2:
+                        best, best_d = (name, self._U[i], self._V[i]), d ** 0.5
+        self._hover = best
+        self._line = None
+        if best is not None:
+            name, u, v = best
+            t = self._edge_t(name, u, v)
+            net, orders = self._patches[name]
+            self._line = iso_line(net, orders, self.direction, t)
+        context.area.tag_redraw()
+
+    def modal(self, context, event):
+        mouse = (event.mouse_region_x, event.mouse_region_y)
+        if event.type == 'MOUSEMOVE':
+            self._update(context, mouse)
+        elif event.type == 'D' and event.value == 'PRESS':
+            self.direction = 'V' if self.direction == 'U' else 'U'
+            self._header(context)
+            self._update(context, mouse)
+        elif event.type == 'S' and event.value == 'PRESS':
+            self.snap = not self.snap
+            self._header(context)
+            self._update(context, mouse)
+        elif event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            if self._line is None:
+                return {'RUNNING_MODAL'}
+            name, u, v = self._hover
+            t = self._edge_t(name, u, v)
+            if event.shift:
+                if not any(n == name and d == self.direction and abs(tt - t) < 1e-9
+                           for n, d, tt, _ in self._picked):
+                    self._picked.append((name, self.direction, t, self._line))
+                self._header(context)
+                return {'RUNNING_MODAL'}
+            self.edges = json.dumps([[n, d, tt] for n, d, tt, _ in self._picked]
+                                    + [[name, self.direction, t]])
+            self._finish(context)
+            return self.execute(context)
+        elif event.type in {'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS':
+            if not self._picked:
+                return {'RUNNING_MODAL'}
+            self.edges = json.dumps([[n, d, tt] for n, d, tt, _ in self._picked])
+            self._finish(context)
+            return self.execute(context)
+        elif self._common_modal(context, event):
+            return self._common_result
+        return {'RUNNING_MODAL'}
+
+    # -------------------------------------------------------------- execute
+    def _duplicate(self, context, source_name, direction, t):
+        source = bpy.data.objects.get(source_name)
+        if source is None or source.type != 'SURFACE':
+            return None
+        try:
+            net, orders = world_net(source)
+        except ValueError:
+            return None
+        axis = 0 if direction == 'U' else 1
+        spans = net.shape[axis] - orders[axis] + 1
+        if self.snap and spans > 1:
+            t = round(t * spans) / spans
+        line = iso_line(net, orders, direction, t, samples=self.samples)
+        ob = make_bezier_curve(source.name + "_edge", line, context.collection)
+        return ob, source.name, direction, t
+
+    def execute(self, context):
+        picks = json.loads(self.edges) if self.edges else None
+        if not picks:
+            source = bpy.data.objects.get(self.source) if self.source else context.active_object
+            if source is None or source.type != 'SURFACE':
+                self.report({'ERROR'}, "Pick a patch to duplicate an edge from")
+                return {'CANCELLED'}
+            picks = [[source.name, self.direction, self.t]]
+        created = []
+        for name, direction, t in picks:
+            result = self._duplicate(context, name, direction, t)
+            if result is not None:
+                created.append(result)
+        if not created:
+            self.report({'ERROR'}, "No valid patch to duplicate an edge from")
+            return {'CANCELLED'}
+        _make_active(context, created[-1][0])
+        for ob, *_ in created:
+            ob.select_set(True)
+        if len(created) == 1:
+            ob, name, direction, t = created[0]
+            self.report({'INFO'}, "Duplicated %s's %s = %.3f edge as %s"
+                        % (name, direction.lower(), t, ob.name))
+        else:
+            self.report({'INFO'}, "Duplicated %d edges as curves" % len(created))
+        return {'FINISHED'}
+
+
+classes = (SS_OT_split_patch, SS_OT_duplicate_edge_curve)

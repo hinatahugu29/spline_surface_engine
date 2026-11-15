@@ -213,6 +213,7 @@ class SS_PT_grow(_SubPanel, bpy.types.Panel):
         row.operator("spline_surface.flange", icon='MOD_SKIN')
         row.operator("spline_surface.flange_edit", text="Edit", icon='GREASEPENCIL')
         col.operator("spline_surface.split_patch", icon='MOD_EDGESPLIT')
+        col.operator("spline_surface.duplicate_edge_curve", icon='CURVE_DATA')
         layout.operator("spline_surface.offset_surface", icon='MOD_OFFSET')
         from .live import continuity_recipe
         meta = continuity_recipe(context.active_object)
