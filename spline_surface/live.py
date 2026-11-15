@@ -11,6 +11,7 @@ import traceback
 import bpy
 import numpy as np
 
+from .bridge.write_surface import NeedsOperators
 from .operators import compute_from_meta
 from .recipe import (ADDON_WRITES, META_KEY, ROUND_DECIMALS, hand_edited, raw_meta,
                      replace_net, store_meta, world_net)
@@ -144,11 +145,14 @@ def _write_in_place(ob, net, orders):
     return True
 
 
-def rebuild(ob, context, force=False, in_place_only=False):
-    """Regenerate one patch. Returns (status, message); status in ok/skipped/error.
+def rebuild(ob, context, force=False, in_place_only=False, allow_ops=True):
+    """Regenerate one patch. Returns (status, message); status in
+    ok/skipped/error/deferred.
 
-    `in_place_only`: never rebuild the datablock (which runs edit-mode operators
-    and adds/removes a Curve); a patch whose point count changed is skipped."""
+    `in_place_only`: never rebuild the datablock (which adds/removes a Curve);
+    a patch whose point count changed is skipped. Without `allow_ops` a new
+    datablock may only be copied from a same-size surface: a grid size new to
+    the file needs edit-mode operators, and the patch is "deferred"."""
     meta = _meta(ob)
     if meta is None:
         return "skipped", "no recipe"
@@ -159,7 +163,9 @@ def rebuild(ob, context, force=False, in_place_only=False):
         if not _write_in_place(ob, net, orders):
             if in_place_only:
                 return "skipped", "point count changed"
-            replace_net(ob, net, context.scene.spline_surface, orders)
+            replace_net(ob, net, context.scene.spline_surface, orders, allow_ops)
+    except NeedsOperators:
+        return "deferred", "needs a new grid size"
     except ValueError as e:
         FAILED[ob.name] = str(e)
         return "error", str(e)
@@ -168,14 +174,18 @@ def rebuild(ob, context, force=False, in_place_only=False):
     return "ok", msg
 
 
-def update_chain(names, context, in_place_only=False):
+def update_chain(names, context, in_place_only=False, allow_ops=True):
     """Rebuild everything downstream of `names`. Returns {status: [object names]}.
 
     A patch whose rebuild came out identical stops the chain there: what only
-    reads it is listed under "unchanged" and left alone.
+    reads it is listed under "unchanged" and left alone. Without `allow_ops`,
+    patches that need edit-mode operators are listed under "deferred" (what
+    reads them waits too, under "waiting") for run_deferred() to finish.
     """
-    result = {"ok": [], "skipped": [], "error": [], "unchanged": []}
+    result = {"ok": [], "skipped": [], "error": [], "unchanged": [], "deferred": [],
+              "waiting": []}
     blocked = set()
+    waiting = set()
     changed = set(names)
     order, looped = downstream_order(names, dependency_graph())
     result["error"] += looped
@@ -186,6 +196,10 @@ def update_chain(names, context, in_place_only=False):
         if ob is None:
             continue
         meta = _meta(ob) or {}
+        if waiting & set(_inputs(meta)):
+            waiting.add(name)
+            result["waiting"].append(name)
+            continue
         if blocked & set(_inputs(meta)):
             blocked.add(name)
             result["skipped"].append(name)
@@ -195,9 +209,11 @@ def update_chain(names, context, in_place_only=False):
             result["unchanged"].append(name)
             continue
         before = _signature(ob)
-        status, _ = rebuild(ob, context, in_place_only=in_place_only)
+        status, _ = rebuild(ob, context, in_place_only=in_place_only, allow_ops=allow_ops)
         result[status].append(name)
-        if status != "ok":
+        if status == "deferred":
+            waiting.add(name)
+        elif status != "ok":
             blocked.add(name)
         elif _signature(ob) != before:
             changed.add(name)
@@ -377,7 +393,11 @@ def _on_depsgraph(scene, depsgraph):
         return
     _state["busy"] = True
     try:
-        result = update_chain(changed, ctx)
+        # Inside a depsgraph handler: no mode switches or extrusions. A patch
+        # that needs a grid size new to the file is finished from a timer.
+        result = update_chain(changed, ctx, allow_ops=False)
+        if result["deferred"]:
+            _defer(result["deferred"])
         for name in result["ok"]:
             ob = bpy.data.objects.get(name)
             if ob is not None:
@@ -398,6 +418,72 @@ def _on_depsgraph(scene, depsgraph):
         settings.live_note = "live update failed (see console)"
     finally:
         _state["busy"] = False
+
+
+_deferred = set()   # patches whose rebuild needs edit-mode operators, run from a timer
+
+
+def _defer(names):
+    _deferred.update(names)
+    if not bpy.app.timers.is_registered(_deferred_timer):
+        bpy.app.timers.register(_deferred_timer, first_interval=0.05)
+
+
+def _busy_elsewhere(context):
+    """True while it is unsafe to run operators: a modal tool (a transform
+    drag, a picker) is running or the file is in some edit mode."""
+    if context.mode != 'OBJECT':
+        return True
+    wm = getattr(context, "window_manager", None)
+    for win in getattr(wm, "windows", ()):
+        if len(getattr(win, "modal_operators", ())):
+            return True
+    return False
+
+
+def run_deferred(context):
+    """Rebuild the deferred patches (operators allowed) and what reads them.
+    Returns the update_chain-style result, or None if nothing was waiting."""
+    names = sorted(n for n in _deferred if n in bpy.data.objects)
+    _deferred.clear()
+    if not names:
+        return None
+    result = {"ok": [], "skipped": [], "error": [], "unchanged": [], "deferred": [],
+              "waiting": []}
+    _state["busy"] = True
+    try:
+        done = []
+        for name in names:
+            status, _ = rebuild(bpy.data.objects[name], context)
+            result[status].append(name)
+            if status == "ok":
+                done.append(name)
+        if done:
+            down = update_chain(done, context)
+            for key, vals in down.items():
+                result[key] += vals
+        for name in result["ok"]:
+            ob = bpy.data.objects.get(name)
+            if ob is not None:
+                _state["fps"][name] = _signature(ob)
+                ob.data.update_tag()
+    finally:
+        _state["busy"] = False
+    return result
+
+
+def _deferred_timer():
+    ctx = bpy.context
+    if not _deferred:
+        return None
+    try:
+        if _busy_elsewhere(ctx):
+            return 0.2                     # wait for the drag or edit to end
+        run_deferred(ctx)
+    except Exception:
+        traceback.print_exc()
+        _deferred.clear()
+    return None
 
 
 def _reset(*_):
@@ -439,6 +525,7 @@ def _on_load(*_):
     _uids.clear()
     _missing.clear()
     FAILED.clear()
+    _deferred.clear()
 
 
 def _deferred_resync():
@@ -451,6 +538,7 @@ def _deferred_resync():
 
 def _on_undo(*_):
     _reset()
+    _deferred.clear()   # the undone state is resynced in place; never extrude right after undo
     # leave the undo system alone while it is still restoring; fix up right after
     if not bpy.app.timers.is_registered(_deferred_resync):
         bpy.app.timers.register(_deferred_resync, first_interval=0.0)

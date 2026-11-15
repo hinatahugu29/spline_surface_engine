@@ -85,14 +85,17 @@ def raw_meta(net, orders, **extra):
            "orders": list(orders), **extra}
 
 
-def replace_net(ob, net, settings, orders=None):
-    """Swap the object's surface for one built from a world-space net."""
+def replace_net(ob, net, settings, orders=None, allow_ops=True):
+    """Swap the object's surface for one built from a world-space net.
+
+    Without `allow_ops` it raises write_surface.NeedsOperators (and changes
+    nothing) when the grid size is new to the file."""
     # the object keeps its transform (and so its origin); the net is written in its local space
     M = np.array(ob.matrix_world)
     if not np.allclose(M, np.eye(4)):
         Mi = np.linalg.inv(M)
         net = np.asarray(net) @ Mi[:3, :3].T + Mi[:3, 3]
-    cu = build_surface_data(ob.data.name, net, settings.resolution, orders)
+    cu = build_surface_data(ob.data.name, net, settings.resolution, orders, allow_ops)
     old = ob.data
     for mat in old.materials:
         cu.materials.append(mat)

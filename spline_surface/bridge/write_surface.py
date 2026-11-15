@@ -1,22 +1,73 @@
 """Write a Bezier control net into a Blender NURBS surface.
 
-The Python API cannot set a surface spline's V point count directly, so a
-single U row is created and extruded in edit mode until the grid has the
-right size; then every point is overwritten.
+The Python API cannot set a surface spline's V point count directly. When
+some surface in the file already has a grid of the right size, its data is
+copied (no operators involved); otherwise a single U row is created and
+extruded in edit mode until the grid has the right size. Either way every
+point is then overwritten.
 """
 import bpy
 
 
-def build_surface_data(name, net, resolution=12, orders=None):
+class NeedsOperators(Exception):
+    """No surface of that grid size to copy, and edit-mode operators were not allowed."""
+
+
+def _template(name, nu, nv):
+    """A copy of some plain surface datablock with an nu x nv grid, or None."""
+    for t in bpy.data.curves:
+        if (t.users == 0 or not isinstance(t, bpy.types.SurfaceCurve) or len(t.splines) != 1
+                or t.shape_keys is not None or t.animation_data is not None or t.is_editmode):
+            continue
+        sp = t.splines[0]
+        if (sp.point_count_u, sp.point_count_v) != (nu, nv):
+            continue
+        cu = t.copy()
+        cu.name = name
+        cu.materials.clear()
+        return cu
+    return None
+
+
+def build_surface_data(name, net, resolution=12, orders=None, allow_ops=True):
     """Create SURFACE curve data from a control net of shape (nu, nv, 3).
 
     `orders` = (order_u, order_v); None means a single-span Bezier patch
-    (order = point count). Endpoint is always on.
+    (order = point count). Endpoint is always on. Without `allow_ops`, raises
+    NeedsOperators when no existing surface of that size can be copied
+    (callers inside a depsgraph handler must not switch modes or extrude).
     """
     nu, nv = net.shape[0], net.shape[1]
     ku, kv = orders or (nu, nv)
     if max(ku, kv) > 6:
         raise ValueError("Blender NURBS order is limited to 6 (degree 5)")
+    cu = _template(name, nu, nv)
+    if cu is None:
+        if not allow_ops:
+            raise NeedsOperators("no %dx%d surface to copy" % (nu, nv))
+        cu = _extruded(name, nu, nv)
+    sp = cu.splines[0]
+    assert (sp.point_count_u, sp.point_count_v) == (nu, nv)
+    co = [0.0] * (4 * nu * nv)
+    for j in range(nv):
+        for i in range(nu):
+            x, y, z = net[i, j]
+            k = 4 * (j * nu + i)
+            co[k:k + 4] = (x, y, z, 1.0)
+    sp.points.foreach_set("co", co)
+    sp.points.foreach_set("hide", [False] * (nu * nv))
+    sp.use_cyclic_u = sp.use_cyclic_v = False
+    sp.use_bezier_u = sp.use_bezier_v = False
+    sp.order_u, sp.order_v = ku, kv
+    sp.use_endpoint_u = sp.use_endpoint_v = True
+    sp.resolution_u = sp.resolution_v = resolution
+    sp.use_smooth = True
+    sp.material_index = 0
+    return cu
+
+
+def _extruded(name, nu, nv):
+    """New surface data with an nu x nv grid, grown by extruding in edit mode."""
     cu = bpy.data.curves.new(name, 'SURFACE')
     sp = cu.splines.new('NURBS')
     sp.points.add(nu - 1)
@@ -45,17 +96,6 @@ def build_surface_data(name, net, resolution=12, orders=None):
                 o.select_set(True)
         if prev_active and prev_active.name in view_layer.objects:
             view_layer.objects.active = prev_active
-
-    sp = cu.splines[0]
-    assert (sp.point_count_u, sp.point_count_v) == (nu, nv)
-    for j in range(nv):
-        for i in range(nu):
-            x, y, z = net[i, j]
-            sp.points[j * nu + i].co = (x, y, z, 1.0)
-    sp.order_u, sp.order_v = ku, kv
-    sp.use_endpoint_u = sp.use_endpoint_v = True
-    sp.resolution_u = sp.resolution_v = resolution
-    sp.use_smooth = True
     return cu
 
 

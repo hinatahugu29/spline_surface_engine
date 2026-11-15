@@ -194,6 +194,69 @@ def match_links_far_move():
     assert np.allclose(world_net(fol)[0], shape)
 
 
+def deferred_rebuilds():
+    """Live Update never extrudes inside the depsgraph handler: a new grid size
+    is copied from a same-size surface, or finished later by run_deferred()."""
+    from spline_surface import live as live_mod
+    from spline_surface.bridge.write_surface import NeedsOperators, build_surface_data
+    from spline_surface.recipe import META_KEY, raw_meta, replace_net, store_meta
+    ctx = bpy.context
+    settings = ctx.scene.spline_surface
+    xs, ys = np.meshgrid(np.linspace(0, 2, 4), np.linspace(400, 402, 4), indexing="ij")
+    A = np.stack([xs, ys, 0.2 * np.sin(xs)], -1)
+    # A size some surface already has: copied, no operators needed.
+    cu = build_surface_data("Tpl", A, 12, None, allow_ops=False)
+    assert (cu.splines[0].point_count_u, cu.splines[0].point_count_v) == (4, 4)
+    assert np.allclose(read_surface_net(cu), A)
+    bpy.data.curves.remove(cu)
+    sizes = {(c.splines[0].point_count_u, c.splines[0].point_count_v)
+             for c in bpy.data.curves if isinstance(c, bpy.types.SurfaceCurve) and c.splines}
+    n_odd = next(n for n in range(5, 60) if (n, 2) not in sizes)
+    odd = np.zeros((n_odd, 2, 3))
+    odd[..., 0] = np.linspace(0, 1, n_odd)[:, None]
+    odd[..., 1] = np.array([0.0, 1.0])[None, :]
+    try:
+        build_surface_data("Odd", odd, 12, (4, 2), allow_ops=False)
+        raise AssertionError("no %dx2 grid exists: expected NeedsOperators" % n_odd)
+    except NeedsOperators:
+        pass
+    # A source whose dependent changes size: deferred, then finished by the timer's work.
+    src = bpy.data.objects.new("DefSrc", build_surface_data("DefSrc", A, 12))
+    ctx.collection.objects.link(src)
+    store_meta(src, raw_meta(A, world_net(src)[1]))
+    dep = bpy.data.objects.new("DefDep", build_surface_data("DefDep", A, 12))
+    ctx.collection.objects.link(dep)
+    meta = {"method": "offset", "sources": [src.name], "distance": 0.1, "refine": 2}
+    store_meta(dep, meta)
+    status, _ = live_mod.rebuild(dep, ctx)
+    assert status == "ok"
+    from spline_surface.core.offset import offset_net
+
+    def grid(n):
+        g = np.stack(np.meshgrid(np.linspace(0, 2, n), np.linspace(400, 402, 3),
+                                 indexing="ij"), -1)
+        return np.concatenate([g, 0.1 * np.sin(g[..., :1])], -1)
+    # The offset of the new source has a grid size no surface has yet.
+    n_big = next(n for n in range(5, 40)
+                 if offset_net(grid(n), (4, 3), 0.1, 2)[0].shape[:2] not in sizes | {(n, 3)})
+    big = grid(n_big)
+    want = offset_net(big, (4, 3), 0.1, 2)[0].shape[:2]
+    replace_net(src, big, settings, (4, 3))         # outside a handler: operators allowed
+    store_meta(src, raw_meta(big, (4, 3)))
+    before = (dep.data.splines[0].point_count_u, dep.data.splines[0].point_count_v)
+    res = live_mod.update_chain([src.name], ctx, allow_ops=False)
+    assert res["deferred"] == [dep.name], res
+    assert (dep.data.splines[0].point_count_u,
+            dep.data.splines[0].point_count_v) == before   # untouched until the timer runs
+    live_mod._defer(res["deferred"])
+    res = live_mod.run_deferred(ctx)
+    assert dep.name in res["ok"], res
+    sp = dep.data.splines[0]
+    assert (sp.point_count_u, sp.point_count_v) == want
+    assert live_mod.run_deferred(ctx) is None              # queue drained
+    print("deferred rebuild OK")
+
+
 def run():
     spline_surface.register()
     for o in list(bpy.data.objects):
@@ -2024,6 +2087,7 @@ def run():
     zs = [p.normal.z for p in me_f.polygons]
     assert all(z > 0 for z in zs) or all(z < 0 for z in zs), "mixed winding"
     match_links_far_move()
+    deferred_rebuilds()
     spline_surface.unregister()
     print("ALL OK")
 
