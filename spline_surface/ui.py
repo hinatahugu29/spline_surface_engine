@@ -281,6 +281,14 @@ class SS_PT_group(_SubPanel, bpy.types.Panel):
         row = layout.row(align=True)
         row.operator("spline_surface.select_group", icon='RESTRICT_SELECT_OFF', text="Select")
         row.operator("spline_surface.regenerate_all", icon='FILE_REFRESH', text="Regenerate")
+        from .live import scene_copy_relinks
+        relinks = scene_copy_relinks(context.scene)
+        if relinks:
+            box = layout.box()
+            col = box.column(align=True)
+            col.alert = True
+            col.label(text="%d patch(es) follow another scene" % len(relinks), icon='ERROR')
+            box.operator("spline_surface.relink_scene_copies", icon='LINKED')
         from . import followmap
         followmap.draw_list(layout.box(), context)
         layout.operator("spline_surface.mirror_group", icon='MOD_MIRROR')

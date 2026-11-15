@@ -6,3 +6,4 @@ __pycache__/
 dist/
 blender.crash.txt
 tests/gui_check.log
+tests/gui_modal.log

@@ -2,7 +2,8 @@
   Superhive product page body for Spline Surface (fragment, no <html>/<body>).
   Styling is inline only (no <style>, scripts or external files) so it survives editors that strip them.
   If the editor removes inline styles, the markup still reads fine as plain headings, paragraphs and lists.
-  Replace every [[...]] before publishing (the dashed boxes are image slots).
+  Images: upload docs/images/hero_zebra.jpg, seam_colors.jpg and follow_arrows.jpg to the
+  product page and point the three <img src> below at the uploaded copies.
 -->
 
 <div style="font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;line-height:1.65;color:#222;max-width:860px;margin:0 auto;">
@@ -14,8 +15,8 @@
   <p style="margin:0;font-size:18px;color:#d9deea;">Smooth, car-body-style surfaces, built from curves. No NURBS knowledge required.</p>
 </div>
 
-<div style="border:2px dashed #b9c0cc;border-radius:12px;padding:46px 20px;text-align:center;color:#6b7280;background:#fafbfc;margin:0 0 28px;">
-  [[IMAGE: hero render or viewport shot of the hood + fender sample with Zebra stripes]]
+<div style="margin:0 0 28px;">
+  <img src="hero_zebra.jpg" alt="The bundled hood and fender sample under zebra stripes" style="width:100%;height:auto;border-radius:12px;display:block;">
 </div>
 
 <p style="font-size:17px;margin:0 0 28px;">Draw curves, turn them into surfaces, join the surfaces smoothly, check how smooth the seams really are, and export one welded mesh. Every surface remembers how it was made, so you can change a value later instead of rebuilding.</p>
@@ -72,7 +73,8 @@
   <div style="flex:1 1 380px;background:#f4f6f9;border-radius:12px;padding:18px 20px;color:#222;">
     <h3 style="margin:0 0 8px;font-size:18px;color:#1f2430;">3. Change things afterwards</h3>
     <ul style="margin:0;padding-left:20px;">
-      <li><strong>Live Update</strong>: move a source and everything built from it follows</li>
+      <li><strong>Live Update</strong>: move a source and everything built from it follows (undo and redo included)</li>
+      <li><strong>Match Edge</strong> links a patch to its neighbour: it keeps following, however far the neighbour moves. <strong>Follow Arrows</strong> shows who follows whom</li>
       <li>Drag a viewport arrow to change an Extend length, an Offset distance or a Fillet radius</li>
       <li><strong>Mirror Group</strong>, <strong>Cage</strong> (lattice-style bulk deformation) and <strong>Linked Edit</strong></li>
       <li><strong>Soft Pull</strong>: drag a point, line or control point on a surface; seam-locked points stay put</li>
@@ -92,8 +94,8 @@
 </div>
 
 <div style="display:flex;flex-wrap:wrap;gap:16px;margin:18px 0 0;">
-  <div style="flex:1 1 380px;border:2px dashed #b9c0cc;border-radius:12px;padding:40px 16px;text-align:center;color:#6b7280;background:#fafbfc;">[[IMAGE: Seam Colors / Check Continuity screenshot]]</div>
-  <div style="flex:1 1 380px;border:2px dashed #b9c0cc;border-radius:12px;padding:40px 16px;text-align:center;color:#6b7280;background:#fafbfc;">[[IMAGE: Fillet or Flange example with the viewport arrow]]</div>
+  <div style="flex:1 1 380px;"><img src="seam_colors.jpg" alt="Seam Colors: G2 green, G1 yellow, G0 red" style="width:100%;height:auto;border-radius:12px;display:block;"><div style="font-size:13px;color:#6b7280;margin-top:6px;">Seam Colors: every seam in its continuity grade</div></div>
+  <div style="flex:1 1 380px;"><img src="follow_arrows.jpg" alt="Follow Arrows: what the selected patch was built from" style="width:100%;height:auto;border-radius:12px;display:block;"><div style="font-size:13px;color:#6b7280;margin-top:6px;">Follow Arrows: what a patch follows, and what follows it</div></div>
 </div>
 
 <!-- ============ output ============ -->
@@ -132,7 +134,7 @@
 
 <ul style="padding-left:22px;">
   <li>The add-on (Preferences &gt; Add-ons &gt; Install from Disk)</li>
-  <li>Manual, feature list and six step-by-step workflows [[currently Japanese; note it here or add English]]</li>
+  <li>Manual, feature list and six step-by-step workflows (in Japanese; button and panel names are in English, and an English summary is included)</li>
   <li>Sample .blend: hood and fender</li>
   <li>Changelog</li>
 </ul>
@@ -142,6 +144,6 @@
 
 <p>Spline Surface is released under the <strong>GNU General Public License v3.0 or later</strong>, like Blender itself. You may use it for personal and commercial work. What you make with it is yours.</p>
 
-<p>Support and bug reports: [[support contact / link]]</p>
+<p>Support and bug reports: <a href="https://github.com/hinatahugu29/spline_surface_engine/issues">GitHub Issues</a>. The <strong>Copy Bug Report</strong> button (Help panel) copies everything a report needs.</p>
 
 </div>

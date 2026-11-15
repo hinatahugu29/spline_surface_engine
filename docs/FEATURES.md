@@ -5,7 +5,7 @@
 機能を目的別に並べた一覧です。使い方の詳細は [説明書](MANUAL.md)、手順は [作業の流れ](WORKFLOWS.md) を見てください。
 
 **検証の列の読み方**
-- **自動**：Blender をヘッドレスで動かすテスト（`tests/test_blender.py`）と、計算部分の単体テスト（`tests/test_core.py`）で、結果の数値まで確かめています。Live Update と Undo／Redo の組み合わせは、Blender の画面を開いて動かすテスト（`tests/test_gui.py`）でも確かめています
+- **自動**：Blender をヘッドレスで動かすテスト（`tests/test_blender.py`）と、計算部分の単体テスト（`tests/test_core.py`）で、結果の数値まで確かめています。Live Update と Undo／Redo の組み合わせ、クリックで選ぶツール（Fillet・Flange・Fill Hole）の操作は、Blender の画面を開いて動かすテスト（`tests/test_gui.py`、`tests/test_gui_modal.py`）でも確かめています
 - **要実機**：自動テストでは操作の中身（計算・作られる面）までは確かめていますが、3D ビューでのクリック、ホイール、描画の見え方は、実際の画面で触って確かめる必要があります
 
 ---
@@ -51,6 +51,7 @@
 | 機能 | 何ができるか | 検証 |
 |---|---|---|
 | Live Update | 元の面・カーブを動かすと、依存する面が自動で作り直される | 自動（Undo／Redo を含む） |
+| Use This Scene's Copies | シーンを複製したとき、複製した面をそのシーンの複製に付け直す | 自動 |
 | Follow Arrows／List Links | どの面がどれに追従しているかを矢印と一覧で表示（追従中・手で編集・失敗・元が消えた、を色分け） | 自動（描画の見え方は要実機） |
 | Linked Edit（Falloff） | 面を編集したとき、周りの面も付いてくる | 自動 |
 | Edge Chain | つながった開いた辺を1本のカーブにまとめる | 自動／要実機 |

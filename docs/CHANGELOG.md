@@ -4,6 +4,7 @@
 
 | バージョン | 日付 | 内容 |
 |---|---|---|
+| 0.70.1 | 2026-11-16 | Use This Scene's Copies: after Scene > Full Copy (or a shot manager), copied patches still read the original scene's curves; the Group panel offers to point them at this scene's copies. New tests: click tools driven by simulated events (tests/test_gui_modal.py), the sample end to end with a To Mesh check (tests/test_sample.py). Listing texts and images updated |
 | 0.70.0 | 2026-11-16 | Release candidate. Follow Arrows gets a Selected scope (the default): only what the selected patches follow and what follows them. The sample is rebuilt with the current version (the stray default cube is gone). Screenshots in docs/images and the README. ROADMAP rewritten around the release |
 | 0.69.1 | 2026-11-16 | Fix: undoing an edit that changed a source's point count (Add Row, etc.) could leave a dependent patch empty or crash Blender. Such rebuilds now run right after the edit and store their own undo step (one extra Ctrl+Z). Fix a gizmo error on startup. New GUI test (tests/test_gui.py) with real undo/redo |
 | 0.69.0 | 2026-11-16 | Live Update no longer switches to edit mode inside Blender's update handler: a patch that changes its point count copies a same-size surface, or is finished right after the drag ends. LICENSE (GPL-3.0-or-later) ships in the zip; the manifest declares its clipboard and files permissions |

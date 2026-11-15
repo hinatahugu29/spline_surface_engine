@@ -3,9 +3,9 @@
 車のような滑らかな曲面を、NURBS の慣れなしで作れるようにする Blender 5.x アドオン。
 最終出力はメッシュ。操作はボタンとクリック選択が基本で、ギズモは操作が固まってから載せる。
 
-## 現在地（2026-11-16、v0.70.0）
+## 現在地（2026-11-16、v0.70.1）
 
-**v0.70.0 を公開候補（Release Candidate）とする。** 第1〜第4段階の作業はすべて終わり、残りは人の手でしかできない確認と、公開の手続きだけ。
+**v0.70.1 を公開候補（Release Candidate）とする。** 第1〜第4段階の作業はすべて終わった。公開前の確認も、自動で確かめられるものはすべてテストにした。残りは公開の手続き（アカウントでの操作）と、手で触ったときの感触の確認だけ。
 
 | 段階 | 目的 | 状況 |
 |---|---|---|
@@ -24,19 +24,22 @@
 | 不具合報告の導線 | ✅ Copy Bug Report、Issue の雛形 |
 | サンプル .blend | ✅ 現行版で作り直し、開いて全体を作り直しても失敗ゼロ（v0.70.0。紛れ込んでいた既定の Cube を除いた） |
 | 掲載用のスクリーンショット | ✅ `docs/images/`（Zebra、Seam Colors、Follow Arrows、To Mesh、パネル全体）。README に掲載 |
-| 自動テスト | ✅ `tests/test_core.py`（計算）、`tests/test_blender.py`（Blender、バックグラウンド）、`tests/test_gui.py`（Blender の画面つき：本物の Undo／Redo、名前の変更、大きな移動、点の数が変わる作り直し） |
-| 手での通し確認 | ⬜ **人の作業**。自動では操作感（ドラッグ中の追従の滑らかさ、モーダル操作のキー、パネルの見え方）を確かめられない。下の「手で確かめること」 |
-| 他のアドオンとの併用 | ⬜ **人の作業**。Shot Manager など、シーンを複製するアドオンと一緒に使ったときの追従 |
-| 公開の手続き | ⬜ **人の作業**。Blender Extensions への登録（アカウント）、Booth／Superhive のページ更新（`docs/booth_description.txt`、`docs/superhive_page.html` の画像の差し替え先は `docs/images/`）。マニフェストの `website` は、公開するページが決まったら入れる |
+| 自動テスト | ✅ 5本。`tests/test_core.py`（計算）、`tests/test_blender.py`（Blender、バックグラウンド）、`tests/test_gui.py`（画面つき：本物の Undo／Redo、名前の変更、大きな移動、点の数が変わる作り直し）、`tests/test_gui_modal.py`（画面つき、マウスとキーのイベントを再現：Fillet・Flange・Fill Hole・Esc）、`tests/test_sample.py`（サンプルを開いて全体を作り直し、To Mesh の結果を検査）。走らせ方は各ファイルの先頭 |
+| 公開前の確認（下の6項目） | ✅ 6項目とも自動テストで確認（v0.70.1） |
+| シーンを複製するアドオンとの併用 | ✅ Blender の Scene > Full Copy（シーンを複製するアドオンが使う仕組み）で再現して確認。複製した面が元のシーンのカーブを読み続ける問題が見つかり、Group 欄に **Use This Scene's Copies** を追加（v0.70.1）。Shot Manager 本体での確認は、このPCに入っていないため未 |
+| 手で触ったときの感触 | ⬜ **人の作業**。ドラッグ中の追従の滑らかさ、パネルの見え方の好みなど、感じ方の確認。自動テストでは結果しか確かめられない |
+| 公開の手続き | ⬜ **人の作業**。Blender Extensions への登録（アカウント）、Booth／Superhive のページ更新。文面（`docs/booth_description.txt`、`docs/superhive_page.html`）は最新の機能・更新履歴・画像に合わせ済み。画像は `docs/images/` からアップロードする。マニフェストの `website` は、公開するページが決まったら入れる |
 
-### 手で確かめること（公開前に一度）
+### 公開前の確認と、それを確かめるテスト
 
-1. サンプルを開き、Hood を G で動かす → つながった面が付いてくる。Ctrl+Z／Ctrl+Shift+Z で行き来しても形が崩れない
-2. 2枚の面を Match Edge（G2）→ 相手を大きく動かしても付いてくる。パネルの追従の一覧で G1 に変える・解除する
-3. Follow Arrows を Selected／Group／All で切り替えて見やすいか
-4. 面に Add Row → その面から作った面（Offset など）が作り直される。Ctrl+Z を2回で Add Row の前に戻る（1回目は Live Update の作り直しの分）
-5. Fillet・Flange・Fill Hole のモーダル操作（クリック、ホイール、C キー、Esc）
-6. To Mesh の結果に穴や裏返りがない
+| 確認すること | テスト |
+|---|---|
+| 1. 元を動かすとつながった面が付いてくる。Ctrl+Z／Ctrl+Shift+Z で行き来しても崩れない | `test_gui.py`（カーブの移動 → Undo → Redo、各段階で全部の面がレシピどおり） |
+| 2. Match Edge の相手を大きく動かしても付いてくる。追従の一覧で連続性を変える・解除する | `test_gui.py`（高さ +2 の移動）、`test_blender.py`（match_links_far_move） |
+| 3. Follow Arrows の範囲の切り替え | `test_blender.py`（follow_map_checks：Selected／Group／All と状態の色） |
+| 4. Add Row → 作った面が作り直される。Ctrl+Z 2回で Add Row の前に戻る | `test_gui.py`（Undo 1回・2回、Redo 2回で全部の面が有効） |
+| 5. Fillet・Flange・Fill Hole のクリック操作（クリック、Enter、ホイール、C キー、Esc） | `test_gui_modal.py`（画面上の継ぎ目・辺の位置にイベントを送る） |
+| 6. To Mesh の結果に穴や裏返りがない | `test_sample.py`（境界はボディの外周1周のみ、向きの食い違い・非多様体・つぶれた面が 0） |
 
 ## 方針
 
@@ -77,6 +80,7 @@
 | Panel Gap をそろえる操作 | 今は測って表示するだけ。どちらの面を動かすかの決め方を、実機で使ってから決める |
 | Sweep の断面の回転 | レールの向きに合わせて断面を回すモード（今は平行移動のみ） |
 | Presets の追加 | Roof の側面、Trunk、Bumper など |
+| シーン複製の自動の付け直し | 今は Group 欄のボタンで付け直す。複製を見つけたら自動で付け直すかは、使い方を聞いてから |
 | 相互の追従 | Match Edge の追従は一方向のみ（相互にするとループで両方作り直されない）。両側を同時に合わせる仕組みが要るかは使ってから |
 | Follow Arrows の弧 | 弧の膨らみは視点によらず固定。真上に重なる面（Offset など）は見る向きによって短く見える |
 
@@ -122,4 +126,4 @@
 | v0.67 | Match Edge の追従を切れなくする（合わせた辺の組を記録。それまでは相手が大きさの約10%以上動くと切れていた）。Spread。追従の一覧・変更・解除 |
 | v0.68 | Follow Arrows／List Links（追従関係を矢印と一覧で表示。状態の色分け） |
 | v0.69 | LICENSE の同梱、マニフェストの権限。Live Update のデータの作り替えをハンドラの外へ移し、Undo すると依存する面が空になって落ちる不具合を修正（v0.68 以前からあった）。`tests/test_gui.py`。ギズモの起動時のエラーの修正 |
-| v0.70 | 公開候補。Follow Arrows の Selected 範囲（既定）、サンプルの作り直し、掲載用スクリーンショット、ROADMAP の整理 |
+| v0.70 | 公開候補。Follow Arrows の Selected 範囲（既定）、サンプルの作り直し、掲載用スクリーンショット、ROADMAP の整理。v0.70.1：Use This Scene's Copies（Full Copy したシーンの面を、そのシーンの複製に付け直す）、公開前の確認をすべて自動テストに（`test_gui_modal.py`、`test_sample.py`）、掲載ページの文面と画像 |

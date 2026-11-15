@@ -6,6 +6,7 @@ group. When a source changes, everything downstream is rebuilt in dependency
 order so the seams stay exact. Patches edited by hand are left alone.
 """
 import json
+import re
 import traceback
 
 import bpy
@@ -123,6 +124,53 @@ def off_scene_inputs(names, scene):
             if sob is not None and scene.objects.get(src) is None:
                 out.add(src)
     return sorted(out)
+
+
+_relink_cache = {"key": None, "map": {}}
+
+
+def scene_copy_relinks(scene):
+    """{patch: {input: copy}} for patches in `scene` whose recipe reads an object
+    of another scene that has exactly one same-named copy here.
+
+    Scene > New > Full Copy (and add-ons built on it, e.g. shot managers)
+    copies patches and curves as "<name>.001", but the copied recipes still
+    name the originals, so the copies follow the other scene's curves."""
+    dependency_graph()                     # refreshes _graph_cache["key"] when recipes change
+    key = (_graph_cache["key"], scene.name, tuple(o.name for o in scene.objects))
+    if _relink_cache["key"] == key:
+        return _relink_cache["map"]
+    here = {o.name: o for o in scene.objects}
+    out = {}
+    for ob in scene.objects:
+        meta = _meta(ob) if META_KEY in ob else None
+        for src in _inputs(meta or {}):
+            other = bpy.data.objects.get(src)
+            if src in here or other is None:
+                continue
+            pat = re.compile(re.escape(src) + r"\.\d{3,}$")
+            cands = [n for n, o in here.items() if pat.match(n) and o.type == other.type]
+            if len(cands) == 1:
+                out.setdefault(ob.name, {})[src] = cands[0]
+    _relink_cache["key"], _relink_cache["map"] = key, out
+    return out
+
+
+def relink_scene_copies(scene):
+    """Point the recipes found by scene_copy_relinks() at this scene's copies.
+    Returns the patches changed. Shapes are left as they are."""
+    changed = []
+    for name, pairs in scene_copy_relinks(scene).items():
+        ob = bpy.data.objects.get(name)
+        meta = _meta(ob) if ob is not None else None
+        if meta is None:
+            continue
+        for old, new in pairs.items():
+            meta, _ = _rename_in(meta, old, new)
+        ob[META_KEY] = json.dumps(meta)       # the fingerprint stays: the shape did not change
+        changed.append(name)
+    _relink_cache["key"] = None
+    return changed
 
 
 def _write_in_place(ob, net, orders):
@@ -617,6 +665,26 @@ class SS_OT_regenerate_all(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class SS_OT_relink_scene_copies(bpy.types.Operator):
+    bl_idname = "spline_surface.relink_scene_copies"
+    bl_label = "Use This Scene's Copies"
+    bl_description = ("Patches here were copied from another scene (Scene > Full Copy, shot "
+                      "managers) and still follow that scene's curves and patches. Make them "
+                      "follow the copies in this scene instead")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and bool(scene_copy_relinks(context.scene))
+
+    def execute(self, context):
+        changed = relink_scene_copies(context.scene)
+        _reset()
+        context.scene.spline_surface.live_note = ""
+        self.report({'INFO'}, "%d patch(es) now follow this scene's copies" % len(changed))
+        return {'FINISHED'}
+
+
 class SS_OT_select_group(bpy.types.Operator):
     bl_idname = "spline_surface.select_group"
     bl_label = "Select Group"
@@ -889,7 +957,8 @@ class SS_OT_edit_continuity(bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (SS_OT_regenerate_all, SS_OT_select_group, SS_OT_edit_continuity,
+classes = (SS_OT_regenerate_all, SS_OT_select_group, SS_OT_relink_scene_copies,
+           SS_OT_edit_continuity,
            SS_OT_match_link_edit, SS_OT_match_link_remove)
 
 

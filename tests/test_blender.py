@@ -242,6 +242,45 @@ def deferred_rebuilds():
     assert live_mod.run_deferred(ctx) is None              # queue drained
     print("deferred rebuild OK")
 
+def scene_full_copy():
+    """Scene > Full Copy (what shot managers do): the copied patches still follow
+    the original scene until Use This Scene's Copies points them at the copies."""
+    from spline_surface import live as live_mod
+    from spline_surface.recipe import META_KEY
+    ctx = bpy.context
+    curves = [bezier_curve("fc0", [(0, 500, 0), (2, 499.8, 0.6), (4, 500, 0)]),
+              bezier_curve("fc1", [(4, 500, 0), (4.3, 501.5, 0.4), (4, 503, 0)]),
+              bezier_curve("fc2", [(4, 503, 0), (2, 503.3, 0.8), (0, 503, 0)]),
+              bezier_curve("fc3", [(0, 503, 0), (-0.2, 501.5, 0.3), (0, 500, 0)])]
+    select(curves)
+    assert bpy.ops.spline_surface.coons() == {'FINISHED'}
+    orig = ctx.active_object.name
+    orig_net = world_net(bpy.data.objects[orig])[0].copy()
+    original_scene = ctx.scene
+    assert bpy.ops.scene.new(type='FULL_COPY') == {'FINISHED'}
+    sc = ctx.scene
+    assert sc != original_scene
+    names = [c.name for c in curves]
+    copy = next(o for o in sc.objects if META_KEY in o and o.name != orig
+                and json.loads(o[META_KEY]).get("sources") == names)
+    assert copy.name not in original_scene.objects                         # reads the originals
+    relinks = live_mod.scene_copy_relinks(sc)
+    assert copy.name in relinks and len(relinks[copy.name]) == 4, relinks
+    assert not live_mod.scene_copy_relinks(original_scene)
+    assert bpy.ops.spline_surface.relink_scene_copies() == {'FINISHED'}
+    srcs = json.loads(copy[META_KEY])["sources"]
+    assert all(sc.objects.get(n) is not None for n in srcs), srcs
+    assert not live_mod.hand_edited(copy, json.loads(copy[META_KEY]))
+    # Editing the copy's curve now reshapes the copied patch, and only that one.
+    cu = sc.objects[srcs[0]].data
+    cu.splines[0].bezier_points[1].co.z += 0.5
+    res = live_mod.update_chain([srcs[0]], ctx)
+    assert copy.name in res["ok"] and orig not in res["ok"], res
+    assert np.allclose(world_net(bpy.data.objects[orig])[0], orig_net)
+    assert not np.allclose(world_net(copy)[0], orig_net)
+    print("scene full copy: %d copied patch(es) relinked" % len(relinks))
+
+
 def run():
     spline_surface.register()
     for o in list(bpy.data.objects):
@@ -2073,6 +2112,7 @@ def run():
     assert all(z > 0 for z in zs) or all(z < 0 for z in zs), "mixed winding"
     match_links_far_move()
     deferred_rebuilds()
+    scene_full_copy()            # last: switches the context scene
     spline_surface.unregister()
     print("ALL OK")
 
