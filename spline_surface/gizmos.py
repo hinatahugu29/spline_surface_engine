@@ -71,6 +71,8 @@ class _RecipeArrow:
         return _recipe(context.active_object, self.method) is not None
 
     def setup(self, context):
+        # Set before target_set_handler: Blender may call _get right away.
+        self.handle_scale = 1.0
         gz = self.gizmos.new("GIZMO_GT_arrow_3d")
         gz.draw_style = 'NORMAL'
         gz.color = 1.0, 0.55, 0.15
@@ -79,7 +81,6 @@ class _RecipeArrow:
         gz.alpha_highlight = 1.0
         gz.target_set_handler("offset", get=self._get, set=self._set)
         self.arrow = gz
-        self.handle_scale = 1.0
         self.was_modal = False
         self._place(context)
 

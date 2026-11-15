@@ -5,3 +5,4 @@ __pycache__/
 !samples/*.blend
 dist/
 blender.crash.txt
+tests/gui_check.log

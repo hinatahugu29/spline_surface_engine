@@ -9,10 +9,6 @@ point is then overwritten.
 import bpy
 
 
-class NeedsOperators(Exception):
-    """No surface of that grid size to copy, and edit-mode operators were not allowed."""
-
-
 def _template(name, nu, nv):
     """A copy of some plain surface datablock with an nu x nv grid, or None."""
     for t in bpy.data.curves:
@@ -29,23 +25,17 @@ def _template(name, nu, nv):
     return None
 
 
-def build_surface_data(name, net, resolution=12, orders=None, allow_ops=True):
+def build_surface_data(name, net, resolution=12, orders=None):
     """Create SURFACE curve data from a control net of shape (nu, nv, 3).
 
     `orders` = (order_u, order_v); None means a single-span Bezier patch
-    (order = point count). Endpoint is always on. Without `allow_ops`, raises
-    NeedsOperators when no existing surface of that size can be copied
-    (callers inside a depsgraph handler must not switch modes or extrude).
+    (order = point count). Endpoint is always on.
     """
     nu, nv = net.shape[0], net.shape[1]
     ku, kv = orders or (nu, nv)
     if max(ku, kv) > 6:
         raise ValueError("Blender NURBS order is limited to 6 (degree 5)")
-    cu = _template(name, nu, nv)
-    if cu is None:
-        if not allow_ops:
-            raise NeedsOperators("no %dx%d surface to copy" % (nu, nv))
-        cu = _extruded(name, nu, nv)
+    cu = _template(name, nu, nv) or _extruded(name, nu, nv)
     sp = cu.splines[0]
     assert (sp.point_count_u, sp.point_count_v) == (nu, nv)
     co = [0.0] * (4 * nu * nv)

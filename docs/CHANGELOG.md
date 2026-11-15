@@ -4,6 +4,7 @@
 
 | バージョン | 日付 | 内容 |
 |---|---|---|
+| 0.69.1 | 2026-11-16 | Fix: undoing an edit that changed a source's point count (Add Row, etc.) could leave a dependent patch empty or crash Blender. Such rebuilds now run right after the edit and store their own undo step (one extra Ctrl+Z). Fix a gizmo error on startup. New GUI test (tests/test_gui.py) with real undo/redo |
 | 0.69.0 | 2026-11-16 | Live Update no longer switches to edit mode inside Blender's update handler: a patch that changes its point count copies a same-size surface, or is finished right after the drag ends. LICENSE (GPL-3.0-or-later) ships in the zip; the manifest declares its clipboard and files permissions |
 | 0.68.0 | 2026-11-16 | Follow Arrows: who follows whom drawn in the viewport (Match links as chevrons on the seam, built-from links as arcs; grey dashed hand edited, red failed, magenta missing source) and listed in the Group panel with a button to go to each link |
 | 0.67.0 | 2026-11-16 | Match Edge keeps following when the other patch moves far (it was lost beyond ~10% of the size: the matched edge pair is now remembered); Spread eases the seam's move into the whole patch; the panel lists Match links to change G0/G1/G2 or unlink |

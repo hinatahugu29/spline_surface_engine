@@ -11,7 +11,6 @@ import traceback
 import bpy
 import numpy as np
 
-from .bridge.write_surface import NeedsOperators
 from .operators import compute_from_meta
 from .recipe import (ADDON_WRITES, META_KEY, ROUND_DECIMALS, hand_edited, raw_meta,
                      replace_net, store_meta, world_net)
@@ -145,14 +144,16 @@ def _write_in_place(ob, net, orders):
     return True
 
 
-def rebuild(ob, context, force=False, in_place_only=False, allow_ops=True):
+def rebuild(ob, context, force=False, in_place_only=False, allow_new_data=True):
     """Regenerate one patch. Returns (status, message); status in
     ok/skipped/error/deferred.
 
-    `in_place_only`: never rebuild the datablock (which adds/removes a Curve);
-    a patch whose point count changed is skipped. Without `allow_ops` a new
-    datablock may only be copied from a same-size surface: a grid size new to
-    the file needs edit-mode operators, and the patch is "deferred"."""
+    A patch whose point count changed needs a new Curve datablock. With
+    `in_place_only` it is skipped; without `allow_new_data` it is "deferred"
+    (Live Update's depsgraph handler runs after the undo step was stored:
+    a datablock made there is missing from undo memory, and undoing leaves
+    the patch empty or crashes Blender -- run_deferred() makes it from a
+    timer and stores an undo step)."""
     meta = _meta(ob)
     if meta is None:
         return "skipped", "no recipe"
@@ -163,9 +164,9 @@ def rebuild(ob, context, force=False, in_place_only=False, allow_ops=True):
         if not _write_in_place(ob, net, orders):
             if in_place_only:
                 return "skipped", "point count changed"
-            replace_net(ob, net, context.scene.spline_surface, orders, allow_ops)
-    except NeedsOperators:
-        return "deferred", "needs a new grid size"
+            if not allow_new_data:
+                return "deferred", "point count changed"
+            replace_net(ob, net, context.scene.spline_surface, orders)
     except ValueError as e:
         FAILED[ob.name] = str(e)
         return "error", str(e)
@@ -174,13 +175,13 @@ def rebuild(ob, context, force=False, in_place_only=False, allow_ops=True):
     return "ok", msg
 
 
-def update_chain(names, context, in_place_only=False, allow_ops=True):
+def update_chain(names, context, in_place_only=False, allow_new_data=True):
     """Rebuild everything downstream of `names`. Returns {status: [object names]}.
 
     A patch whose rebuild came out identical stops the chain there: what only
-    reads it is listed under "unchanged" and left alone. Without `allow_ops`,
-    patches that need edit-mode operators are listed under "deferred" (what
-    reads them waits too, under "waiting") for run_deferred() to finish.
+    reads it is listed under "unchanged" and left alone. Without
+    `allow_new_data`, patches whose point count changed are listed under
+    "deferred" (what reads them waits too, under "waiting") for run_deferred().
     """
     result = {"ok": [], "skipped": [], "error": [], "unchanged": [], "deferred": [],
               "waiting": []}
@@ -209,7 +210,8 @@ def update_chain(names, context, in_place_only=False, allow_ops=True):
             result["unchanged"].append(name)
             continue
         before = _signature(ob)
-        status, _ = rebuild(ob, context, in_place_only=in_place_only, allow_ops=allow_ops)
+        status, _ = rebuild(ob, context, in_place_only=in_place_only,
+                            allow_new_data=allow_new_data)
         result[status].append(name)
         if status == "deferred":
             waiting.add(name)
@@ -393,9 +395,9 @@ def _on_depsgraph(scene, depsgraph):
         return
     _state["busy"] = True
     try:
-        # Inside a depsgraph handler: no mode switches or extrusions. A patch
-        # that needs a grid size new to the file is finished from a timer.
-        result = update_chain(changed, ctx, allow_ops=False)
+        # Inside the depsgraph handler only control points move: a patch whose
+        # point count changed is finished from a timer (see rebuild()).
+        result = update_chain(changed, ctx, allow_new_data=False)
         if result["deferred"]:
             _defer(result["deferred"])
         for name in result["ok"]:
@@ -420,7 +422,7 @@ def _on_depsgraph(scene, depsgraph):
         _state["busy"] = False
 
 
-_deferred = set()   # patches whose rebuild needs edit-mode operators, run from a timer
+_deferred = set()   # patches whose point count changed, rebuilt from a timer
 
 
 def _defer(names):
@@ -442,8 +444,9 @@ def _busy_elsewhere(context):
 
 
 def run_deferred(context):
-    """Rebuild the deferred patches (operators allowed) and what reads them.
-    Returns the update_chain-style result, or None if nothing was waiting."""
+    """Rebuild the deferred patches and what reads them, then store an undo
+    step so undo memory knows the new datablocks. Returns the
+    update_chain-style result, or None if nothing was waiting."""
     names = sorted(n for n in _deferred if n in bpy.data.objects)
     _deferred.clear()
     if not names:
@@ -467,9 +470,23 @@ def run_deferred(context):
             if ob is not None:
                 _state["fps"][name] = _signature(ob)
                 ob.data.update_tag()
+        if result["ok"]:
+            _undo_push(context, "Spline Surface: Live Update")
     finally:
         _state["busy"] = False
     return result
+
+
+def _undo_push(context, message):
+    wm = getattr(context, "window_manager", None)
+    wins = list(getattr(wm, "windows", ()))
+    if not wins:
+        return                              # background mode: no undo stack
+    try:
+        with context.temp_override(window=wins[0]):
+            bpy.ops.ed.undo_push(message=message)
+    except (RuntimeError, TypeError):
+        traceback.print_exc()
 
 
 def _deferred_timer():
