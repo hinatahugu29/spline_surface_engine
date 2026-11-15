@@ -17,6 +17,11 @@ def _gap_update(self, context):
         panelgap.mark_dirty()
 
 
+def _follow_update():
+    from . import followmap
+    followmap.mark_dirty()
+
+
 def _curvature_update(self, context):
     from . import curvature
     curvature.mark_dirty()
@@ -27,6 +32,13 @@ class SS_Settings(bpy.types.PropertyGroup):
         name="Live Update", default=True,
         description="Rebuild dependent patches automatically when a source patch or curve changes")
     live_note: bpy.props.StringProperty(options={'HIDDEN'})
+    follow_scope: bpy.props.EnumProperty(
+        name="Follow Map Scope", default='GROUP', update=lambda self, ctx: _follow_update(),
+        items=[('GROUP', "Selection's Group", "Links of the patches connected to the selection"),
+               ('ALL', "All", "Every link in the file")])
+    follow_list: bpy.props.BoolProperty(
+        name="List Links", default=False,
+        description="List who follows whom (follower's state, a button to go to each link)")
     linked_edit: bpy.props.BoolProperty(
         name="Linked Edit", default=False,
         description=("When you edit a patch (edit mode, move), nearby patches follow and "
@@ -267,6 +279,8 @@ class SS_PT_group(_SubPanel, bpy.types.Panel):
         row = layout.row(align=True)
         row.operator("spline_surface.select_group", icon='RESTRICT_SELECT_OFF', text="Select")
         row.operator("spline_surface.regenerate_all", icon='FILE_REFRESH', text="Regenerate")
+        from . import followmap
+        followmap.draw_list(layout.box(), context)
         layout.operator("spline_surface.mirror_group", icon='MOD_MIRROR')
         row = layout.row(align=True)
         row.operator("spline_surface.mirror_unlink", icon='UNLINKED')

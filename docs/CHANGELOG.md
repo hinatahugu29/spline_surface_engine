@@ -4,6 +4,7 @@
 
 | バージョン | 日付 | 内容 |
 |---|---|---|
+| 0.68.0 | 2026-11-16 | Follow Arrows: who follows whom drawn in the viewport (Match links as chevrons on the seam, built-from links as arcs; grey dashed hand edited, red failed, magenta missing source) and listed in the Group panel with a button to go to each link |
 | 0.67.0 | 2026-11-16 | Match Edge keeps following when the other patch moves far (it was lost beyond ~10% of the size: the matched edge pair is now remembered); Spread eases the seam's move into the whole patch; the panel lists Match links to change G0/G1/G2 or unlink |
 | 0.66.1 | 2026-11-08 | The G0/G1/G2 buttons redraw the patch right away (it only updated after touching the redo panel) |
 | 0.66.0 | 2026-11-08 | Change the continuity (G0/G1/G2) of an Extend, Bridge or Corner Fill patch afterwards from the Grow & Connect panel; patches built on it follow |

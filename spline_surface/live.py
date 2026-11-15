@@ -34,6 +34,10 @@ def _inputs(meta):
 
 _graph_cache = {"key": None, "graph": {}}
 
+# patch name -> why its last rebuild in a chain failed (cleared once it rebuilds again);
+# the Follow Map draws these links red.
+FAILED = {}
+
 
 def dependency_graph():
     """{object name: set of names that depend on it} over all patches.
@@ -157,8 +161,10 @@ def rebuild(ob, context, force=False, in_place_only=False):
                 return "skipped", "point count changed"
             replace_net(ob, net, context.scene.spline_surface, orders)
     except ValueError as e:
+        FAILED[ob.name] = str(e)
         return "error", str(e)
     store_meta(ob, meta)
+    FAILED.pop(ob.name, None)
     return "ok", msg
 
 
@@ -173,6 +179,8 @@ def update_chain(names, context, in_place_only=False):
     changed = set(names)
     order, looped = downstream_order(names, dependency_graph())
     result["error"] += looped
+    for name in looped:
+        FAILED[name] = "dependency loop"
     for name in order:
         ob = bpy.data.objects.get(name)
         if ob is None:
@@ -430,6 +438,7 @@ def _on_load(*_):
     # session_uids belong to the previous file
     _uids.clear()
     _missing.clear()
+    FAILED.clear()
 
 
 def _deferred_resync():

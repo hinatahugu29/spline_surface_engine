@@ -50,6 +50,73 @@ def nurbs_eval(net, orders, g):
     return eval_surface(net, orders, g, g).reshape(-1, 3)
 
 
+class _FakeLayout:
+    """Records panel calls well enough to run a panel's draw code headless."""
+    def __init__(self, log):
+        self.log, self.alert = log, False
+
+    def _child(self, *a, **k):
+        return _FakeLayout(self.log)
+    row = column = box = _child
+
+    def label(self, text="", icon='NONE'):
+        self.log.append(("label", text, icon))
+
+    def prop(self, *a, **k):
+        self.log.append(("prop", a[1]))
+
+    def operator(self, idname, **k):
+        self.log.append(("op", idname, k.get("icon")))
+        return type("Props", (), {})()
+
+
+def follow_map_checks(fol, ref):
+    """Follow Map: links, arrows and panel list, with each follower state."""
+    from spline_surface import followmap, live as live_mod
+    ctx = bpy.context
+    settings = ctx.scene.spline_surface
+    settings.follow_scope = 'ALL'
+    followmap.compute(ctx)
+    draw = followmap._state["draw"]
+    seam = [d for d in draw if len(d["heads"]) == 3]
+    arcs = [d for d in draw if len(d["heads"]) == 1]
+    assert seam and arcs, (len(seam), len(arcs))       # a Match seam and built-from arcs
+    assert any(t.startswith("Match G2") for _, t, _ in followmap._state["labels"])
+    rows, _ = followmap.list_rows(ctx)
+    assert any(r["src"] == ref.name and r["dst"] == fol.name and r["kind"] == "match"
+               for r in rows)
+    # Group scope: only the selection's group.
+    settings.follow_scope = 'GROUP'
+    select([fol])
+    rows, more = followmap.list_rows(ctx)
+    assert {(r["src"], r["dst"]) for r in rows} == {(ref.name, fol.name)} and more == 0, rows
+    # States: failed, hand edited, missing source.
+    live_mod.FAILED[fol.name] = "forced"
+    followmap.compute(ctx)
+    assert followmap._state["draw"][0]["color"] == followmap.COLORS["failed"]
+    log = []
+    settings.follow_list = True
+    followmap.draw_list(_FakeLayout(log), ctx)
+    assert ("label", "    forced", 'NONE') in log, log
+    assert any(e[0] == "op" and e[1] == "spline_surface.follow_jump" for e in log)
+    live_mod.FAILED.pop(fol.name)
+    assert followmap.links([fol.name])[0]["state"] == "ok"
+    # Panel draws (Group panel and the match box) run without errors.
+    from spline_surface import ui
+    log = []
+    ui.SS_PT_group.draw(type("P", (), {"layout": _FakeLayout(log)})(), ctx)
+    assert any(e[0] == "op" and e[1] == "spline_surface.follow_map" for e in log)
+    # Toggle on/off and jump.
+    assert bpy.ops.spline_surface.follow_map() == {'FINISHED'} and followmap.is_on()
+    assert bpy.ops.spline_surface.follow_map() == {'FINISHED'} and not followmap.is_on()
+    assert bpy.ops.spline_surface.follow_jump(a=ref.name, b=fol.name) == {'FINISHED'}
+    assert ctx.view_layer.objects.active == fol
+    settings.follow_scope = 'ALL'
+    settings.follow_list = False
+    select([fol])
+    print("follow map: %d seam(s), %d arc(s)" % (len(seam), len(arcs)))
+
+
 def match_links_far_move():
     """Match Edge keeps following a reference moved far beyond Gap Tolerance;
     links can be listed, changed and removed afterwards."""
@@ -112,6 +179,7 @@ def match_links_far_move():
     status, _ = live_mod.rebuild(fol, ctx, force=True)
     assert status == "ok"
     assert "edge_t" in json.loads(fol[META_KEY])["matches"][0]
+    follow_map_checks(fol, ref)
     # Unlink: a free patch stays where it is and stops following.
     shape = world_net(fol)[0]
     assert bpy.ops.spline_surface.match_link_remove(ref=ref.name) == {'FINISHED'}

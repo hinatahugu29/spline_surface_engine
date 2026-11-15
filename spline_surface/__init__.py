@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Spline Surface",
     "author": "hinata",
-    "version": (0, 67, 0),
+    "version": (0, 68, 0),
     "blender": (5, 0, 0),
     "location": "View3D > Sidebar > Spline Surface",
     "description": "Build smooth NURBS patches from boundary curves",
@@ -10,12 +10,12 @@ bl_info = {
 
 import bpy  # noqa: E402
 
-from . import blueprints, bugreport, cage, controlmesh, ctrlpoints, curvature, curvetools, filleting, flanging, gizmos, linked, live, netcheck, bridging, operators, orienting, panelgap, presetting, projecting, pulling, seams, shaping, splitting, trimming, symmetry, tomesh, ui, zebra  # noqa: E402
+from . import blueprints, bugreport, cage, controlmesh, ctrlpoints, curvature, curvetools, filleting, flanging, followmap, gizmos, linked, live, netcheck, bridging, operators, orienting, panelgap, presetting, projecting, pulling, seams, shaping, splitting, trimming, symmetry, tomesh, ui, zebra  # noqa: E402
 
 classes = (ui.classes + blueprints.classes + bugreport.classes + operators.classes + bridging.classes + tomesh.classes + orienting.classes + filleting.classes + flanging.classes + live.classes + linked.classes
            + cage.classes + symmetry.classes + splitting.classes + seams.classes + ctrlpoints.classes
            + curvature.classes + netcheck.classes + curvetools.classes + pulling.classes + controlmesh.classes
-           + panelgap.classes + presetting.classes + projecting.classes + trimming.classes + shaping.classes + zebra.classes + gizmos.classes)
+           + followmap.classes + panelgap.classes + presetting.classes + projecting.classes + trimming.classes + shaping.classes + zebra.classes + gizmos.classes)
 
 
 def _add_menu(self, context):
@@ -31,6 +31,7 @@ def register():
     bpy.types.VIEW3D_MT_surface_add.append(_add_menu)
     live.register()
     seams.register()
+    followmap.register()
     panelgap.register()
     ctrlpoints.register()
     curvature.register()
@@ -46,6 +47,7 @@ def unregister():
     curvature.unregister()
     ctrlpoints.unregister()
     seams.unregister()
+    followmap.unregister()
     panelgap.unregister()
     live.unregister()
     bpy.types.VIEW3D_MT_surface_add.remove(_add_menu)
