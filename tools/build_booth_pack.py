@@ -27,6 +27,7 @@ docs/MANUAL.md      説明書
 docs/WORKFLOWS.md   目的別の作業の流れ（6例）
 docs/FEATURES.md    機能一覧
 docs/CHANGELOG.md   更新履歴
+LICENSE.txt         ライセンス（GPL-3.0-or-later）
 samples/            サンプル（ボンネット+フェンダー）
 
 Blender 5.0 以降 / 不具合は説明書の「不具合報告」を見てください
@@ -43,6 +44,7 @@ def main():
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.write(addon, "%s/spline_surface-%s.zip" % (top, version))
         zf.writestr("%s/README.txt" % top, README % {"v": version})
+        zf.write(os.path.join(ROOT, "LICENSE"), "%s/LICENSE.txt" % top)
         for name in DOCS:
             zf.write(os.path.join(ROOT, "docs", name), "%s/docs/%s" % (top, name))
         sample = os.path.join(ROOT, "samples", "hood_fender.blend")

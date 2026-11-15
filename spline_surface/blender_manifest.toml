@@ -8,7 +8,12 @@ maintainer = "hinata"
 type = "add-on"
 blender_version_min = "5.0.0"
 license = ["SPDX:GPL-3.0-or-later"]
+copyright = ["2026 hinata"]
 tags = ["Modeling", "Add Curve"]
+
+[permissions]
+clipboard = "Copy Bug Report puts the report text on the clipboard"
+files = "Blueprints load reference images picked from disk"
 
 [build]
 paths_exclude_pattern = ["__pycache__/", "/.*"]

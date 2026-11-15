@@ -4,7 +4,8 @@
 
 Reads the version from blender_manifest.toml, stops if __init__.py's
 bl_info version disagrees, and writes spline_surface-<version>.zip (the
-manifest at the zip root, no caches or dotfiles) into every --out directory
+manifest and the repository's LICENSE at the zip root, no caches or
+dotfiles) into every --out directory
 (default: dist/ next to this repository's spline_surface/).
 """
 import argparse
@@ -43,6 +44,7 @@ def write_zip(path):
                     continue
                 full = os.path.join(dirpath, name)
                 zf.write(full, os.path.relpath(full, PKG))
+        zf.write(os.path.join(ROOT, "LICENSE"), "LICENSE")
 
 
 def main():
