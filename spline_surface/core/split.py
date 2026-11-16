@@ -100,3 +100,34 @@ def iso_line(net, orders, direction, t, samples=48):
     s = np.linspace(0.0, 1.0, samples)
     c = np.full(samples, t)
     return eval_points(net, orders, c, s) if direction == 'U' else eval_points(net, orders, s, c)
+
+
+def iso_bezier(net, orders, direction, t, pieces=None):
+    """The iso-line u = t ('U') or v = t ('V') as Bezier points [(co, left, right), ...].
+
+    One cubic segment per span of the line, handles from the derivatives at its
+    ends. Blender's knots are uniform and unweighted, so a line of degree 3 or
+    less is reproduced exactly (a cubic Hermite through the span ends is the
+    span itself). Higher degrees are split into `pieces` segments per span
+    (default 4) and are a close approximation.
+    """
+    from .nurbs import eval_points
+    net = np.asarray(net, dtype=float)
+    axis = 1 if direction == 'U' else 0          # the line runs along the other direction
+    n, k = net.shape[axis], orders[axis]
+    spans = n - k + 1
+    if pieces is None:
+        pieces = 1 if k <= 4 else 4
+    s = np.linspace(0.0, 1.0, spans * pieces + 1)
+    c = np.full(len(s), float(t))
+    if direction == 'U':
+        co, d = eval_points(net, orders, c, s), eval_points(net, orders, c, s, 0, 1)
+    else:
+        co, d = eval_points(net, orders, s, c), eval_points(net, orders, s, c, 1, 0)
+    if k == 2:      # straight between the points, corners at them: handles at the thirds
+        prev = np.concatenate([co[:1], co[:-1]])
+        nxt = np.concatenate([co[1:], co[-1:]])
+        return [(co[i], co[i] + (prev[i] - co[i]) / 3.0, co[i] + (nxt[i] - co[i]) / 3.0)
+                for i in range(len(s))]
+    h = d * (s[1] - s[0]) / 3.0       # degree >= 2: smooth at the knots, one tangent per point
+    return [(co[i], co[i] - h[i], co[i] + h[i]) for i in range(len(s))]

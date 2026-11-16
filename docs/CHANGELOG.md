@@ -4,6 +4,7 @@
 
 | バージョン | 日付 | 内容 |
 |---|---|---|
+| 0.71.0 | 2026-11-16 | Duplicate Edge as Curve (Grow & Connect): copy a patch edge or iso-line out as a Bezier curve, Shift+click to pick several. The curve is the patch line itself (exact up to degree 3, one point per span), so Coons from duplicated edges is exact and immediate. Tests for it in tests/test_core.py, tests/test_blender.py and tests/test_gui_modal.py |
 | 0.70.1 | 2026-11-16 | Use This Scene's Copies: after Scene > Full Copy (or a shot manager), copied patches still read the original scene's curves; the Group panel offers to point them at this scene's copies. New tests: click tools driven by simulated events (tests/test_gui_modal.py), the sample end to end with a To Mesh check (tests/test_sample.py). Listing texts and images updated |
 | 0.70.0 | 2026-11-16 | Release candidate. Follow Arrows gets a Selected scope (the default): only what the selected patches follow and what follows them. The sample is rebuilt with the current version (the stray default cube is gone). Screenshots in docs/images and the README. ROADMAP rewritten around the release |
 | 0.69.1 | 2026-11-16 | Fix: undoing an edit that changed a source's point count (Add Row, etc.) could leave a dependent patch empty or crash Blender. Such rebuilds now run right after the edit and store their own undo step (one extra Ctrl+Z). Fix a gizmo error on startup. New GUI test (tests/test_gui.py) with real undo/redo |

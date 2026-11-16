@@ -9,8 +9,7 @@ from . import live, pick, zebra
 from .bridge.write_surface import build_surface_data
 from .core.continuity import find_shared_edge
 from .core.nurbs import eval_points
-from .core.split import iso_line, split_net
-from .projecting import make_bezier_curve
+from .core.split import iso_bezier, iso_line, split_net
 from .recipe import META_KEY, _make_active, raw_meta, replace_net, store_meta, world_net
 
 # Which edges of the original end up on which piece, per cut direction.
@@ -267,6 +266,29 @@ class SS_OT_split_patch(pick.ModalPicker, bpy.types.Operator):
         return {'FINISHED'}
 
 
+def _bezier_object(name, points, collection):
+    """Bezier curve object (world space) with the given (co, left, right) points.
+
+    The handles come from the patch, so they are kept as given: ALIGNED inside
+    (the line is smooth there, and moving one handle keeps it smooth), FREE at
+    corners of a degree-1 line and at the two ends.
+    """
+    cu = bpy.data.curves.new(name, 'CURVE')
+    cu.dimensions = '3D'
+    sp = cu.splines.new('BEZIER')
+    sp.bezier_points.add(len(points) - 1)
+    for i, (bp, (co, left, right)) in enumerate(zip(sp.bezier_points, points)):
+        bp.handle_left_type = bp.handle_right_type = 'FREE'
+        bp.co, bp.handle_left, bp.handle_right = tuple(co), tuple(left), tuple(right)
+        a, b = np.asarray(co) - np.asarray(left), np.asarray(right) - np.asarray(co)
+        la, lb = np.linalg.norm(a), np.linalg.norm(b)
+        if 0 < i < len(points) - 1 and la > 0 and lb > 0 and np.dot(a, b) > (1 - 1e-9) * la * lb:
+            bp.handle_left_type = bp.handle_right_type = 'ALIGNED'
+    ob = bpy.data.objects.new(name, cu)
+    collection.objects.link(ob)
+    return ob
+
+
 class SS_OT_duplicate_edge_curve(pick.ModalPicker, bpy.types.Operator):
     bl_idname = "spline_surface.duplicate_edge_curve"
     bl_label = "Duplicate Edge as Curve"
@@ -286,8 +308,6 @@ class SS_OT_duplicate_edge_curve(pick.ModalPicker, bpy.types.Operator):
         name="Snap to Spans", default=True,
         description="On multi-span patches snap to span boundaries (exact at the control net); "
                     "off: anywhere on the patch")
-    samples: bpy.props.IntProperty(name="Points", default=32, min=3, max=200,
-                                   description="How many points of the new curve are sampled")
     edges: bpy.props.StringProperty(
         name="Edges", default="",
         description="JSON [[patch, direction, t], ...]; non-empty overrides source/direction/t "
@@ -421,8 +441,8 @@ class SS_OT_duplicate_edge_curve(pick.ModalPicker, bpy.types.Operator):
         spans = net.shape[axis] - orders[axis] + 1
         if self.snap and spans > 1:
             t = round(t * spans) / spans
-        line = iso_line(net, orders, direction, t, samples=self.samples)
-        ob = make_bezier_curve(source.name + "_edge", line, context.collection)
+        ob = _bezier_object(source.name + "_edge", iso_bezier(net, orders, direction, t),
+                            context.collection)
         return ob, source.name, direction, t
 
     def execute(self, context):

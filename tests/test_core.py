@@ -319,6 +319,42 @@ def test_mirror_center_g2():
     assert np.sign(n(S)) == np.sign(n(M))
 
 
+def test_iso_bezier_exact_and_close():
+    from core.split import iso_bezier, iso_line
+    rng = np.random.default_rng(5)
+
+    def bezier_pts(segs, m=20):
+        out = []
+        for (a, _, ar), (b, bl, _) in zip(segs[:-1], segs[1:]):
+            x = np.linspace(0, 1, m)[:, None]
+            out.append((1 - x) ** 3 * a + 3 * (1 - x) ** 2 * x * ar + 3 * (1 - x) * x ** 2 * bl
+                       + x ** 3 * b)
+        return np.concatenate(out)
+    for shape, orders, exact in (((7, 6), (4, 4), True), ((5, 4), (3, 2), True),
+                                 ((8, 8), (6, 6), False)):
+        P = rng.normal(size=shape + (3,))
+        for direction in "UV":
+            for t in (0.0, 0.37, 1.0):
+                segs = iso_bezier(P, orders, direction, t)
+                axis = 1 if direction == 'U' else 0
+                spans = shape[axis] - orders[axis] + 1
+                assert len(segs) == (spans if exact else spans * 4) + 1
+                got = bezier_pts(segs)
+                m = (len(segs) - 1) * 20
+                want = iso_line(P, orders, direction, t, samples=len(segs))   # segment ends
+                assert np.abs(np.array([g[0] for g in segs]) - want).max() < 1e-12
+                # same parameter on both sides: segment j, local x <-> line parameter
+                x = np.concatenate([(j + np.linspace(0, 1, 20)) / (len(segs) - 1)
+                                    for j in range(len(segs) - 1)])
+                from core.nurbs import eval_points
+                cst = np.full(len(x), t)
+                ref = (eval_points(P, orders, cst, x) if direction == 'U'
+                       else eval_points(P, orders, x, cst))
+                err = np.abs(got - ref).max() / np.ptp(P.reshape(-1, 3), 0).max()
+                assert err < (1e-12 if exact else 2e-3), (shape, orders, direction, t, err)
+                assert len(got) == m
+
+
 def test_split_exact_and_fitted():
     from core.split import split_net
     P = _poly_patch(0, 0)

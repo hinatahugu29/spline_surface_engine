@@ -5,7 +5,7 @@
 Blender only lets a script send events when started with
 --enable-event-simulate. The script hovers a seam and an edge on screen,
 clicks, presses Enter / C / the mouse wheel / Esc the way a user would, and
-checks what the Fillet, Flange and Fill Hole tools made. LOG (default:
+checks what the Fillet, Flange, Fill Hole and Duplicate Edge tools made. LOG (default:
 tests/gui_modal.log) ends with "SUMMARY ALL OK" or the failed checks.
 """
 import json
@@ -22,6 +22,7 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, ROOT)
 import spline_surface  # noqa: E402
 from spline_surface.bridge.write_surface import build_surface_data  # noqa: E402
+from spline_surface.core.split import iso_line  # noqa: E402
 from spline_surface.recipe import META_KEY, edge_polyline, raw_meta, store_meta, world_net  # noqa: E402
 
 extra = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
@@ -56,15 +57,15 @@ def to_window(p):
     return int(region.x + x), int(region.y + y)
 
 
-def send(kind, value='PRESS', at=None):
+def send(kind, value='PRESS', at=None, shift=False):
     win = view()[0]
     x, y = at if at is not None else (win.width // 2, win.height // 2)
-    win.event_simulate(type=kind, value=value, x=x, y=y)
+    win.event_simulate(type=kind, value=value, x=x, y=y, shift=shift)
 
 
-def press(kind, at=None):
-    send(kind, 'PRESS', at)
-    send(kind, 'RELEASE', at)
+def press(kind, at=None, shift=False):
+    send(kind, 'PRESS', at, shift)
+    send(kind, 'RELEASE', at, shift)
 
 
 def free(name, net):
@@ -162,6 +163,83 @@ def s_esc_check():
           len(bpy.data.objects) == S["count"], len(bpy.data.objects))
 
 
+def _top_point(u, v):
+    from spline_surface.core.nurbs import eval_points
+    net, orders = world_net(bpy.data.objects["Top"])
+    return to_window(eval_points(net, orders, np.array([u]), np.array([v]))[0])
+
+
+def _new_curves():
+    return [o for o in bpy.data.objects if o.type == 'CURVE' and o.name not in S["curves_before"]]
+
+
+def _off_iso(ob, direction, t):
+    """Largest distance of the drawn curve (handles included) from the patch iso-line."""
+    from spline_surface.bridge.read_curves import read_polyline
+    net, orders = world_net(bpy.data.objects["Top"])
+    want = iso_line(net, orders, direction, t, samples=2000)
+    got = read_polyline(ob, None, 16)
+    return float(max(np.linalg.norm(want - p, axis=1).min() for p in got))
+
+
+def s_dup_start():
+    S["curves_before"] = {o.name for o in bpy.data.objects if o.type == 'CURVE'}
+    win, area, region = view()
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        log("duplicate edge invoke", bpy.ops.spline_surface.duplicate_edge_curve('INVOKE_DEFAULT'))
+    S["dup_at"] = [_top_point(1.0, 0.5), _top_point(0.0, 0.5)]     # Top's edges u = 1 and u = 0
+
+
+def s_dup_shift_clicks():
+    for at in S["dup_at"]:
+        send('MOUSEMOVE', 'NOTHING', at)
+        press('LEFTMOUSE', at, shift=True)
+
+
+def s_dup_shift_check():
+    check("Duplicate Edge: Shift+click keeps picking (nothing made yet)", not _new_curves(),
+          [o.name for o in _new_curves()])
+
+
+def s_dup_enter():
+    press('RET', S["dup_at"][0])
+
+
+def s_dup_check():
+    made = _new_curves()
+    check("Duplicate Edge: Shift+click two edges, Enter -> two curves", len(made) == 2,
+          [o.name for o in made])
+    if len(made) == 2:
+        offs = sorted(min(_off_iso(o, 'U', 1.0), _off_iso(o, 'U', 0.0)) for o in made)
+        check("Duplicate Edge: the curves lie on the patch edges u = 1 and u = 0",
+              offs[-1] < 2e-3, offs)
+    S["curves_before"] = {o.name for o in bpy.data.objects if o.type == 'CURVE'}
+
+
+def s_dup_d_start():
+    win, area, region = view()
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        log("duplicate edge invoke", bpy.ops.spline_surface.duplicate_edge_curve('INVOKE_DEFAULT'))
+    S["mid_at"] = _top_point(0.5, 0.5)
+    send('MOUSEMOVE', 'NOTHING', S["mid_at"])
+    press('D', S["mid_at"])                                   # U -> V
+
+
+def s_dup_click():
+    send('MOUSEMOVE', 'NOTHING', S["mid_at"])
+    press('LEFTMOUSE', S["mid_at"])
+
+
+def s_dup_d_check():
+    made = _new_curves()
+    check("Duplicate Edge: D switches to V, a plain click makes one curve and finishes",
+          len(made) == 1, [o.name for o in made])
+    if made:
+        off = _off_iso(made[0], 'V', 0.5)
+        check("Duplicate Edge: the curve is the iso-line v = 0.5 across the patch", off < 2e-3, off)
+    S["count"] = len(bpy.data.objects)
+
+
 def s_flange_start():
     win, area, region = view()
     with bpy.context.temp_override(window=win, area=area, region=region):
@@ -249,6 +327,8 @@ def s_done():
 
 STEPS = [s_setup, s_fillet_start, s_fillet_pick, s_fillet_enter, s_fillet_adjust,
          s_fillet_confirm, s_fillet_check, s_esc_start, s_esc, s_esc_check,
+         s_dup_start, s_dup_shift_clicks, s_dup_shift_check, s_dup_enter, s_dup_check,
+         s_dup_d_start, s_dup_click, s_dup_d_check,
          s_flange_start, s_flange_click, s_flange_check,
          s_fill_setup, s_fill_start, s_fill_click, s_fill_enter, s_fill_check, s_done]
 

@@ -242,6 +242,39 @@ def deferred_rebuilds():
     assert live_mod.run_deferred(ctx) is None              # queue drained
     print("deferred rebuild OK")
 
+def duplicate_edges_to_coons():
+    """Duplicate Edge as Curve: the four borders of a patch, copied out as curves
+    (one call, the Shift-click list), feed Coons and give back the same outline."""
+    from spline_surface.bridge.write_surface import build_surface_data
+    from spline_surface.core.split import iso_line
+    from spline_surface.recipe import raw_meta, store_meta
+    ctx = bpy.context
+    xs, ys = np.meshgrid(np.linspace(0, 3, 4), np.linspace(600, 602, 4), indexing="ij")
+    net = np.stack([xs, ys, 0.3 * np.sin(xs) + 0.2 * np.cos(ys - 600)], -1)
+    src = bpy.data.objects.new("DupSrc", build_surface_data("DupSrc", net, 12))
+    ctx.collection.objects.link(src)
+    store_meta(src, raw_meta(net, world_net(src)[1]))
+    before = {o.name for o in bpy.data.objects}
+    edges = [["DupSrc", "U", 0.0], ["DupSrc", "U", 1.0], ["DupSrc", "V", 0.0], ["DupSrc", "V", 1.0]]
+    assert bpy.ops.spline_surface.duplicate_edge_curve(edges=json.dumps(edges)) == {'FINISHED'}
+    made = [o for o in bpy.data.objects if o.name not in before]
+    assert len(made) == 4 and all(o.type == 'CURVE' for o in made), [o.name for o in made]
+    assert world_net(src)[0].shape == net.shape            # the patch itself is untouched
+    select(made)
+    assert bpy.ops.spline_surface.coons() == {'FINISHED'}
+    coons = ctx.active_object
+    assert coons.type == 'SURFACE' and coons is not src
+    P, po = world_net(src)
+    C, co = world_net(coons)
+    # Coons re-spaces its boundaries, so compare shapes: every point of each original
+    # border lies on some border of the Coons patch.
+    rim = np.concatenate([iso_line(C, co, d, t, samples=4000) for d in "UV" for t in (0.0, 1.0)])
+    worst = max(float(np.linalg.norm(rim - p, axis=1).min())
+                for d in "UV" for t in (0.0, 1.0) for p in iso_line(P, po, d, t, samples=40))
+    assert worst < 2e-3, worst                 # the spacing of the dense line (3 / 4000)
+    print("duplicate edge -> coons OK, outline off by %.3g" % worst)
+
+
 def scene_full_copy():
     """Scene > Full Copy (what shot managers do): the copied patches still follow
     the original scene until Use This Scene's Copies points them at the copies."""
@@ -2112,6 +2145,7 @@ def run():
     assert all(z > 0 for z in zs) or all(z < 0 for z in zs), "mixed winding"
     match_links_far_move()
     deferred_rebuilds()
+    duplicate_edges_to_coons()
     scene_full_copy()            # last: switches the context scene
     spline_surface.unregister()
     print("ALL OK")

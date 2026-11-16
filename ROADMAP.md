@@ -3,9 +3,9 @@
 車のような滑らかな曲面を、NURBS の慣れなしで作れるようにする Blender 5.x アドオン。
 最終出力はメッシュ。操作はボタンとクリック選択が基本で、ギズモは操作が固まってから載せる。
 
-## 現在地（2026-11-16、v0.70.1）
+## 現在地（2026-11-16、v0.71.0）
 
-**v0.70.1 を公開候補（Release Candidate）とする。** 第1〜第4段階の作業はすべて終わった。公開前の確認も、自動で確かめられるものはすべてテストにした。残りは公開の手続き（アカウントでの操作）と、手で触ったときの感触の確認だけ。
+**v0.71.0 を公開候補（Release Candidate）とする。** 第1〜第4段階の作業はすべて終わった。公開前の確認も、自動で確かめられるものはすべてテストにした。残りは公開の手続き（アカウントでの操作）と、手で触ったときの感触の確認だけ。
 
 | 段階 | 目的 | 状況 |
 |---|---|---|
@@ -58,12 +58,12 @@
 | 状態の表示 | GPU オーバーレイ（描画のみ） |
 | 作った後の値の直接ドラッグ | ギズモ（レシピの値を書き換えて作り直す） |
 
-## できていること（v0.70.0）
+## できていること（v0.71.0）
 
 | 分類 | 機能 |
 |---|---|
 | 作る | Add Patch（Plane / Arc / Dome）、Presets（Hood／Roof／Door／Hood + Fender）、Blueprints（下絵）、Line / Arc（境界用のカーブ）、Coons、Loft（Extra Rows）、Curve Network（＋ Add Curve Grid、Network Check、Move Crossing、Fair Curves）、Snap Ends、Project Curve |
-| 伸ばす・つなぐ | Extend Edge、Bridge Edges、Sweep（Straight、Target）、Match Edge（G0/G1/G2、Spread、大きく動かしても切れない追従）、Corner Fill、Fill Hole（3辺以上、カーブ混在、G0 は平らなフタ）、Flange（Outside、Edit Flange）、Fillet（複数の継ぎ目、トリム、コーナーパッチ、半径の変更）、Split Patch、Offset Surface、Continuity の後からの変更 |
+| 伸ばす・つなぐ | Extend Edge、Bridge Edges、Sweep（Straight、Target）、Match Edge（G0/G1/G2、Spread、大きく動かしても切れない追従）、Corner Fill、Fill Hole（3辺以上、カーブ混在、G0 は平らなフタ）、Flange（Outside、Edit Flange）、Fillet（複数の継ぎ目、トリム、コーナーパッチ、半径の変更）、Split Patch、Duplicate Edge as Curve（辺・等パラメータ線をカーブに。Shift+クリックで複数）、Offset Surface、Continuity の後からの変更 |
 | まとめて扱う | Live Update、Linked Edit、Edge Chain、Merge Patches、Cage、Mirror Group（Scope、Unlink、Remove）、Select／Regenerate Group、Follow Arrows／List Links（追従関係の表示） |
 | 面の内側の編集 | Soft Pull（起点：点／線／制御点、減衰5種、連続ストローク）、Control Mesh、Fair、Refine、Add Row、Origin to Center、Align Normals |
 | 確認 | Zebra（Width、Soft）、Seam Colors、Curvature Comb、Curvature Map、Control Points、Check Continuity（悪い順、ジャンプ）、Panel Gap |
@@ -127,3 +127,4 @@
 | v0.68 | Follow Arrows／List Links（追従関係を矢印と一覧で表示。状態の色分け） |
 | v0.69 | LICENSE の同梱、マニフェストの権限。Live Update のデータの作り替えをハンドラの外へ移し、Undo すると依存する面が空になって落ちる不具合を修正（v0.68 以前からあった）。`tests/test_gui.py`。ギズモの起動時のエラーの修正 |
 | v0.70 | 公開候補。Follow Arrows の Selected 範囲（既定）、サンプルの作り直し、掲載用スクリーンショット、ROADMAP の整理。v0.70.1：Use This Scene's Copies（Full Copy したシーンの面を、そのシーンの複製に付け直す）、公開前の確認をすべて自動テストに（`test_gui_modal.py`、`test_sample.py`）、掲載ページの文面と画像 |
+| v0.71 | Duplicate Edge as Curve（面の辺・等パラメータ線を、区間ごとに1点のベジェカーブとして正確に複製。Shift+クリックで複数）。点の多いカーブだと Coons が極端に遅くなるため、面の線をそのまま区間単位で書き出す方式にした |
