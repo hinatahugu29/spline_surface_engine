@@ -1,7 +1,6 @@
 """Corner Fill, Bridge Edges and Sweep: the modal tools that pick two patch edges."""
 import bpy
 
-from .bridge.read_curves import read_polyline
 from .bridge.write_surface import build_surface_data
 from . import pick
 from . import zebra
@@ -36,6 +35,8 @@ class _EdgePairPicker(pick.ModalPicker):
         self._first = None
         self._hover = None
         self._preview = []
+        self._kind = 'ALL'
+        self._mouse = (event.mouse_region_x, event.mouse_region_y)
         self._picker = pick.Overlay(context, self._draw_lines, self._label)
         context.window_manager.modal_handler_add(self)
         self._header(context)
@@ -44,14 +45,47 @@ class _EdgePairPicker(pick.ModalPicker):
     def _header(self, context):
         step = "click the first edge" if self._first is None else "click the second edge"
         context.area.header_text_set(
-            self._title + ": %s   C: %s   Wheel: tension %.2f   Esc/RMB: cancel"
-            % (step, self.continuity, self.tension))
+            self._title + ": %s   C: %s   Wheel: tension %.2f%s   Esc/RMB: cancel"
+            % (step, self.continuity, self.tension, self._kind_hint()))
+
+    # -------------------------------------------------- edges / curves filter (E)
+    def _forced_kind(self):
+        """A kind the current step allows no matter what E is set to (None: any)."""
+        return None
+
+    def _kind_now(self):
+        return self._forced_kind() or self._kind
+
+    def _pickable(self):
+        return pick.of_kind(self._edges, self._kind_now())
+
+    def _kind_hint(self):
+        if not pick.has_both(self._edges):
+            return ""
+        forced = self._forced_kind()
+        if forced:
+            return "   (%s for this pick)" % pick.KIND_TEXT[forced]
+        return "   E: %s" % pick.KIND_TEXT[self._kind]
+
+    def _rehover(self, context):
+        hover = pick.nearest_polyline(context, self._pickable(), self._mouse)
+        if hover != self._hover:
+            self._hover = hover
+            self._update_preview(context)
+        context.area.tag_redraw()
+
+    def _cycle_kind(self, context):
+        if not pick.has_both(self._edges):
+            return
+        self._kind = pick.next_kind(self._kind)
+        self._header(context)
+        self._rehover(context)
 
     def _label(self):
         return pick.edge_label(self._hover, self._edges[self._hover]) if self._hover else None
 
     def _draw_lines(self):
-        lines = [(pts, pick.COLOR_EDGE, 2.0) for k, pts in self._edges.items()
+        lines = [(pts, pick.COLOR_EDGE, 2.0) for k, pts in self._pickable().items()
                  if k not in (self._hover, self._first)]
         if self._first:
             lines.append((self._edges[self._first], pick.COLOR_SELECTED, 4.0))
@@ -83,11 +117,10 @@ class _EdgePairPicker(pick.ModalPicker):
 
     def modal(self, context, event):
         if event.type == 'MOUSEMOVE':
-            hover = pick.nearest_polyline(context, self._edges,
-                                          (event.mouse_region_x, event.mouse_region_y))
-            if hover != self._hover:
-                self._hover = hover
-                self._update_preview(context)
+            self._mouse = (event.mouse_region_x, event.mouse_region_y)
+            self._rehover(context)
+        elif event.type == 'E' and event.value == 'PRESS':
+            self._cycle_kind(context)
         elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'} and event.value == 'PRESS':
             f = 1.1 if event.type == 'WHEELUPMOUSE' else 1 / 1.1
             self.tension = min(3.0, max(0.05, self.tension * f))
@@ -104,7 +137,7 @@ class _EdgePairPicker(pick.ModalPicker):
             if self._first is None or self._hover == self._first:
                 self._first = None if self._hover == self._first else self._hover
                 self._header(context)
-                context.area.tag_redraw()
+                self._rehover(context)         # the second pick may allow other kinds
                 return {'RUNNING_MODAL'}
             if self._hover[0] == self._first[0]:
                 if not self._allow_same_patch:
@@ -223,14 +256,12 @@ class SS_OT_bridge_edges(_EdgePairPicker, bpy.types.Operator):
 
     def _candidates(self, context):
         lines = surface_edges(context)
-        dg = context.evaluated_depsgraph_get()
-        for ob in context.visible_objects:
-            if ob.type == 'CURVE' and ob.data.splines:
-                try:
-                    lines[(ob.name, 'CURVE')] = read_polyline(ob, dg, 48)
-                except ValueError:
-                    pass
+        lines.update(pick.curve_lines(context))
         return lines
+
+    def _forced_kind(self):
+        # one side of a bridge is always a patch edge: after a curve, only edges
+        return 'EDGES' if self._first and self._first[1] == 'CURVE' else None
 
     def _set_pair(self, a, b):
         if a[1] == 'CURVE':  # the patch always comes first
@@ -309,7 +340,8 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
 
     def _header(self, context):
         if self._target_stage:
-            context.area.header_text_set("Sweep: click the target edge or curve   T: change target   Esc/RMB: cancel")
+            context.area.header_text_set("Sweep: click the target edge or curve   T: change target%s   "
+                                         "Esc/RMB: cancel" % self._kind_hint())
             return
         step = "click the profile edge" if self._first is None else "click the rail edge"
         tgt = {'NONE': "length", 'EDGE': "edge",
@@ -345,7 +377,8 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
         self._pair_edges = self._edges
         self._edges = SS_OT_bridge_edges._candidates(self, context)      # curves can be targets too
         self._first, self._preview = None, []
-        self._hover = pick.nearest_polyline(context, self._edges, self._mouse)   # already under the cursor
+        self._kind = 'ALL'
+        self._hover = pick.nearest_polyline(context, self._pickable(), self._mouse)   # already under the cursor
         self._header(context)
         context.area.tag_redraw()
         return True
@@ -380,13 +413,12 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
             self._mouse = (event.mouse_region_x, event.mouse_region_y)
         if self._target_stage:
             if event.type == 'MOUSEMOVE':
-                hover = pick.nearest_polyline(context, self._edges, self._mouse)
-                if hover != self._hover:
-                    self._hover = hover
-                    self._update_preview(context)
+                self._rehover(context)
+            elif event.type == 'E' and event.value == 'PRESS':
+                self._cycle_kind(context)
             elif event.type == 'LEFTMOUSE' and event.value == 'PRESS':
                 # decide from the click's own position, not from the last mouse move
-                self._hover = pick.nearest_polyline(context, self._edges, self._mouse)
+                self._hover = pick.nearest_polyline(context, self._pickable(), self._mouse)
                 if self._hover is None:
                     self.report({'WARNING'}, "No edge or curve under the cursor")
                     return {'RUNNING_MODAL'}
@@ -396,6 +428,7 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
             elif event.type == 'T' and event.value == 'PRESS':
                 self._target_stage = False
                 self._edges = self._pair_edges
+                self._kind = 'ALL'
                 self._first = None
                 self._cycle_target(context)
             elif self._common_modal(context, event):

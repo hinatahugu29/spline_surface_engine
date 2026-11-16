@@ -137,3 +137,42 @@ def nearest_polyline(context, polylines, mouse, radius=PICK_RADIUS):
             if d < best_d:
                 best, best_d = key, d
     return best
+
+
+# ---------------------------------------------------------------- what can be picked
+# Tools that pick both patch edges and curves (Bridge Edges, Fill Hole, Sweep's
+# target) let E narrow the candidates: a curve duplicated from an edge lies right
+# on it, and the nearest line on screen is then a coin toss.
+KINDS = ('ALL', 'EDGES', 'CURVES')
+KIND_TEXT = {'ALL': "edges + curves", 'EDGES': "edges only", 'CURVES': "curves only"}
+
+
+def next_kind(kind):
+    return KINDS[(KINDS.index(kind) + 1) % len(KINDS)]
+
+
+def of_kind(lines, kind):
+    """The (object, edge) -> polyline entries of that kind ('CURVE' keys are curves)."""
+    if kind == 'ALL':
+        return lines
+    want_curve = kind == 'CURVES'
+    return {k: v for k, v in lines.items() if (k[1] == 'CURVE') == want_curve}
+
+
+def has_both(lines):
+    kinds = {k[1] == 'CURVE' for k in lines}
+    return len(kinds) == 2
+
+
+def curve_lines(context, samples=48):
+    """{(object name, 'CURVE'): world polyline} for the visible curve objects."""
+    from .bridge.read_curves import read_polyline
+    lines = {}
+    dg = context.evaluated_depsgraph_get()
+    for ob in context.visible_objects:
+        if ob.type == 'CURVE' and ob.data.splines:
+            try:
+                lines[(ob.name, 'CURVE')] = read_polyline(ob, dg, samples)
+            except ValueError:
+                pass
+    return lines

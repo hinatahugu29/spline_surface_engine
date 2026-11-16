@@ -398,31 +398,142 @@ def _move_point(pt, delta):
         pt.co = (x + delta.x, y + delta.y, z + delta.z, w)
 
 
-class SS_OT_loft(bpy.types.Operator):
+class SS_OT_loft(pick.ModalPicker, bpy.types.Operator):
     bl_idname = "spline_surface.loft"
     bl_label = "Curves → Loft"
-    bl_description = ("Loft a patch through 2 or more section curves (ordered and oriented "
-                      "automatically; up to 6 sections are hit exactly)")
+    bl_description = ("Loft a patch through 2 or more section curves. Click the curves in the "
+                      "order the patch should pass through them, then Enter (curves selected "
+                      "beforehand start out picked). Up to Degree+1 sections are hit exactly")
     bl_options = {'REGISTER', 'UNDO'}
 
     rows: bpy.props.IntProperty(
         name="Extra Rows", default=2, min=0, max=4,
         description="Control point rows added between the sections without changing the shape "
                     "(more points to shape with; limited by the Degree setting)")
+    sections: bpy.props.StringProperty(
+        name="Sections", default="",
+        description="Curve names in loft order, separated by ';'. Empty: the selected curves, "
+                    "ordered automatically")
 
     @classmethod
     def poll(cls, context):
         return context.mode == 'OBJECT'
 
+    # -------------------------------------------------------------- modal
+    def invoke(self, context, event):
+        self.sections = ""            # Blender remembers the last run's properties: pick afresh
+        if context.area is None or context.area.type != 'VIEW_3D':
+            return self.execute(context)
+        self._curves = pick.curve_lines(context)
+        if len(self._curves) < 2:
+            self.report({'ERROR'}, "Need at least two visible curves to loft through")
+            return {'CANCELLED'}
+        chosen = [o for o in context.selected_objects if (o.name, 'CURVE') in self._curves]
+        if len(chosen) > 1:           # keep the old way: selected curves, ordered automatically
+            polys = [self._curves[(o.name, 'CURVE')] for o in chosen]
+            chosen = [chosen[i] for i, _ in order_sections(polys)]
+        self._chosen = [(o.name, 'CURVE') for o in chosen]
+        self._hover = None
+        self._preview = []
+        self._preview_key = None
+        self._picker = pick.Overlay(context, self._draw_lines, self._label)
+        context.window_manager.modal_handler_add(self)
+        self._header(context)
+        self._update_preview(context)
+        return {'RUNNING_MODAL'}
+
+    def _header(self, context):
+        context.area.header_text_set(
+            "Loft: click the section curves in order (%d picked)   Click a picked one: remove   "
+            "Backspace: remove the last   Enter: loft   Esc/RMB: cancel" % len(self._chosen))
+
+    def _label(self):
+        if self._hover is None:
+            return None
+        pts = self._curves[self._hover]
+        n = self._chosen.index(self._hover) + 1 if self._hover in self._chosen else None
+        text = "%s  #%d" % (self._hover[0], n) if n else self._hover[0]
+        return text, pts[len(pts) // 2]
+
+    def _draw_lines(self):
+        lines = [(pts, pick.COLOR_EDGE, 2.0) for k, pts in self._curves.items()
+                 if k != self._hover and k not in self._chosen]
+        lines += [(self._curves[k], pick.COLOR_SELECTED, 4.0) for k in self._chosen]
+        if self._hover and self._hover not in self._chosen:
+            lines.append((self._curves[self._hover], pick.COLOR_HOVER, 4.0))
+        lines += [(pts, pick.COLOR_PREVIEW, 1.0) for pts in self._preview]
+        return lines
+
+    def _update_preview(self, context):
+        keys = self._chosen + ([self._hover] if self._hover and self._hover not in self._chosen
+                               else [])
+        if tuple(keys) == self._preview_key:
+            return
+        self._preview_key = tuple(keys)
+        self._preview = []
+        if len(keys) >= 2:
+            try:
+                net, _, _ = compute_loft([bpy.data.objects[k[0]] for k in keys],
+                                         context.evaluated_depsgraph_get(),
+                                         context.scene.spline_surface, keep_order=True,
+                                         rows=self.rows)
+                self._preview = iso_lines(net, bezier_orders(net), count=5, samples=24)
+            except Exception:
+                # Preview-only: any geometry failure just means no preview.
+                pass
+        context.area.tag_redraw()
+
+    def modal(self, context, event):
+        if event.type == 'MOUSEMOVE':
+            hover = pick.nearest_polyline(context, self._curves,
+                                          (event.mouse_region_x, event.mouse_region_y))
+            if hover != self._hover:
+                self._hover = hover
+                self._update_preview(context)
+                context.area.tag_redraw()
+        elif event.type == 'LEFTMOUSE' and event.value == 'PRESS':
+            if self._hover is None:
+                return {'RUNNING_MODAL'}
+            if self._hover in self._chosen:
+                self._chosen.remove(self._hover)
+            else:
+                self._chosen.append(self._hover)
+            self._header(context)
+            self._update_preview(context)
+        elif event.type == 'BACK_SPACE' and event.value == 'PRESS':
+            if self._chosen:
+                self._chosen.pop()
+                self._header(context)
+                self._update_preview(context)
+        elif event.type in {'RET', 'NUMPAD_ENTER', 'SPACE'} and event.value == 'PRESS':
+            if len(self._chosen) < 2:
+                self.report({'WARNING'}, "Pick at least two curves")
+                return {'RUNNING_MODAL'}
+            self.sections = ";".join(k[0] for k in self._chosen)
+            self._finish(context)
+            return self.execute(context)
+        elif self._common_modal(context, event):
+            return self._common_result
+        return {'RUNNING_MODAL'}
+
+    # -------------------------------------------------------------- execute
     def execute(self, context):
         settings = context.scene.spline_surface
-        sources = [o for o in context.selected_objects if o.type in BOUNDARY_TYPES]
+        if self.sections:
+            names = [n for n in self.sections.split(";") if n]
+            sources = [bpy.data.objects.get(n) for n in names]
+            missing = [n for n, o in zip(names, sources) if o is None or o.type not in BOUNDARY_TYPES]
+            if missing:
+                self.report({'ERROR'}, "Not a curve any more: %s" % ", ".join(missing))
+                return {'CANCELLED'}
+        else:
+            sources = [o for o in context.selected_objects if o.type in BOUNDARY_TYPES]
         if len(sources) < 2:
             self.report({'ERROR'}, "Select 2 or more section curves (got %d)" % len(sources))
             return {'CANCELLED'}
         try:
             net, err, ordered = compute_loft(sources, context.evaluated_depsgraph_get(), settings,
-                                             rows=self.rows)
+                                             keep_order=bool(self.sections), rows=self.rows)
             cu = build_surface_data("LoftPatch", net, settings.resolution)
         except ValueError as e:
             self.report({'ERROR'}, str(e))
@@ -887,19 +998,15 @@ class SS_OT_fill_hole(pick.ModalPicker, bpy.types.Operator):
         if context.area is None or context.area.type != 'VIEW_3D':
             return self.execute(context)
         self._edges = surface_edges(context)
-        dg = context.evaluated_depsgraph_get()
-        for ob in context.visible_objects:
-            if ob.type == 'CURVE' and ob.data.splines:
-                try:
-                    self._edges[(ob.name, 'CURVE')] = read_polyline(ob, dg, 48)
-                except ValueError:
-                    pass
+        self._edges.update(pick.curve_lines(context))
         if len(self._edges) < 3:
             self.report({'ERROR'}, "Need at least three open edges or curves")
             return {'CANCELLED'}
         self._chosen = []
         self._hover = None
         self._preview = []
+        self._kind = 'ALL'
+        self._mouse = (event.mouse_region_x, event.mouse_region_y)
         self._picker = pick.Overlay(context, self._draw_lines, self._label)
         context.window_manager.modal_handler_add(self)
         self._header(context)
@@ -908,14 +1015,22 @@ class SS_OT_fill_hole(pick.ModalPicker, bpy.types.Operator):
     def _header(self, context):
         context.area.header_text_set(
             "Fill Hole: click the edges around the hole (%d picked)   Enter: fill   C: %s   "
-            "Wheel: tension %.2f   Esc/RMB: cancel"
-            % (len(self._chosen), self.continuity, self.tension))
+            "Wheel: tension %.2f%s   Esc/RMB: cancel"
+            % (len(self._chosen), self.continuity, self.tension,
+               "   E: %s" % pick.KIND_TEXT[self._kind] if pick.has_both(self._edges) else ""))
+
+    def _rehover(self, context):
+        hover = pick.nearest_polyline(context, pick.of_kind(self._edges, self._kind), self._mouse)
+        if hover != self._hover:
+            self._hover = hover
+            self._update_preview(context)
+        context.area.tag_redraw()
 
     def _label(self):
         return pick.edge_label(self._hover, self._edges[self._hover]) if self._hover else None
 
     def _draw_lines(self):
-        lines = [(pts, pick.COLOR_EDGE, 2.0) for k, pts in self._edges.items()
+        lines = [(pts, pick.COLOR_EDGE, 2.0) for k, pts in pick.of_kind(self._edges, self._kind).items()
                  if k != self._hover and k not in self._chosen]
         lines += [(self._edges[k], pick.COLOR_SELECTED, 4.0) for k in self._chosen]
         if self._hover and self._hover not in self._chosen:
@@ -942,11 +1057,12 @@ class SS_OT_fill_hole(pick.ModalPicker, bpy.types.Operator):
 
     def modal(self, context, event):
         if event.type == 'MOUSEMOVE':
-            hover = pick.nearest_polyline(context, self._edges,
-                                          (event.mouse_region_x, event.mouse_region_y))
-            if hover != self._hover:
-                self._hover = hover
-                self._update_preview(context)
+            self._mouse = (event.mouse_region_x, event.mouse_region_y)
+            self._rehover(context)
+        elif event.type == 'E' and event.value == 'PRESS' and pick.has_both(self._edges):
+            self._kind = pick.next_kind(self._kind)
+            self._header(context)
+            self._rehover(context)
         elif event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE'} and event.value == 'PRESS':
             f = 1.1 if event.type == 'WHEELUPMOUSE' else 1 / 1.1
             self.tension = min(3.0, max(0.05, self.tension * f))

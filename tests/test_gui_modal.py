@@ -5,7 +5,8 @@
 Blender only lets a script send events when started with
 --enable-event-simulate. The script hovers a seam and an edge on screen,
 clicks, presses Enter / C / the mouse wheel / Esc the way a user would, and
-checks what the Fillet, Flange, Fill Hole and Duplicate Edge tools made. LOG (default:
+checks what the Fillet, Flange, Fill Hole, Duplicate Edge, Bridge (E: edges /
+curves) and Loft (click order) tools made. LOG (default:
 tests/gui_modal.log) ends with "SUMMARY ALL OK" or the failed checks.
 """
 import json
@@ -318,6 +319,120 @@ def s_fill_check():
           [f.get("sources") for f in fills])
 
 
+# ---- E: edges / curves. A curve duplicated from an edge lies right on it.
+def _focus(objs):
+    win, area, region = view()
+    for o in bpy.context.scene.objects:
+        o.select_set(o in objs)
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        bpy.ops.view3d.view_selected()
+    for o in bpy.context.scene.objects:
+        o.select_set(False)
+
+
+def _mid(name, edge):
+    return to_window(edge_polyline(*world_net(bpy.data.objects[name]), edge, 9)[4])
+
+
+def s_kind_setup():
+    xs, ys = np.meshgrid(np.linspace(40, 42, 4), np.linspace(0, 2, 4), indexing="ij")
+    flat = np.stack([xs, ys, np.zeros_like(xs)], -1)
+    S["kp"] = [free("KA", flat), free("KB", flat + np.array([0.0, 4.0, 0.0]))]
+    assert bpy.ops.spline_surface.duplicate_edge_curve(
+        edges=json.dumps([["KA", "V", 1.0]])) == {'FINISHED'}
+    S["kcurve"] = bpy.context.active_object.name                 # lies on KA's edge V1
+    area = view()[1]
+    area.spaces[0].region_3d.view_rotation = Euler((0.9, 0.0, 0.4)).to_quaternion()
+    _focus(S["kp"])
+
+
+def _bridges():
+    return [json.loads(o[META_KEY]) for o in bpy.data.objects if META_KEY in o
+            and json.loads(o[META_KEY]).get("method") == "blend"
+            and "fillet" not in json.loads(o[META_KEY])]
+
+
+def s_kind_edges():
+    S["kat"], S["kbt"] = _mid("KA", 'V1'), _mid("KB", 'V0')
+    S["nb"] = len(_bridges())
+    win, area, region = view()
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        log("bridge invoke", bpy.ops.spline_surface.bridge_edges('INVOKE_DEFAULT'))
+    send('MOUSEMOVE', 'NOTHING', S["kat"])
+    press('E', S["kat"])                                          # edges only
+    press('LEFTMOUSE', S["kat"])
+    send('MOUSEMOVE', 'NOTHING', S["kbt"])
+    press('LEFTMOUSE', S["kbt"])
+
+
+def s_kind_edges_check():
+    new = _bridges()[S["nb"]:]
+    check("Bridge, E = edges only: the click on the shared spot takes the patch edge",
+          len(new) == 1 and new[0]["sources"] == ["KA", "KB"] and new[0]["edges"] == ["V1", "V0"],
+          [(b["sources"], b["edges"]) for b in new])
+    for o in [o for o in bpy.data.objects if META_KEY in o and o.name.startswith("KA_blend")]:
+        bpy.data.objects.remove(o)        # its seams would hide KA's and KB's edges next time
+    S["nb"] = len(_bridges())
+
+
+def s_kind_curves():
+    win, area, region = view()
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        log("bridge invoke", bpy.ops.spline_surface.bridge_edges('INVOKE_DEFAULT'))
+    send('MOUSEMOVE', 'NOTHING', S["kat"])
+    press('E', S["kat"])
+    press('E', S["kat"])                                          # curves only
+    press('LEFTMOUSE', S["kat"])
+    send('MOUSEMOVE', 'NOTHING', S["kbt"])                        # then edges only, by itself
+    press('LEFTMOUSE', S["kbt"])
+
+
+def s_kind_curves_check():
+    new = _bridges()[S["nb"]:]
+    check("Bridge, E = curves only: the same spot takes the curve; the second pick is an edge",
+          len(new) == 1 and new[0]["sources"] == ["KB", S["kcurve"]]
+          and new[0]["edges"] == ["V0", "CURVE"],
+          [(b["sources"], b["edges"]) for b in new])
+
+
+# ---- Loft: click the sections in order
+def s_loft_setup():
+    from spline_surface.projecting import make_bezier_curve
+    S["secs"] = []
+    for k, x in enumerate((50.0, 51.5, 53.0)):
+        pts = np.array([(x, 0, 0), (x, 1, 0.5 + 0.2 * k), (x, 2, 0)])
+        S["secs"].append(make_bezier_curve("Sec%d" % k, pts, bpy.context.collection))
+    _focus(S["secs"])
+
+
+def s_loft_clicks():
+    win, area, region = view()
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        log("loft invoke", bpy.ops.spline_surface.loft('INVOKE_DEFAULT'))
+    at = {o.name: to_window(o.matrix_world @ o.data.splines[0].bezier_points[1].co)
+          for o in S["secs"]}
+    for name in ("Sec2", "Sec0"):
+        send('MOUSEMOVE', 'NOTHING', at[name])
+        press('LEFTMOUSE', at[name])
+    press('BACK_SPACE', at["Sec0"])                               # drop Sec0 again
+    for name in ("Sec1", "Sec0"):
+        send('MOUSEMOVE', 'NOTHING', at[name])
+        press('LEFTMOUSE', at[name])
+    S["loft_at"] = at["Sec0"]
+
+
+def s_loft_enter():
+    press('RET', S["loft_at"])
+
+
+def s_loft_check():
+    lofts = [json.loads(o[META_KEY]) for o in bpy.data.objects if META_KEY in o
+             and json.loads(o[META_KEY]).get("method") == "loft"]
+    check("Loft: click Sec2, Sec0, Backspace, Sec1, Sec0, Enter -> lofted in click order",
+          len(lofts) == 1 and lofts[0]["sources"] == ["Sec2", "Sec1", "Sec0"],
+          [m["sources"] for m in lofts])
+
+
 def s_done():
     ok = all(r for _, r in RESULTS)
     log("SUMMARY", "ALL OK" if ok else "FAILURES", [t for t, r in RESULTS if not r])
@@ -330,7 +445,9 @@ STEPS = [s_setup, s_fillet_start, s_fillet_pick, s_fillet_enter, s_fillet_adjust
          s_dup_start, s_dup_shift_clicks, s_dup_shift_check, s_dup_enter, s_dup_check,
          s_dup_d_start, s_dup_click, s_dup_d_check,
          s_flange_start, s_flange_click, s_flange_check,
-         s_fill_setup, s_fill_start, s_fill_click, s_fill_enter, s_fill_check, s_done]
+         s_fill_setup, s_fill_start, s_fill_click, s_fill_enter, s_fill_check,
+         s_kind_setup, s_kind_edges, s_kind_edges_check, s_kind_curves, s_kind_curves_check,
+         s_loft_setup, s_loft_clicks, s_loft_enter, s_loft_check, s_done]
 
 
 def tick():

@@ -43,7 +43,7 @@ GNU General Public License v3.0 以降（GPL-3.0-or-later）。個人・商用�
 | Output | Mesh Resolution、To Mesh |
 
 ## クリックで選ぶツールの操作
-Extend Edge・Corner Fill・Bridge Edges・Fill Hole・Split Patch・Duplicate Edge as Curve は、押すと 3D ビューで選ぶモードに入ります。
+Extend Edge・Corner Fill・Bridge Edges・Fill Hole・Split Patch・Duplicate Edge as Curve・Loft は、押すと 3D ビューで選ぶモードに入ります。
 
 | 操作 | 内容 |
 |---|---|
@@ -54,7 +54,9 @@ Extend Edge・Corner Fill・Bridge Edges・Fill Hole・Split Patch・Duplicate E
 | F | Bridge Edges：端の組み合わせを反転 |
 | D / S | Split Patch・Duplicate Edge as Curve：切る向き／区間の境目への吸着 |
 | Shift+クリック | Duplicate Edge as Curve：選び足す（Enter でまとめて作る） |
-| Enter / Space | Fill Hole：選んだ辺で埋める |
+| E | Bridge Edges・Fill Hole・Sweep の Target：候補を 辺とカーブ → 辺だけ → カーブだけ と切り替え |
+| Enter / Space | Fill Hole：選んだ辺で埋める。Loft：クリックした順に通して作る |
+| Backspace | Loft：最後に選んだカーブを外す |
 | 中ボタン | 視点の回転（モード中も使える） |
 | Esc / 右クリック | やめる |
 
