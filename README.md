@@ -20,6 +20,11 @@
 
 ![サイドバーのパネル](docs/images/ui_overview.jpg)
 
+Blender 5.0 以降（Windows の 5.3 で動作確認。自動テストは 5.0 と 5.3 で実行）。
+
+## サンプル
+`samples/` に、このアドオンだけで作った見本が2つあります。`hood_fender.blend`（ボンネットとフェンダー）と `body_front_cabin.blend`（車体の前半とキャビン）。`tools/build_sample_hood.py`・`tools/build_sample_body.py` で、毎回同じ手順で作り直せます。
+
 ## ライセンス
 GNU General Public License v3.0 以降（GPL-3.0-or-later）。個人・商用のどちらの制作にも使えます。作ったモデルの権利は作った方にあります。
 
@@ -42,11 +47,12 @@ GNU General Public License v3.0 以降（GPL-3.0-or-later）。個人・商用�
 ## パネル
 | 欄 | 内容 |
 |---|---|
-| Create | Add Patch、Add Blueprint（下絵を実寸で立てる）、Body panel presets（Hood／Roof／Door／Hood + Fender：車体パネルの出発点を3Dカーソルに置く）、Line／Arc（Add Boundary Curve：境界用の直線・円弧をベジェで追加。Arc の Angle を 180 にすると半円）、Coons、Loft、Curve Network（＋ボタンで見本のカーブの網）、Network Check（Curve Network がカーブをどう見るかを表示）、Move Crossing（交点をつまんで動かす）、Project Curve（カーブを面に載せる）、Fair Curves（カーブのうねりを取る）、Snap Ends（カーブの端をくっつける）、Regenerate、Fit Settings |
-| Grow & Connect | Extend Edge、Bridge Edges、Sweep（辺の形を別の辺に沿って運ぶ）、Match Edge、Corner Fill、Fill Hole、Fillet（ぴったり接して折れているつなぎ目をクリック（複数可、もう一度クリックで外す）→ Enter → ホイールで半径、C で G1/G2、Backspace で選び直し。両側の面を半径分トリムしてつなぐ。フィレット同士が出会う角（箱の角を3辺とも丸めた所など）は、コーナーパッチで自動的に埋める。V でオン／オフ）、Split Patch、Duplicate Edge as Curve（面の辺や等パラメータ線をカーブとして複製。Shift+クリックで複数）、Flange（辺から壁を立ち上げて折れ目を丸める）、Offset Surface |
-| Group | Live Update、Linked Edit（＋Falloff）、Edge Chain、Merge、Select / Regenerate、Mirror Group、Cage（Add / Apply / ✕） |
-| Inspect | Zebra（表示中の全部の面に一括、On の間は新しい面にも自動）、Seam Colors（つなぎ目を継続性で色分け）、Curvature Comb（面の等パラメータ線とカーブに曲率の櫛を表示。歯は曲率の中心と反対側、長いほど強く曲がる。包絡線が滑らかなら曲率も滑らか、面のつなぎ目やカーブの制御点で段差があれば G1 以下）、Curvature Map（曲率で面を色分け。Gaussian：赤＝ドーム、緑＝平ら・円筒、青＝鞍型／Mean：法線側に曲がると赤）、Soft Pull（面上の点をドラッグして形を整える。つなぎ目で固定された点は動かないので G0/G1/G2 を保つ。ホイール＝範囲、N＝法線方向、X/Y/Z＝その軸方向、V＝画面平面。L で起点を 面上の点 → 線 → 制御点 と切り替え。線：線ごと引く、D＝縦横の切り替え、T＝両端を細らせる、外周の近くでは開いた辺に吸着。制御点：制御点をつかんで引く、範囲は格子の行数でホイール＝U方向・Shift+ホイール＝V方向、動く点に印が出る。F で減衰の形を Smooth → Sphere → Linear → Sharp → Constant と切り替え（Constant は範囲内をまとめて平行移動）。何度でも引ける：Ctrl+Z＝直前の1ストロークを戻す、Enter/Space＝確定、Esc＝全部取り消し、右クリック＝ドラッグ中のストロークだけ取り消し）、Fair（内側をならす。固定された点と外周は動かさない）、Refine（形を変えずに制御点を増やす）、Control Mesh（制御点をメッシュにして編集モードで G/R/S。固定された点は元に戻り、Done で消す）、Control Points（制御点を、つなぎ目で固定された点＝オレンジ／自由に動かせる内側＝水色で表示）、Panel Gap（向かい合うパネルの隙間と段差を測り、目標からの外れを色で表示。Even Gap でアクティブなパネルの辺を動かして隙間をそろえ、相手が動いても保つ）、Check Continuity（結果の一覧。選択が2枚未満なら表示中の全部を調べ、悪い継ぎ目から順に並べる。右の矢印でその継ぎ目の2枚へ移動）、Diagnose（レシピより弱い継ぎ目・指定のない折れ・面の波打ちを、直し方の案つきで悪い順に） |
-| Output | Mesh Resolution、To Mesh |
+| Create | Add Patch、Add Blueprint（下絵を実寸で立てる）、Body panel presets（Hood／Roof／Door／Hood + Fender／Trunk／Roof + Side／Bumper：車体パネルの出発点を3Dカーソルに置く）、Line／Arc（Add Boundary Curve：境界用の直線・円弧をベジェで追加。Arc の Angle を 180 にすると半円）、Coons、Loft、Curve Network（＋ボタンで見本のカーブの網）、Network Check（Curve Network がカーブをどう見るかを表示）、Move Crossing（交点をつまんで動かす）、Project Curve（カーブを面に載せる）、Fair Curves（カーブのうねりを取る）、Snap Ends（カーブの端をくっつける）、Regenerate、Fit Settings |
+| Grow & Connect | Extend Edge、Bridge Edges、Sweep（辺の形を別の辺に沿って運ぶ）、Match Edge、Corner Fill、Fill Hole、Fillet（ぴったり接して折れているつなぎ目をクリック（複数可、もう一度クリックで外す）→ Enter → ホイールで半径、C で G1/G2、Backspace で選び直し。両側の面を半径分トリムしてつなぐ。フィレット同士が出会う角（箱の角を3辺とも丸めた所など）は、コーナーパッチで自動的に埋める。V でオン／オフ）、Split Patch（追従の指定は片に引き継ぐ）、Duplicate Edge as Curve（面の辺や等パラメータ線をカーブとして複製。Shift+クリックで複数）、Flange（辺から壁を立ち上げて折れ目を丸める）、Offset Surface |
+| Group | Live Update、Linked Edit（＋Falloff）、Edge Chain、Merge、Select / Regenerate、Follow Arrows／List Links（どの面がどれに付いてくるか）、Mirror Group（Unlink／Remove）、Cage（Add / Apply / ✕） |
+| Shape | Soft Pull（面上の点をドラッグして形を整える。つなぎ目で固定された点は動かないので G0/G1/G2 を保つ。ホイール＝範囲、N＝法線方向、X/Y/Z＝その軸方向、V＝画面平面。L で起点を 面上の点 → 線 → 制御点 と切り替え。線：線ごと引く、D＝縦横の切り替え、T＝両端を細らせる、外周の近くでは開いた辺に吸着。制御点：制御点をつかんで引く、範囲は格子の行数でホイール＝U方向・Shift+ホイール＝V方向、動く点に印が出る。F で減衰の形を Smooth → Sphere → Linear → Sharp → Constant と切り替え（Constant は範囲内をまとめて平行移動）。何度でも引ける：Ctrl+Z＝直前の1ストロークを戻す、Enter/Space＝確定、Esc＝全部取り消し、右クリック＝ドラッグ中のストロークだけ取り消し）、Control Mesh（制御点をメッシュにして編集モードで G/R/S。固定された点は元に戻り、Done で消す）、Fair（内側をならす。固定された点と外周は動かさない）、Add Row U／V（制御点を1行足す）、Align Normals、Origin to Center、Refine（形を変えずに制御点を増やす） |
+| Inspect | Zebra（表示中の全部の面に一括、On の間にアドオンの操作で作った面にも自動）、Seam Colors（つなぎ目を継続性で色分け）、Curvature Comb（面の等パラメータ線とカーブに曲率の櫛を表示。歯は曲率の中心と反対側、長いほど強く曲がる。包絡線が滑らかなら曲率も滑らか、面のつなぎ目やカーブの制御点で段差があれば G1 以下）、Curvature Map（曲率で面を色分け。Gaussian：赤＝ドーム、緑＝平ら・円筒、青＝鞍型／Mean：法線側に曲がると赤）、Control Points（制御点を、つなぎ目で固定された点＝オレンジ／自由に動かせる内側＝水色で表示）、Panel Gap（向かい合うパネルの隙間と段差を測り、目標からの外れを色で表示。Even Gap でアクティブなパネルの辺を動かして隙間をそろえ、相手が動いても保つ）、Check Continuity（結果の一覧。選択が2枚未満なら表示中の全部を調べ、悪い継ぎ目から順に並べる。右の矢印でその継ぎ目の2枚へ移動）、Diagnose（レシピより弱い継ぎ目・指定のない折れ・面の波打ちを、直し方の案つきで悪い順に。意図した形には印を付けて次から出さない） |
+| Output | Mesh Resolution、Curve Detail（小さい丸みの最低分割数）、To Mesh（3枚以上が付く辺は頂点グループ non_manifold に） |
 
 ## クリックで選ぶツールの操作
 Extend Edge・Corner Fill・Bridge Edges・Fill Hole・Split Patch・Duplicate Edge as Curve・Loft は、押すと 3D ビューで選ぶモードに入ります。
@@ -57,7 +63,8 @@ Extend Edge・Corner Fill・Bridge Edges・Fill Hole・Split Patch・Duplicate E
 | 左クリック | 選ぶ（選び済みをもう一度クリックすると外す） |
 | ホイール | Extend は長さ、ほかは Tension（両側の面の向きを引き継ぐ強さ） |
 | C | 継続性の切り替え（G0 / G1 / G2） |
-| F | Bridge Edges：端の組み合わせを反転 |
+| F | Bridge Edges：端の組み合わせを反転。Sweep：レールの反対の端から |
+| R / S / T | Sweep：断面をレールに合わせて回す（Rotate）／もう一方の端をまっすぐ（Straight）／止まる位置（Target） |
 | D / S | Split Patch・Duplicate Edge as Curve：切る向き／区間の境目への吸着 |
 | Shift+クリック | Duplicate Edge as Curve：選び足す（Enter でまとめて作る） |
 | E | Bridge Edges・Fill Hole・Sweep の Target：候補を 辺とカーブ → 辺だけ → カーブだけ と切り替え |
@@ -96,7 +103,7 @@ Extend Edge で作った面は、選ぶと元の辺の中央にオレンジの�
 
 ベジェなら上面図で横線・縦線を引き、側面図や G Z で高さの起伏を付けるのが手早いです。
 
-## 面が増えてきたら（v0.21）
+## 面が増えてきたら
 - **Linked Edit**（Group パネルのチェック）：オンにすると、面を編集（編集モードで制御点を動かして Tab で戻る、または移動）したとき、周りの面も付いてきます。辺を共有していた面は、元の G0/G1/G2 のままつなぎ直されます。Falloff で影響が届く範囲（編集した面の大きさに対する倍率）を決めます
   - 付いてくるのは「編集中（アクティブ）の面」から周りへです。周りの面は「手で直した面」として扱われます
   - 元の面から作られた面（Extend など）は、動かすのではなく Live Update で作り直されます
@@ -107,31 +114,24 @@ Extend Edge で作った面は、選ぶと元の辺の中央にオレンジの�
 - 境界用のカーブは Create 欄の **Line / Arc**（Add Boundary Curve）で作るのが手早いです。Blender 標準の Path（NURBS）は既定で Endpoint がオフなので、境界に使うと角にわずかな隙間ができることがあります
 - 手で編集した面は「手で直した」と記録され、Regenerate や Live Update で上書きされないようにしています（Regenerate を押した場合は警告が出て、Ctrl+Z で戻せます）
 - 対応する面：Endpoint がオン、Cyclic なし、制御点の Weight がすべて 1
-- Corner Fill の頂点と、4辺以外の Fill Hole の中心付近は、わずかに近似になります
+- Corner Fill の頂点と、Fill Hole の角の付近は、わずかに近似になります（向きは G1 でそろい、曲率までは合いません）
 - Fill Hole を G0（C キー）にすると、周りの面の傾きを使わず縁の位置だけで埋めるので、縁が平面上にあれば真っ平らなフタになります（丸い穴でもドームにならない）。膨らませたいときは G1/G2
+- Fill Hole では、まっすぐ続く2本の辺（フィレットの端と、その先の壁の端など）は1辺として扱い、本当の角の数で埋めます
 - Fill Hole の Layout：輪郭に「角」がない穴（筒の端のフタなど）は自動で Radial（中心に集まるドーム状の面）になります。Grid / Radial は調整パネルで切り替え可。Radial の境目は G1（折れなし）で、曲率までは揃いきらないことがあります
-- Split Patch で切った面は、作り方の記録を持たない「固定された面」になります
+- Split Patch で切った面は、作り方の記録を持たない「固定された面」になります。Match Edge と Even Gap の指定は、その辺を持つ片に引き継がれます
 - Fillet で切り詰めた面は、切り詰める前の作り方を覚えています。半径を変えたとき（矢印）や、元にした面が動いたときは、切り詰めからやり直されます。切り詰めた面を手で動かすと「手で直した面」になり、半径の変更は止まります（Regenerate で戻すと再び変えられます）
 - Offset Surface は近似（標準で誤差は距離の1%程度以下）。元の面に連動します
 - To Mesh：Mesh Resolution は一番長い辺の分割数で、ほかの面は同じくらいの細かさになるよう面の大きさに合わせて分割します（小さい面ほど少なく）。辺を共有する面どうしは分割数をそろえます。曲がりのきつい小さい面が粗く見えたら Mesh Resolution を上げてください
 - To Mesh：長い辺に短い面が2枚並んで接するところ（中心点で分ける Fill Hole など）は、短い側の頂点で長い側の辺を分けてつなぐので、継ぎ目は割れません（その面は、Quads をオンにしている間は四角形と三角形に切り分けます）
 
-## 試してほしいこと（v0.16 の調整用チェックリスト）
-気になった点があれば、番号と一緒に教えてください。
-
-1. Add Patch → Extend Edge を何回か：辺の選びやすさ、ラベルの見やすさ、ホイールでの長さ調整
-2. Corner Fill / Bridge Edges / Fill Hole：2本目以降の選び方、プレビューの分かりやすさ
-3. 元の面を G で動かす：Live Update の追従と重さ（面が10枚を超えるくらいで）
-4. Mirror Group → 片側を編集：反対側の追従、中心線のゼブラ
-5. Cage：Add → Lattice 編集 → Apply の流れ
-6. Split Patch：切る位置の分かりやすさ、D / S キー
-7. To Mesh：溶接結果、シェーディング
-8. パネル全体：並び順、名前、足りない／要らないボタン
+## 試してほしいこと
+手で触って確かめてほしい項目は [docs/CHECKLIST_hands_on.md](docs/CHECKLIST_hands_on.md) にまとめています。気になった点があれば、項目の番号と一緒に教えてください。
 
 ## 開発
 
 | 作業 | コマンド |
 |---|---|
+| 全部のテスト | `py tools/run_tests.py`（core・blender・sample・body・gui・modal。`--no-gui` で画面つきの2本を除く。Blender は環境変数 `BLENDER` か既定の場所）。GitHub では push のたびに core と Blender 5.0 の画面なしのテストが走る |
 | 計算部分の単体テスト（Blender 不要） | `py tests/test_core.py` |
 | Blender 上での通しの確認（画面なしで実行） | `blender -b --factory-startup --python tests/test_blender.py`（最後に `ALL OK`） |
 | インストール用 ZIP の作成 | `py tools/build_zip.py [--out フォルダ ...]`（既定は `dist/`。`blender_manifest.toml` と `__init__.py` のバージョンが食い違っていると止まる） |

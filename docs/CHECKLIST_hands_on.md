@@ -68,3 +68,16 @@
 |---|---|
 | `body_front_cabin.blend` で全部を選んで To Mesh | 警告に「non_manifold」が出る。編集モードで頂点グループ non_manifold を選ぶと、バンパー上のモールの付け根が選ばれる |
 | `hood_fender.blend` で To Mesh | 警告なし。Fill の角に穴がない（編集モードで Select → Select All by Trait → Non Manifold を使うと、選ばれるのが外周だけ） |
+
+## 9. Undo とファイルの開き直し（v0.82.1〜v0.82.3。画面つきのランダム操作で見つけて直したもの）
+
+`body_front_cabin.blend` で：
+
+| 手順 | 見ること |
+|---|---|
+| File → Open で別のファイルを開き、また `body_front_cabin.blend` を開いて、フェンダーを G で動かす | ドアの前の縁と肩のフィレットが付いてくる（以前は開き直すと、Blender を再起動するまで付いてこなかった） |
+| 開いた直後に、サイドバーの Location に値を打ち込んでフェンダーを1回だけ動かす | 1回目から付いてくる |
+| Zebra をオン → すぐ Ctrl+Z を何度か | Blender が落ちない・固まらない。隠してある Lip に縞が付かない |
+| ドアを選んで Refine → Ctrl+Z 1回 | ドアと反対側のドア（Door_mirror）が両方とも元の点の数に戻る。Ctrl+Shift+Z で両方とも戻る |
+| 元になる面（フェンダー、バンパー、ルーフ）を何回か動かしてから、Ctrl+Z を3〜4回 | Follow Arrows（Selected）で、灰色の破線（手で直した扱い）が出ていない。動かすとまた付いてくる |
+

@@ -25,18 +25,22 @@ Requires Blender 5.0 or later (tested with 5.3 on Windows; the automated tests a
 ## What it does
 - **Join surfaces smoothly**: match neighbouring patches at G0 (position), G1 (tangent) or G2 (curvature). Extend an edge, bridge two edges, sweep an edge's shape along another edge, fill a corner or a hole, round a corner (Fillet), fold a wall off an edge (Flange), copy a patch edge out as a curve to build more patches from (Duplicate Edge as Curve).
 - **Build from curves**: Coons patch from 3 to 4 boundary curves, Loft through section curves (click them in the order to pass through), Curve Network from a grid of crossing curves (G2 inside).
-- **Body panel presets and blueprints**: start from a Hood, Roof, Door or Hood + Fender; place side, front and top drawings at real size.
-- **It remembers how a patch was made**: move a source patch or curve and everything built from it is rebuilt (Live Update). Match Edge links a patch to its neighbour so it keeps following it, however far it moves. Follow Arrows draws who follows whom. Mirror Group keeps the other half in step.
-- **Check the result**: seam colours (G2 green, G1 yellow, G0 red), zebra stripes, curvature comb and map, a continuity list that jumps to the worst seam, Diagnose (seams weaker than asked for, wavy patches, each with a suggested fix), panel gap measurement and Even Gap (even out a panel joint and keep it so).
+- **Body panel presets and blueprints**: start from a Hood, Roof, Door, Trunk, Bumper, Hood + Fender or Roof + Side; place side, front and top drawings at real size.
+- **It remembers how a patch was made**: move a source patch or curve and everything built from it is rebuilt (Live Update); one Ctrl+Z takes back a tool and everything it rebuilt. Match Edge links a patch to its neighbour so it keeps following it, however far it moves. Follow Arrows draws who follows whom. Mirror Group keeps the other half in step.
+- **Check the result**: seam colours (G2 green, G1 yellow, G0 red), zebra stripes, curvature comb and map, a continuity list that jumps to the worst seam, Diagnose (seams weaker than asked for, wavy patches, each with a suggested fix; mark what you meant and it stays hidden), panel gap measurement and Even Gap (even out a panel joint and keep it so).
 - **Shape it**: Soft Pull, Fair, Refine, Add Row, Cage (lattice).
-- **Output**: To Mesh welds the patches into one gap-free mesh, mostly quads.
+- **Output**: To Mesh welds the patches into one gap-free mesh, mostly quads. Edges shared by three or more patches are marked in a vertex group.
+
+## Samples
+`samples/hood_fender.blend` (a hood with its fenders) and `samples/body_front_cabin.blend` (the front of a body with its cabin), both built with this add-on only by `tools/build_sample_hood.py` and `tools/build_sample_body.py`.
 
 ## Not covered
 - Trimming a hole into a patch (build openings from separate patches instead; see the manual).
 - NURBS export (IGES / STEP). The output is Blender surfaces and meshes.
 
 ## Documents
-- `docs/MANUAL.md` manual (Japanese), `docs/FEATURES.md` feature list, `docs/WORKFLOWS.md` six step-by-step workflows, `docs/CHANGELOG.md` history.
+- `docs/MANUAL.md` manual (Japanese), `docs/FEATURES.md` feature list, `docs/WORKFLOWS.md` six step-by-step workflows, `docs/CHANGELOG.md` history (in English), `docs/VALIDATION_body.md` what building the body sample turned up, `docs/CHECKLIST_hands_on.md` what to check by hand.
+- Tests: `py tools/run_tests.py` runs all suites (`--no-gui` skips the two that open a Blender window).
 
 ## Reporting a bug
 Select the patches involved and press **Copy Bug Report** in the **Help** panel at the bottom of the sidebar (it starts collapsed), then paste the text into a new issue at

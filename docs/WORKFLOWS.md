@@ -11,7 +11,7 @@
 | 3 | 下絵に沿って、カーブから面を張る | Add Blueprint、Line/Arc、Coons、Loft |
 | 4 | カーブの網で、1枚のパネルを滑らかに作る | Curve Network、Network Check、Fair Curves |
 | 5 | 窓やライトの開口部を作る | Project Curve、Coons、Flange |
-| 6 | 仕上げの検査とメッシュ出力 | Check Continuity、Zebra、Panel Gap、To Mesh |
+| 6 | 仕上げの検査とメッシュ出力 | Diagnose、Check Continuity、Zebra、Panel Gap と Even Gap、To Mesh |
 
 ---
 
@@ -45,11 +45,17 @@
 
 **ポイント**：置かれるのはふつうのパッチなので、他の機能がそのまま使える。左右を作り込む前に、右半分だけを仕上げるのがよい（Mirror Group が連動する）。
 
-**サンプル**：`tools/build_sample_hood.py` を Blender で実行すると、ボンネット・フェンダー・ノーズ・カウルをつないだ見本が `samples/hood_fender.blend` にできる。
+**サンプル**：同梱の `samples/hood_fender.blend` が、この手順で作ったボンネット・フェンダー・ノーズ・カウルの見本。さらに先（バンパー、キャビン、ドア、窓の開口部、モール）まで進めたものが `samples/body_front_cabin.blend` で、手順と見つかったことは [検証の記録](VALIDATION_body.md) にある。どちらもリポジトリのスクリプトで作り直せる（`blender` は Blender の実行ファイルのパス）。
 
 ```bash
-"C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" -b --factory-startup --python tools/build_sample_hood.py
+blender -b --factory-startup --python tools/build_sample_hood.py
 ```
+
+```bash
+blender -b --factory-startup --python tools/build_sample_body.py
+```
+
+**ほかのプリセット**：Trunk（トランクの蓋とリアパネル）、Roof + Side（ルーフとキャビンの側面）、Bumper（両端が回り込むバンパー）も、同じように置いて Mirror Group で反対側を作れる。
 
 ---
 
@@ -104,13 +110,14 @@
 
 **目的**：全体の継ぎ目と見た目を確かめ、問題を直してからメッシュにする。
 
-1. **Check Continuity** を、何も選ばずに押す（表示中の全部の継ぎ目を調べる）。悪い順（open → G0 → G1 → G2）に並ぶ。行の右の矢印ボタンで、その継ぎ目の2枚へ移動できる
-2. 問題のある継ぎ目を **Match Edge** や **Soft Pull** で直す。直したら再度 Check Continuity を押す
-3. **Seam Colors** をオンにして、全体を見渡す。車の外板なら、全部が緑（G2）に近いのが目標
-4. **Zebra** をオンにして、縞が継ぎ目で折れたり、太さが急に変わったりしていないか見る。Stripes（縞の数）、Axis（軸）、Width（明暗の比率）、Soft（縁のぼかし）を変えて、角度を変えて見る
-5. **Curvature Comb** で、カーブや面の曲率の包絡線に段差がないか見る
-6. パネルの隙間が重要なら **Panel Gap**。Target に隙間の目標値、Tolerance に許容を入れると、外れている所がオレンジで示される
-7. Output 欄で Mesh Resolution を決め、全部の面を選んで **To Mesh**。継ぎ目は溶接され、隙間はない。Quads をオンのままにすると、5角形以上の面は四角形と三角形に分けられ、サブディビジョンしても崩れにくい
+1. **Diagnose** を、何も選ばずに押す。レシピの求める連続性に届いていない継ぎ目、指定のない折れ、波打った面が、直し方の案つきで悪い順に並ぶ。行の右の矢印でその面へ移動。わざとそうした所（折り目、ドアのタンブルホームなど）は、行の右のチェックで「意図どおり」の印を付けると次から出ない
+2. **Check Continuity** を、何も選ばずに押す（表示中の全部の継ぎ目を調べる）。悪い順（open → G0 → G1 → G2）に並ぶ。行の右の矢印ボタンで、その継ぎ目の2枚へ移動できる
+3. 問題のある継ぎ目を **Match Edge** や **Soft Pull** で直す。直したら再度 Diagnose か Check Continuity を押す
+4. **Seam Colors** をオンにして、全体を見渡す。車の外板なら、全部が緑（G2）に近いのが目標
+5. **Zebra** をオンにして、縞が継ぎ目で折れたり、太さが急に変わったりしていないか見る。Stripes（縞の数）、Axis（軸）、Width（明暗の比率）、Soft（縁のぼかし）を変えて、角度を変えて見る
+6. **Curvature Comb** で、カーブや面の曲率の包絡線に段差がないか見る
+7. パネルの隙間が重要なら **Panel Gap**。Target に隙間の目標値、Tolerance に許容を入れると、外れている所がオレンジで示される。そろえたいときは、動かす方のパネルをアクティブにして相手も選び、**Even Gap**（隙間を Target に、Flush で段差もなくす。以後、相手を動かしても隙間を保つ）
+8. Output 欄で Mesh Resolution を決め、全部の面を選んで **To Mesh**。継ぎ目は溶接され、隙間はない。Quads をオンのままにすると、5角形以上の面は四角形と三角形に分けられ、サブディビジョンしても崩れにくい。1本の辺に3枚以上の面が付く所（継ぎ目のモールなど）は警告が出て、頂点グループ non_manifold に入る
 
 **メッシュにした後**：メッシュは元のパッチとは切り離されたスナップショット。形を変えたいときはパッチに戻って直し、To Mesh をやり直す。
 
