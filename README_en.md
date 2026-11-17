@@ -9,6 +9,10 @@ Surfaces are Blender NURBS surface patches; when the shape is right, weld them i
 |---|---|---|
 | ![Seam Colors](docs/images/seam_colors.jpg) | ![Follow Arrows](docs/images/follow_arrows.jpg) | ![To Mesh](docs/images/to_mesh.jpg) |
 
+| The second sample (front of a body with its cabin) | Quality check (Diagnose) |
+|---|---|
+| ![Body sample](docs/images/body_zebra.jpg) | ![Diagnose](docs/images/diagnose.jpg) |
+
 The full documentation is in Japanese (see `docs/MANUAL.md`). The panel and button names are in English.
 
 ## Install
@@ -16,7 +20,7 @@ The full documentation is in Japanese (see `docs/MANUAL.md`). The panel and butt
 2. In Blender: Edit > Preferences > Add-ons > menu at the top right > Install from Disk, and pick the ZIP (do not unpack it).
 3. In the 3D Viewport press N: a **Spline Surface** tab appears.
 
-Requires Blender 5.0 or later (tested with 5.2 on Windows).
+Requires Blender 5.0 or later (tested with 5.3 on Windows; the automated tests also run on 5.0 under Linux).
 
 ## What it does
 - **Join surfaces smoothly**: match neighbouring patches at G0 (position), G1 (tangent) or G2 (curvature). Extend an edge, bridge two edges, sweep an edge's shape along another edge, fill a corner or a hole, round a corner (Fillet), fold a wall off an edge (Flange), copy a patch edge out as a curve to build more patches from (Duplicate Edge as Curve).

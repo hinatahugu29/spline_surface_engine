@@ -4,8 +4,9 @@
 
 Runs build_zip first (so the version check applies), then writes
 dist/spline_surface-booth-<version>.zip holding one folder with the add-on zip
-(install it as it is, do not unpack it), docs/ and samples/. The sample is
-built with tools/build_sample_hood.py; it is skipped with a warning if missing.
+(install it as it is, do not unpack it), docs/ and samples/. The
+samples are built with tools/build_sample_hood.py and tools/build_sample_body.py;
+a missing one is skipped with a warning.
 """
 import os
 import sys
@@ -16,6 +17,8 @@ import build_zip  # noqa: E402
 
 ROOT = build_zip.ROOT
 DOCS = ("MANUAL.md", "FEATURES.md", "WORKFLOWS.md", "CHANGELOG.md")
+SAMPLES = (("hood_fender.blend", "build_sample_hood.py"),
+           ("body_front_cabin.blend", "build_sample_body.py"))
 README = """Spline Surface %(v)s
 
 1. Blender の「編集 → プリファレンス → アドオン」を開く
@@ -28,7 +31,7 @@ docs/WORKFLOWS.md   目的別の作業の流れ（6例）
 docs/FEATURES.md    機能一覧
 docs/CHANGELOG.md   更新履歴
 LICENSE.txt         ライセンス（GPL-3.0-or-later）
-samples/            サンプル（ボンネット+フェンダー）
+samples/            サンプル（ボンネット+フェンダー、車体の前半+キャビン）
 
 Blender 5.0 以降 / 不具合は説明書の「不具合報告」を見てください
 """
@@ -47,11 +50,12 @@ def main():
         zf.write(os.path.join(ROOT, "LICENSE"), "%s/LICENSE.txt" % top)
         for name in DOCS:
             zf.write(os.path.join(ROOT, "docs", name), "%s/docs/%s" % (top, name))
-        sample = os.path.join(ROOT, "samples", "hood_fender.blend")
-        if os.path.exists(sample):
-            zf.write(sample, "%s/samples/hood_fender.blend" % top)
-        else:
-            print("warning: samples/hood_fender.blend is missing (run tools/build_sample_hood.py)")
+        for name, script in SAMPLES:
+            sample = os.path.join(ROOT, "samples", name)
+            if os.path.exists(sample):
+                zf.write(sample, "%s/samples/%s" % (top, name))
+            else:
+                print("warning: samples/%s is missing (run tools/%s)" % (name, script))
     print("wrote", out, os.path.getsize(out), "bytes")
 
 

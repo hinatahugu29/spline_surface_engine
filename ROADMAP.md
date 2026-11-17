@@ -3,9 +3,9 @@
 車のような滑らかな曲面を、NURBS の慣れなしで作れるようにする Blender 5.x アドオン。
 最終出力はメッシュ。操作はボタンとクリック選択が基本で、ギズモは操作が固まってから載せる。
 
-## 現在地（2026-11-17、v0.76.0）
+## 現在地（2026-11-17、v0.82.0）
 
-**v0.72.0 を公開候補（Release Candidate）とした。** その後 v0.73〜v0.76 で、内部の整理（下の「v0.73〜v0.76 の整理」）と、Even Gap・Presets の追加・Sweep の Rotate・Diagnose・Fill Hole の角の改善を入れた。 第1〜第4段階の作業はすべて終わった。公開前の確認も、自動で確かめられるものはすべてテストにした。残りは公開の手続き（アカウントでの操作）と、手で触ったときの感触の確認だけ。
+**v0.72.0 を公開候補（Release Candidate）とした。** その後 v0.73〜v0.76 で、内部の整理（下の「v0.73〜v0.76 の整理」）と、Even Gap・Presets の追加・Sweep の Rotate・Diagnose・Fill Hole の角の改善を入れた。v0.77〜v0.82 では、2つ目のサンプル（車体の前半＋キャビン、`tools/build_sample_body.py`）を作って詰まりを拾い、直した（`docs/VALIDATION_body.md`）。第1〜第4段階の作業はすべて終わった。公開前の確認も、自動で確かめられるものはすべてテストにした。残りは公開の手続き（アカウントでの操作）と、手で触ったときの感触の確認（`docs/CHECKLIST_hands_on.md`）だけ。
 
 | 段階 | 目的 | 状況 |
 |---|---|---|
@@ -22,12 +22,12 @@
 | Blender Extensions の要件 | ✅ マニフェストに copyright と権限（clipboard：Copy Bug Report、files：Blueprints の画像読み込み）。`blender --command extension validate` と `extension build` が通り、別の設定フォルダに入れて有効化できることを確認。外部への通信・`sys.path` の書き換え・同梱バイナリなし |
 | 説明書・機能一覧・作業の流れ・更新履歴 | ✅ `docs/` |
 | 不具合報告の導線 | ✅ Copy Bug Report、Issue の雛形 |
-| サンプル .blend | ✅ 現行版で作り直し、開いて全体を作り直しても失敗ゼロ（v0.70.0。紛れ込んでいた既定の Cube を除いた） |
-| 掲載用のスクリーンショット | ✅ `docs/images/`（Zebra、Seam Colors、Follow Arrows、To Mesh、パネル全体）。README に掲載 |
-| 自動テスト | ✅ 5本。`tests/test_core.py`（計算）、`tests/test_blender.py`（Blender、バックグラウンド）、`tests/test_gui.py`（画面つき：本物の Undo／Redo、名前の変更、大きな移動、点の数が変わる作り直し）、`tests/test_gui_modal.py`（画面つき、マウスとキーのイベントを再現：Fillet・Flange・Fill Hole・Esc）、`tests/test_sample.py`（サンプルを開いて全体を作り直し、To Mesh の結果を検査）。走らせ方は各ファイルの先頭 |
+| サンプル .blend | ✅ 2つ。ボンネット＋フェンダー（`tools/build_sample_hood.py`）と車体の前半＋キャビン（`tools/build_sample_body.py`）。どちらもスクリプトで毎回同じ手順で作り直せて、開いて全体を作り直しても失敗ゼロ。Booth 一式に両方入る |
+| 掲載用のスクリーンショット | ✅ `docs/images/`（Zebra、Seam Colors、Follow Arrows、To Mesh、パネル全体、車体の Zebra、Diagnose）。`tools/take_screenshots.py` がサンプルから撮り直す（v0.82.0 で現行版に更新）。README に掲載 |
+| 自動テスト | ✅ 6本。`tests/test_core.py`（計算）、`tests/test_blender.py`（Blender、バックグラウンド）、`tests/test_gui.py`（画面つき：本物の Undo／Redo、名前の変更、大きな移動、点の数が変わる作り直し）、`tests/test_gui_modal.py`（画面つき、マウスとキーのイベントを再現：Fillet・Flange・Fill Hole・Esc）、`tests/test_sample.py`（ボンネットのサンプルを開いて全体を作り直し、継ぎ目の角度と To Mesh の結果を検査）、`tests/test_body.py`（車体のサンプルで同じこと、加えて Even Gap の追従や Diagnose の印）。走らせ方は各ファイルの先頭、まとめては `py tools/run_tests.py` |
 | 公開前の確認（下の6項目） | ✅ 6項目とも自動テストで確認（v0.70.1） |
 | シーンを複製するアドオンとの併用 | ✅ Blender の Scene > Full Copy（シーンを複製するアドオンが使う仕組み）で再現して確認。複製した面が元のシーンのカーブを読み続ける問題が見つかり、Group 欄に **Use This Scene's Copies** を追加（v0.70.1）。Shot Manager 本体での確認は、このPCに入っていないため未 |
-| 手で触ったときの感触 | ⬜ **人の作業**。ドラッグ中の追従の滑らかさ、パネルの見え方の好みなど、感じ方の確認。自動テストでは結果しか確かめられない |
+| 手で触ったときの感触 | ⬜ **人の作業**。ドラッグ中の追従の滑らかさ、パネルの見え方の好みなど、感じ方の確認。自動テストでは結果しか確かめられない。項目は `docs/CHECKLIST_hands_on.md` |
 | 公開の手続き | ⬜ **人の作業**。Blender Extensions への登録（アカウント）、Booth／Superhive のページ更新。文面（`docs/booth_description.txt`、`docs/superhive_page.html`）は最新の機能・更新履歴・画像に合わせ済み。画像は `docs/images/` からアップロードする。マニフェストの `website` は、公開するページが決まったら入れる |
 
 ### 公開前の確認と、それを確かめるテスト
@@ -46,7 +46,7 @@
 | 項目 | 内容 |
 |---|---|
 | テストの一括実行 | `py tools/run_tests.py`（5本、`--no-gui` で画面つきを除く。Blender は環境変数 `BLENDER` か既定の場所） |
-| CI | `.github/workflows/tests.yml`：計算のテストと、Blender 5.0 のバックグラウンドのテスト。GitHub ではまだ走らせていない（push 後に確認） |
+| CI | `.github/workflows/tests.yml`：計算のテストと、Blender 5.0 のバックグラウンドのテスト（blender、sample、body）。push のたびに GitHub で走る |
 | 形の回帰チェック | `tests/sample_snapshot.json`：サンプルを作り直した制御点を記録と比べる。形を変える修正のあとは `-- --update` で書き直す |
 | `rebuild.py` | 作り直しの計算と、作り方の登録（`@recipe("name")`）。新しい種類の面は登録だけで Live Update・Regenerate に乗る |
 | 分割 | `operators.py` → `creating.py`・`matching.py`・`extending.py`・`holefill.py`。`live.py` → `graph.py`（依存関係）・`links.py`（連続性と追従の変更）・`live.py`（作り直しとハンドラ） |
@@ -68,17 +68,17 @@
 | 状態の表示 | GPU オーバーレイ（描画のみ） |
 | 作った後の値の直接ドラッグ | ギズモ（レシピの値を書き換えて作り直す） |
 
-## できていること（v0.76.0）
+## できていること（v0.82.0）
 
 | 分類 | 機能 |
 |---|---|
-| 作る | Add Patch（Plane / Arc / Dome）、Presets（Hood／Roof／Door／Hood + Fender）、Blueprints（下絵）、Line / Arc（境界用のカーブ）、Coons、Loft（Extra Rows）、Curve Network（＋ Add Curve Grid、Network Check、Move Crossing、Fair Curves）、Snap Ends、Project Curve |
-| 伸ばす・つなぐ | Extend Edge、Bridge Edges、Sweep（Straight、Target）、Match Edge（G0/G1/G2、Spread、大きく動かしても切れない追従）、Corner Fill、Fill Hole（3辺以上、カーブ混在、G0 は平らなフタ）、Flange（Outside、Edit Flange）、Fillet（複数の継ぎ目、トリム、コーナーパッチ、半径の変更）、Split Patch、Duplicate Edge as Curve（辺・等パラメータ線をカーブに。Shift+クリックで複数）、Offset Surface、Continuity の後からの変更 |
+| 作る | Add Patch（Plane / Arc / Dome）、Presets（Hood／Roof／Door／Trunk／Bumper／Hood + Fender／Roof + Side）、Blueprints（下絵）、Line / Arc（境界用のカーブ）、Coons、Loft（Extra Rows）、Curve Network（＋ Add Curve Grid、Network Check、Move Crossing、Fair Curves）、Snap Ends、Project Curve |
+| 伸ばす・つなぐ | Extend Edge、Bridge Edges、Sweep（Straight、Target、Rotate）、Match Edge（G0/G1/G2、Spread、大きく動かしても切れない追従）、Corner Fill、Fill Hole（3辺以上、カーブ混在、G0 は平らなフタ、まっすぐ続く辺は1辺に）、Flange（Outside、Edit Flange）、Fillet（複数の継ぎ目、トリム、コーナーパッチ、半径の変更）、Split Patch（追従の指定を引き継ぐ）、Duplicate Edge as Curve（辺・等パラメータ線をカーブに。Shift+クリックで複数）、Offset Surface、Continuity の後からの変更 |
 | まとめて扱う | Live Update、Linked Edit、Edge Chain、Merge Patches、Cage、Mirror Group（Scope、Unlink、Remove）、Select／Regenerate Group、Follow Arrows／List Links（追従関係の表示） |
 | 面の内側の編集 | Soft Pull（起点：点／線／制御点、減衰5種、連続ストローク）、Control Mesh、Fair、Refine、Add Row、Origin to Center、Align Normals |
-| 確認 | Zebra（Width、Soft）、Seam Colors、Curvature Comb、Curvature Map、Control Points、Check Continuity（悪い順、ジャンプ）、Diagnose（直し方の案つき）、Panel Gap と Even Gap |
+| 確認 | Zebra（Width、Soft）、Seam Colors、Curvature Comb、Curvature Map、Control Points、Check Continuity（悪い順、ジャンプ、辺の一部だけで接する継ぎ目も）、Diagnose（直し方の案つき、意図どおりの印）、Panel Gap と Even Gap |
 | ギズモ | Extend の長さ、Offset Surface の距離、Fillet の半径 |
-| 出力 | To Mesh（均一な密度、T 字頂点の接続と溶接、四角形化、Curve Detail、面の向きの統一）、Trim to Mesh（見た目の確認用の試作） |
+| 出力 | To Mesh（均一な密度、T 字頂点の接続と溶接、四角形化、Curve Detail、面の向きの統一、3枚以上が付く辺の印）、Trim to Mesh（見た目の確認用の試作） |
 | 基盤 | 複数スパンの NURBS、面ごとの作り方の記録（レシピ）と Regenerate、手で直した面の検出、名前の変更の追従、Undo／Redo 後の同期、Copy Bug Report |
 
 ## 公開後の候補（v0.7x〜、必要になったら）
@@ -90,6 +90,8 @@
 | シーン複製の自動の付け直し | 今は Group 欄のボタンで付け直す。複製を見つけたら自動で付け直すかは、使い方を聞いてから |
 | 相互の追従 | Match Edge の追従は一方向のみ（相互にするとループで両方作り直されない）。両側を同時に合わせる仕組みが要るかは使ってから |
 | Follow Arrows の弧 | 弧の膨らみは視点によらず固定。真上に重なる面（Offset など）は見る向きによって短く見える |
+| To Mesh で3枚が付く辺 | いまは警告して頂点グループに入れるだけ（車体のサンプルのモールの付け根）。そういう面を別のメッシュにする選択肢 |
+| Even Gap のはみ出した部分 | 向かい合わない部分は元の位置にゆるく留まるだけ。そろえた部分へなめらかに曲げてつなぐか |
 
 ### 残っている近似（必要になったら）
 - Fillet：切り詰める量は継ぎ目全体で一定（角度が辺に沿って大きく変わる形では近似）
@@ -136,3 +138,6 @@
 | v0.70 | 公開候補。Follow Arrows の Selected 範囲（既定）、サンプルの作り直し、掲載用スクリーンショット、ROADMAP の整理。v0.70.1：Use This Scene's Copies（Full Copy したシーンの面を、そのシーンの複製に付け直す）、公開前の確認をすべて自動テストに（`test_gui_modal.py`、`test_sample.py`）、掲載ページの文面と画像 |
 | v0.71 | Duplicate Edge as Curve（面の辺・等パラメータ線を、区間ごとに1点のベジェカーブとして正確に複製。Shift+クリックで複数）。点の多いカーブだと Coons が極端に遅くなるため、面の線をそのまま区間単位で書き出す方式にした |
 | v0.72 | Loft をクリックで選ぶ方式に（通す順＝クリック順、Backspace、プレビュー、事前の選択を引き継ぐ）。辺とカーブを選ぶツール（Bridge Edges、Fill Hole、Sweep の Target）に E キーの絞り込み。辺に重なったカーブが選び分けられないという実機での指摘から |
+| v0.73〜v0.76 | Even Gap、Presets（Trunk、Roof + Side、Bumper）、Sweep の Rotate、Diagnose、Fill Hole の角を G1 に。内部の整理（`rebuild.py` のレシピ登録、`operators.py`・`live.py` の分割）、テストの一括実行と CI、形の回帰チェック |
+| v0.77〜v0.81 | 2つ目のサンプル（車体の前半＋キャビン）で拾った詰まりの修正：一部だけ向かい合う縁の Even Gap、Fill Hole の角のひだ（本当の角の数で埋め、分けた面どうしは中心まで G1）、Split Patch の後の追従、辺の一部だけで接する継ぎ目の測定、Diagnose の「意図どおり」の印、To Mesh の非多様体の印 |
+| v0.82 | Seam Colors を Check Continuity・Diagnose と同じ測り方に（フィレットで切り離した2枚を「open」と塗っていた）。掲載用の画像をスクリプトで撮り直し、Booth 一式に車体のサンプル、CI の更新 |

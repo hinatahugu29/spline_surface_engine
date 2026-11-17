@@ -7,22 +7,22 @@ on:
 
 jobs:
   core:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: pip install numpy
       - run: python tools/run_tests.py core
 
   blender:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       BLENDER_VERSION: "5.0.0"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - name: Libraries Blender needs in background mode
@@ -31,7 +31,7 @@ jobs:
           sudo apt-get install -y libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libxkbcommon0 libsm6
       - name: Cache Blender
         id: cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: blender
           key: blender-${{ env.BLENDER_VERSION }}

@@ -1,4 +1,4 @@
-# 検証：車体の前半＋キャビン（v0.77.0、v0.81.1 まで更新）
+# 検証：車体の前半＋キャビン（v0.77.0、v0.82.0 まで更新）
 
 `samples/body_front_cabin.blend` を作りながら、ツールの詰まりを拾った記録です。サンプルは `tools/build_sample_body.py` で毎回同じ手順で作り直せます。開いて全部を作り直すテストが `tests/test_body.py` です。
 
@@ -12,7 +12,7 @@ blender -b --factory-startup --python tools/build_sample_body.py -- [out.blend] 
 |---|---|---|
 | ![横](images/body/side.jpg) | ![上](images/body/top.jpg) | ![後ろ](images/body/rear34.jpg) |
 
-## 作ったもの（右半分を作って Mirror Group、計 42 枚。v0.77.0 では 34 枚）
+## 作ったもの（右半分を作って Mirror Group、計 36 枚。v0.77.0 では 34 枚）
 
 | 部分 | 使った機能 |
 |---|---|
