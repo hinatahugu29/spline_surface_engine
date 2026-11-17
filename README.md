@@ -26,6 +26,7 @@ GNU General Public License v3.0 以降（GPL-3.0-or-later）。個人・商用�
 - [作業の流れ](docs/WORKFLOWS.md)：目的別に6例の手順
 - [更新履歴](docs/CHANGELOG.md)
 - [検証の記録](docs/VALIDATION_body.md)：車体の前半＋キャビンを作って見つけたこと
+- [手で確かめる項目](docs/CHECKLIST_hands_on.md)：自動テストでは見られない、操作の感触と見た目
 
 ## 基本の流れ
 1. **作る**：Add Patch で面を出すか、カーブを3〜4本描いて Coons、断面カーブを並べて Loft、縦横に交差するカーブの網から Curve Network
