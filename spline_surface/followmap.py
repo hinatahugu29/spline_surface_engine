@@ -15,6 +15,7 @@ import json
 
 import blf
 import bpy
+from bpy.app.handlers import persistent
 import gpu
 import numpy as np
 from bpy_extras.view3d_utils import location_3d_to_region_2d
@@ -372,6 +373,7 @@ def _timer():
     return 0.3
 
 
+@persistent      # kept when another file is opened
 def _on_depsgraph(scene, depsgraph):
     if _state["handle"] is not None:
         _state["dirty"] = True  # selection changes matter too (Group scope)
@@ -388,7 +390,7 @@ def show(context, on):
         _state["text_handle"] = bpy.types.SpaceView3D.draw_handler_add(
             _draw_pixel, (), 'WINDOW', 'POST_PIXEL')
         refresh(context)
-        bpy.app.timers.register(_timer, first_interval=0.3)
+        bpy.app.timers.register(_timer, first_interval=0.3, persistent=True)
     elif not on and _state["handle"] is not None:
         _remove_handlers()
         _state["draw"], _state["labels"] = [], []

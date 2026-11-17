@@ -9,6 +9,7 @@ import json
 import traceback
 
 import bpy
+from bpy.app.handlers import persistent
 import numpy as np
 
 from .rebuild import compute_from_meta
@@ -39,6 +40,9 @@ def _write_in_place(ob, net, orders):
     return True
 
 
+HAND_EDITED = "edited by hand"
+
+
 def rebuild(ob, context, force=False, in_place_only=False, allow_new_data=True):
     """Regenerate one patch. Returns (status, message); status in
     ok/skipped/error/deferred.
@@ -53,7 +57,7 @@ def rebuild(ob, context, force=False, in_place_only=False, allow_new_data=True):
     if meta is None:
         return "skipped", "no recipe"
     if not force and hand_edited(ob, meta):
-        return "skipped", "edited by hand"
+        return "skipped", HAND_EDITED
     try:
         net, orders, msg = compute_from_meta(meta, context)
         if not _write_in_place(ob, net, orders):
@@ -105,11 +109,15 @@ def update_chain(names, context, in_place_only=False, allow_new_data=True):
             result["unchanged"].append(name)
             continue
         before = _signature(ob)
-        status, _ = rebuild(ob, context, in_place_only=in_place_only,
-                            allow_new_data=allow_new_data)
+        status, why = rebuild(ob, context, in_place_only=in_place_only,
+                              allow_new_data=allow_new_data)
         result[status].append(name)
         if status == "deferred":
             waiting.add(name)
+        elif status == "skipped" and why == HAND_EDITED:
+            # kept as the user shaped it, which is what its dependents read: they
+            # follow it (a mirror copy of a hand-moved panel, after an undo)
+            changed.add(name)
         elif status != "ok":
             blocked.add(name)
         elif _signature(ob) != before:
@@ -210,6 +218,7 @@ def _signature(ob):
     return None
 
 
+@persistent
 def _on_depsgraph(scene, depsgraph):
     settings = getattr(scene, "spline_surface", None)
     if _state["busy"] or settings is None:
@@ -372,6 +381,7 @@ def _deferred_timer():
     return None
 
 
+@persistent
 def _reset(*_):
     _state["busy"] = False      # a stuck flag would leave Live Update off until Blender restarts
     _state["fps"].clear()
@@ -406,12 +416,43 @@ def resync(context):
         _state["busy"] = False
 
 
+def _prime():
+    """Record what every source looks like now.
+
+    The depsgraph handler rebuilds a patch when a source's fingerprint differs
+    from the recorded one; a source seen for the first time only gets recorded.
+    Without this, the first edit after opening a file (or enabling the add-on)
+    became the baseline, and a single change - a value typed in the sidebar, one
+    snapped move - was not followed until the next one."""
+    try:
+        for name in dependency_graph():
+            ob = bpy.data.objects.get(name)
+            if ob is not None:
+                _state["fps"][name] = _signature(ob)
+    except Exception:       # restricted data while Blender is still starting up
+        traceback.print_exc()
+
+
+def _prime_timer():
+    _prime()
+    return None
+
+
+@persistent
 def _on_load(*_):
+    # Every handler of the add-on is @persistent: Blender drops the others when a
+    # file is opened, which left Live Update off after File > Open (before v0.82.1).
     # session_uids belong to the previous file
     _uids.clear()
     _missing.clear()
     FAILED.clear()
     _deferred.clear()
+    _prime()
+    # overlays that are on (Seam Colors, Panel Gap, ...) redraw for the new file
+    from . import ctrlpoints, curvature, followmap, netcheck, panelgap, seams
+    for module in (ctrlpoints, curvature, followmap, netcheck, panelgap, seams):
+        if "dirty" in module._state:
+            module._state["dirty"] = True
 
 
 def _deferred_resync():
@@ -422,6 +463,7 @@ def _deferred_resync():
     return None     # run once
 
 
+@persistent
 def _on_undo(*_):
     _reset()
     _deferred.clear()   # the undone state is resynced in place; never extrude right after undo
@@ -541,6 +583,8 @@ def register():
     for hs in (bpy.app.handlers.undo_post, bpy.app.handlers.redo_post):
         if _on_undo not in hs:
             hs.append(_on_undo)
+    # enabled with a file already open: record its sources once Blender is ready
+    bpy.app.timers.register(_prime_timer, first_interval=0.0)
 
 
 def unregister():

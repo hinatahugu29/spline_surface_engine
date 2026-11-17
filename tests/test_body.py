@@ -128,6 +128,30 @@ def run():
     print("marked %d vertices in 'non_manifold'" % marked)
     assert marked >= nonmanifold
     bm.free()
+    # v0.82.1: a patch moved by hand is skipped by its own rebuild, but what reads it still
+    # follows it (after an undo, resync walks the whole graph: Side's mirror copy stayed behind)
+    from spline_surface.rebuild import compute_from_meta
+    settings = bpy.context.scene.spline_surface
+    settings.live_update = False
+    bpy.data.objects["Side"].location.z += 0.01
+    bpy.context.view_layer.update()
+    settings.live_update = True
+    res = live.resync(bpy.context)
+    mirror = bpy.data.objects["Side_mirror"]
+    off = np.abs(compute_from_meta(json.loads(mirror[META_KEY]), bpy.context)[0]
+                 - world_net(mirror)[0]).max()
+    print("resync with Side moved by hand: skipped %s, mirror off by %.2g" % (res["skipped"], off))
+    assert "Side" in res["skipped"] and "Side_mirror" not in res["skipped"] and off < 1e-6, res
+    # v0.82.1: right after opening the file, one discrete change of a source (a value
+    # typed in the sidebar) is followed; it used to become Live Update's baseline instead
+    bpy.ops.wm.open_mainfile(filepath=bpy.data.filepath)
+    fillet = bpy.data.objects["Fender_fillet"]
+    before = world_net(fillet)[0].copy()
+    bpy.data.objects["Fender"].location.z += 0.01
+    bpy.context.view_layer.update()
+    moved = np.abs(world_net(fillet)[0] - before).max()
+    print("first edit after opening: fillet moved %.4f" % moved)
+    assert abs(moved - 0.01) < 1e-4, moved
     spline_surface.unregister()
     print("ALL OK")
 

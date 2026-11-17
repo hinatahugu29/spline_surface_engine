@@ -11,6 +11,7 @@ other panel moves. The geometry lives in core.gap.
 import json
 
 import bpy
+from bpy.app.handlers import persistent
 import gpu
 import numpy as np
 from gpu_extras.batch import batch_for_shader
@@ -95,6 +96,7 @@ def _timer():
     return 0.4
 
 
+@persistent      # kept when another file is opened
 def _on_depsgraph(scene, depsgraph):
     if _state["handle"] is None:
         return
@@ -121,7 +123,7 @@ def show(context, on):
     if on and _state["handle"] is None:
         _state["handle"] = bpy.types.SpaceView3D.draw_handler_add(_draw, (), 'WINDOW', 'POST_VIEW')
         refresh(context)
-        bpy.app.timers.register(_timer, first_interval=0.4)
+        bpy.app.timers.register(_timer, first_interval=0.4, persistent=True)
     elif not on and _state["handle"] is not None:
         bpy.types.SpaceView3D.draw_handler_remove(_state["handle"], 'WINDOW')
         _state["handle"] = None

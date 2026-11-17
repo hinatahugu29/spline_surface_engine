@@ -9,6 +9,7 @@ import json
 import math
 
 import bpy
+from bpy.app.handlers import persistent
 
 MAT_NAME = "SS_Zebra"
 ORIG_KEY = "spline_surface_orig_mats"
@@ -156,6 +157,7 @@ class SS_OT_zebra_toggle(bpy.types.Operator):
         return {'FINISHED'}
 
 
+@persistent      # kept when another file is opened
 def _on_depsgraph(scene, depsgraph):
     settings = getattr(scene, "spline_surface", None)
     if settings is None or not settings.zebra_on:

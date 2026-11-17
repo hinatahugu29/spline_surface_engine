@@ -7,6 +7,7 @@ by hand (Live Update leaves it alone, Regenerate resets it).
 """
 import bmesh
 import bpy
+from bpy.app.handlers import persistent
 import numpy as np
 
 from .ctrlpoints import pin_masks
@@ -127,6 +128,7 @@ def sync(context, ob):
     return "ok"
 
 
+@persistent      # kept when another file is opened
 def _on_depsgraph(scene, depsgraph):
     if _state["busy"]:
         return
