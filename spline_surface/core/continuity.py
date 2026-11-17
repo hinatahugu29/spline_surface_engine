@@ -240,15 +240,23 @@ def partial_contact(Pa, Pb, tol, orders_a=None, orders_b=None, samples=41, dense
     length) for the longest contact - angle is the largest normal angle along it,
     in degrees - or None.
     """
+    ca, cb = np.reshape(Pa, (-1, 3)), np.reshape(Pb, (-1, 3))
+    # control hulls contain the surfaces: far apart boxes cannot touch
+    if np.any(ca.max(0) + tol < cb.min(0)) or np.any(cb.max(0) + tol < ca.min(0)):
+        return None
     orders_a = orders_a or bezier_orders(np.asarray(Pa))
     orders_b = orders_b or bezier_orders(np.asarray(Pb))
-    size = np.ptp(np.concatenate([np.reshape(Pa, (-1, 3)), np.reshape(Pb, (-1, 3))]), 0).max()
+    size = np.ptp(np.concatenate([ca, cb]), 0).max()
     t, td = np.linspace(0.0, 1.0, samples), np.linspace(0.0, 1.0, dense)
+    edges_b = {eb: _edge_samples(Pb, orders_b, eb, td) for eb in EDGES}
     best = None
     for ea in EDGES:
         pa, na = _edge_samples(Pa, orders_a, ea, t)
+        lo, hi = pa.min(0) - tol, pa.max(0) + tol
         for eb in EDGES:
-            pb, nb = _edge_samples(Pb, orders_b, eb, td)
+            pb, nb = edges_b[eb]
+            if np.any(pb.max(0) < lo) or np.any(pb.min(0) > hi):
+                continue
             # distance to the edge itself (its fine polyline's segments), not to its samples
             a0, ab = pb[:-1], pb[1:] - pb[:-1]
             f = np.clip(((pa[:, None] - a0[None]) * ab[None]).sum(2)
