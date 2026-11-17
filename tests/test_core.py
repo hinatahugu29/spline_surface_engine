@@ -1477,6 +1477,13 @@ def test_diagnose():
     far = [dict(apart[0], gap=0.1, size=1.0)]                  # a pillar strip between them
     assert [i["kind"] for i in diagnose({}, {}, near)] == ["seam_open"]
     assert diagnose({}, {}, far) == []
+    from core.diagnose import drop_accepted, issue_keys
+    kink = {"kind": "seam_kink", "a": "B", "b": "D"}
+    wave = {"kind": "inflection", "a": "W", "b": "W"}
+    assert issue_keys(kink) == {"B": "seam_kink:D", "D": "seam_kink:B"}
+    assert issue_keys(wave) == {"W": "inflection"}
+    shown, hidden = drop_accepted([kink, wave], {"D": {"seam_kink:B"}})
+    assert shown == [wave] and hidden == 1                   # marked on either patch is enough
 
 
 def test_fill_merges_straight_corner():

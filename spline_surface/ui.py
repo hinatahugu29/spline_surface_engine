@@ -82,6 +82,7 @@ class SS_Settings(bpy.types.PropertyGroup):
         update=_zebra_update)
     diagnose_report: bpy.props.StringProperty(options={'SKIP_SAVE'})
     diagnose_done: bpy.props.BoolProperty(options={'SKIP_SAVE'})
+    diagnose_hidden: bpy.props.IntProperty(options={'SKIP_SAVE'})
     continuity_report: bpy.props.StringProperty(
         name="Continuity Report", default="[]", options={'HIDDEN', 'SKIP_SAVE'})
     comb_scale: bpy.props.FloatProperty(
@@ -421,7 +422,13 @@ class SS_PT_inspect(_SubPanel, bpy.types.Panel):
             row.label(text=i["text"], icon='ERROR' if i["severity"] >= 3 else 'INFO')
             jump = row.operator("spline_surface.seam_jump", text="", icon='RESTRICT_SELECT_OFF')
             jump.a, jump.b = i["a"], i["b"]
+            ok = row.operator("spline_surface.diagnose_accept", text="", icon='CHECKBOX_HLT')
+            ok.a, ok.b, ok.kind = i["a"], i["b"], i["kind"]
             col.label(text="    " + i["hint"])
+        if s.diagnose_hidden:
+            row = layout.row(align=True)
+            row.label(text="%d marked as intended (hidden)" % s.diagnose_hidden)
+            row.operator("spline_surface.diagnose_reset", text="", icon='LOOP_BACK')
 
 
 class SS_PT_output(_SubPanel, bpy.types.Panel):

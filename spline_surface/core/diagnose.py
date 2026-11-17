@@ -188,3 +188,23 @@ def diagnose(patches, metas, seams):
         i["severity"] = SEVERITY[i["kind"]]
     issues.sort(key=lambda i: -i["severity"])
     return issues
+
+
+def issue_keys(issue):
+    """{patch: mark} the issue is accepted by: a seam on both of its patches (naming
+    the other one), a patch's own waviness on itself."""
+    a, b = issue["a"], issue["b"]
+    if a == b:
+        return {a: issue["kind"]}
+    return {a: "%s:%s" % (issue["kind"], b), b: "%s:%s" % (issue["kind"], a)}
+
+
+def drop_accepted(issues, accepted):
+    """(issues still to show, how many were hidden). accepted: {patch: set of marks}."""
+    shown, hidden = [], 0
+    for i in issues:
+        if any(mark in accepted.get(name, ()) for name, mark in issue_keys(i).items()):
+            hidden += 1
+        else:
+            shown.append(i)
+    return shown, hidden

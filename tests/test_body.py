@@ -89,6 +89,15 @@ def run():
     issues = json.loads(ctx.scene.spline_surface.diagnose_report)
     print("diagnose:", len(issues), sorted({i["kind"] for i in issues}))
     assert not [i for i in issues if i["kind"] == "seam_open"], issues
+    # the door's tumblehome is an intended S: mark it, and Diagnose stops listing it
+    door_wave = next(i for i in issues if i["a"] == "Door" and i["kind"] == "inflection")
+    assert bpy.ops.spline_surface.diagnose_accept(a="Door", b="Door", kind="inflection") == {'FINISHED'}
+    assert bpy.ops.spline_surface.diagnose() == {'FINISHED'}
+    again = json.loads(ctx.scene.spline_surface.diagnose_report)
+    assert door_wave["text"] not in [i["text"] for i in again] and len(again) == len(issues) - 1
+    assert ctx.scene.spline_surface.diagnose_hidden == 1
+    assert bpy.ops.spline_surface.diagnose_reset() == {'FINISHED'}
+    assert "spline_surface_ok" not in bpy.data.objects["Door"]
 
     for o in ctx.scene.objects:
         o.select_set(o in patches)

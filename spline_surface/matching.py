@@ -4,7 +4,16 @@ import json
 
 import bpy
 
-from .core.diagnose import diagnose
+from .core.diagnose import diagnose, drop_accepted, issue_keys
+
+ACCEPT_KEY = "spline_surface_ok"    # on a patch: Diagnose issues marked as intended (JSON list)
+
+
+def accepted_marks(ob):
+    try:
+        return set(json.loads(ob.get(ACCEPT_KEY, "[]")))
+    except (ValueError, TypeError):
+        return set()
 from .core.continuity import find_shared_edge, grade, measure
 from .recipe import (META_KEY, hand_edited, hand_edited_net, raw_meta,
                      replace_net, store_meta, world_net)
@@ -182,12 +191,65 @@ class SS_OT_diagnose(bpy.types.Operator):
             except ValueError:
                 metas[name] = None
         issues = diagnose(nets, metas, measure_seams(nets, settings))
+        issues, hidden = drop_accepted(
+            issues, {name: accepted_marks(bpy.data.objects[name]) for name in nets})
         settings.diagnose_report = json.dumps(issues)
         settings.diagnose_done = True
+        settings.diagnose_hidden = hidden
         if not issues:
-            self.report({'INFO'}, "No problems found in %d patch(es)" % len(nets))
+            self.report({'INFO'}, "No problems found in %d patch(es)%s" % (
+                len(nets), " (%d marked as intended)" % hidden if hidden else ""))
         for i in issues:
             self.report({'INFO'}, "%s -> %s" % (i["text"], i["hint"]))
+        return {'FINISHED'}
+
+
+class SS_OT_diagnose_accept(bpy.types.Operator):
+    bl_idname = "spline_surface.diagnose_accept"
+    bl_label = "Intended"
+    bl_description = ("Mark this finding as intended (a crease, a tumblehome): Diagnose stops "
+                      "listing it. The mark is kept on the patch")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    a: bpy.props.StringProperty()
+    b: bpy.props.StringProperty()
+    kind: bpy.props.StringProperty()
+
+    def execute(self, context):
+        issue = {"a": self.a, "b": self.b, "kind": self.kind}
+        for name, mark in issue_keys(issue).items():
+            ob = bpy.data.objects.get(name)
+            if ob is not None:
+                marks = accepted_marks(ob) | {mark}
+                ob[ACCEPT_KEY] = json.dumps(sorted(marks))
+        s = context.scene.spline_surface
+        try:
+            rows = json.loads(s.diagnose_report or "[]")
+        except ValueError:
+            rows = []
+        left = [r for r in rows if (r["a"], r["b"], r["kind"]) != (self.a, self.b, self.kind)]
+        s.diagnose_report = json.dumps(left)
+        s.diagnose_hidden += len(rows) - len(left)
+        return {'FINISHED'}
+
+
+class SS_OT_diagnose_reset(bpy.types.Operator):
+    bl_idname = "spline_surface.diagnose_reset"
+    bl_label = "Clear Intended Marks"
+    bl_description = ("Forget the findings marked as intended on the selected patches (all visible "
+                      "patches when none are selected), so Diagnose lists them again")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        pool = _selected_surfaces(context) or [o for o in context.visible_objects
+                                               if o.type == 'SURFACE']
+        count = 0
+        for ob in pool:
+            if ACCEPT_KEY in ob:
+                del ob[ACCEPT_KEY]
+                count += 1
+        context.scene.spline_surface.diagnose_hidden = 0
+        self.report({'INFO'}, "Cleared the marks on %d patch(es); run Diagnose again" % count)
         return {'FINISHED'}
 
 
@@ -221,4 +283,4 @@ class SS_OT_check_continuity(bpy.types.Operator):
 
 
 classes = (SS_OT_regenerate, SS_OT_match_edge, SS_OT_seam_jump, SS_OT_check_continuity,
-           SS_OT_diagnose)
+           SS_OT_diagnose, SS_OT_diagnose_accept, SS_OT_diagnose_reset)
