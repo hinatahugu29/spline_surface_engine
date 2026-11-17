@@ -90,6 +90,14 @@ def run():
     print("diagnose:", len(issues), "issue(s)", kinds)
     # Fender and Hood sit apart on purpose (their fillet joins them): never "open"
     assert not [i for i in issues if i["kind"] == "seam_open"], issues
+    # v0.76: Fill Hole's corner zones keep the tangent plane (were G0, 0.55-0.58 deg)
+    from spline_surface.matching import measure_seams
+    nets = {o.name: world_net(o) for o in patches}
+    fill_seams = [r for r in measure_seams(nets, ctx.scene.spline_surface)
+                  if {"Fender", "Fender_mirror"} & {r["a"], r["b"]}
+                  and any(n.endswith(("_fill", "_fill_mirror")) for n in (r["a"], r["b"]))]
+    assert len(fill_seams) == 4 and all(r["grade"] in ("G1", "G2") for r in fill_seams), fill_seams
+    print("fill seams to the fender: max %.3f deg" % max(r["angle"] for r in fill_seams))
     for o in ctx.scene.objects:
         o.select_set(o.type == 'SURFACE')
     assert bpy.ops.spline_surface.to_mesh() == {'FINISHED'}
