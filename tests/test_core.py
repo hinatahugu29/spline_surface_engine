@@ -1427,6 +1427,34 @@ def test_sweep_rotate():
     assert np.allclose(plain[-1, -1] - rail_pts[-1], [0, -0.3, 0.3])  # without: moved unturned
 
 
+def test_diagnose():
+    from core.diagnose import diagnose, expected_seams, waviness
+    from core.presets import build
+    (_, hood), = build('HOOD')
+    assert waviness(hood, (6, 6)) == {"inflections": 0, "bumps": 0, "line": None}
+    flat = hood.copy()
+    flat[..., 2] = 0.0
+    assert waviness(flat, (6, 6))["inflections"] == 0                # flat: nothing to report
+    wavy = hood.copy()
+    wavy[2:4, :, 2] -= 0.15                                           # a hollow across the middle
+    w = waviness(wavy, (6, 6))
+    assert w["inflections"] >= 2, w
+    metas = {"A": {"method": "raw", "sources": [], "matches": [{"ref": "B", "continuity": "G2"}]},
+             "B": None, "C": {"method": "extend", "sources": ["B"], "continuity": "G1"}}
+    assert expected_seams(metas["A"]) == {"B": "G2"} and expected_seams(metas["C"]) == {"B": "G1"}
+    seams = [{"a": "A", "b": "B", "grade": "G1", "angle": 0.0, "curvature": 0.3},
+             {"a": "B", "b": "C", "grade": "G1", "angle": 0.0, "curvature": 0.3},
+             {"a": "B", "b": "D", "grade": "G0", "angle": 4.0, "curvature": 1.0}]
+    issues = diagnose({"W": (wavy, (6, 6)), "H": (hood, (6, 6))}, metas, seams)
+    kinds = [(i["kind"], i["a"], i["b"]) for i in issues]
+    assert kinds == [("seam_below", "A", "B"), ("seam_kink", "B", "D"), ("inflection", "W", "W")], kinds
+    assert "Regenerate A" in issues[0]["hint"]
+    trimmed = {"method": "fillet_trim", "sources": [], "fillet": {"id": "f1"}}
+    apart = [{"a": "P", "b": "Q", "grade": "open", "angle": 0.0, "curvature": 0.0}]
+    assert diagnose({}, {"P": trimmed, "Q": trimmed}, apart) == []          # the fillet joins them
+    assert [i["kind"] for i in diagnose({}, {}, apart)] == ["seam_open"]
+
+
 def test_presets():
     from core.presets import KINDS, POINTS, build
     for kind in KINDS:

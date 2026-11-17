@@ -4,6 +4,7 @@ import json
 
 import bpy
 
+from .core.diagnose import diagnose
 from .core.continuity import find_shared_edge, grade, measure
 from .recipe import (META_KEY, hand_edited, hand_edited_net, raw_meta,
                      replace_net, store_meta, world_net)
@@ -125,6 +126,71 @@ class SS_OT_seam_jump(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def patch_nets(context, report=None):
+    """{name: (net, orders)} of the selected patches, or every visible one when
+    fewer than two are selected."""
+    pool = _selected_surfaces(context)
+    if len(pool) < 2:
+        pool = [o for o in context.visible_objects if o.type == 'SURFACE']
+    nets = {}
+    for o in pool:
+        try:
+            nets[o.name] = world_net(o)
+        except ValueError as e:
+            if report:
+                report({'WARNING'}, str(e))
+    return nets
+
+
+def measure_seams(nets, settings):
+    """[dict(a, b, edge_a, edge_b, grade, gap, angle, curvature, size)] for every seam."""
+    names = sorted(nets)
+    rows = []
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            (Pa, oa), (Pb, ob_) = nets[a], nets[b]
+            shared = find_shared_edge(Pa, Pb, _seam_tolerance(Pa, Pb, settings), oa, ob_)
+            if shared is None:
+                continue
+            m = measure(Pa, Pb, *shared[:3], oa, ob_)
+            rows.append({"a": a, "b": b, "edge_a": shared[0], "edge_b": shared[1],
+                         "grade": grade(m), **m})
+    return rows
+
+
+class SS_OT_diagnose(bpy.types.Operator):
+    bl_idname = "spline_surface.diagnose"
+    bl_label = "Diagnose"
+    bl_description = ("Look for quality problems among the selected patches (all visible ones when "
+                      "fewer than two are selected): seams weaker than their recipe asks for, kinks, "
+                      "and wavy patches whose curvature changes sign or bumps. Worst first, each "
+                      "with a suggestion")
+    bl_options = {'REGISTER'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT' and any(o.type == 'SURFACE' for o in context.visible_objects)
+
+    def execute(self, context):
+        settings = context.scene.spline_surface
+        nets = patch_nets(context, self.report)
+        metas = {}
+        for name in nets:
+            ob = bpy.data.objects[name]
+            try:
+                metas[name] = json.loads(ob[META_KEY]) if META_KEY in ob else None
+            except ValueError:
+                metas[name] = None
+        issues = diagnose(nets, metas, measure_seams(nets, settings))
+        settings.diagnose_report = json.dumps(issues)
+        settings.diagnose_done = True
+        if not issues:
+            self.report({'INFO'}, "No problems found in %d patch(es)" % len(nets))
+        for i in issues:
+            self.report({'INFO'}, "%s -> %s" % (i["text"], i["hint"]))
+        return {'FINISHED'}
+
+
 class SS_OT_check_continuity(bpy.types.Operator):
     bl_idname = "spline_surface.check_continuity"
     bl_label = "Check Continuity"
@@ -140,26 +206,8 @@ class SS_OT_check_continuity(bpy.types.Operator):
 
     def execute(self, context):
         settings = context.scene.spline_surface
-        nets = {}
-        pool = _selected_surfaces(context)
-        if len(pool) < 2:
-            pool = [o for o in context.visible_objects if o.type == 'SURFACE']
-        for o in pool:
-            try:
-                nets[o.name] = world_net(o)
-            except ValueError as e:
-                self.report({'WARNING'}, str(e))
-        names = sorted(nets)
-        rows = []
-        for i, a in enumerate(names):
-            for b in names[i + 1:]:
-                (Pa, oa), (Pb, ob_) = nets[a], nets[b]
-                shared = find_shared_edge(Pa, Pb, _seam_tolerance(Pa, Pb, settings), oa, ob_)
-                if shared is None:
-                    continue
-                m = measure(Pa, Pb, *shared[:3], oa, ob_)
-                rows.append({"a": a, "b": b, "edge_a": shared[0], "edge_b": shared[1],
-                            "grade": grade(m), **m})
+        nets = patch_nets(context, self.report)
+        rows = measure_seams(nets, settings)
         rows.sort(key=lambda r: (_GRADE_ORDER.get(r["grade"], 0), -r["angle"], -r["curvature"]))
         settings.continuity_report = json.dumps(rows)
         if not rows:
@@ -172,4 +220,5 @@ class SS_OT_check_continuity(bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (SS_OT_regenerate, SS_OT_match_edge, SS_OT_seam_jump, SS_OT_check_continuity,)
+classes = (SS_OT_regenerate, SS_OT_match_edge, SS_OT_seam_jump, SS_OT_check_continuity,
+           SS_OT_diagnose)

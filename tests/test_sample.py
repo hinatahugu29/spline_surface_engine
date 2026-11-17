@@ -82,6 +82,16 @@ def run():
     assert bpy.ops.spline_surface.regenerate_all() == {'FINISHED'}
     assert not live.FAILED, live.FAILED
     check_snapshot(patches)
+    for o in ctx.scene.objects:
+        o.select_set(False)
+    assert bpy.ops.spline_surface.diagnose() == {'FINISHED'}
+    issues = json.loads(ctx.scene.spline_surface.diagnose_report)
+    kinds = sorted({i["kind"] for i in issues})
+    print("diagnose:", len(issues), "issue(s)", kinds)
+    # Fender and Hood sit apart on purpose (their fillet joins them): never "open"
+    assert not [i for i in issues if i["kind"] == "seam_open"], issues
+    for o in ctx.scene.objects:
+        o.select_set(o.type == 'SURFACE')
     assert bpy.ops.spline_surface.to_mesh() == {'FINISHED'}
     mesh_ob = ctx.active_object
     assert mesh_ob.type == 'MESH'

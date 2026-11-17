@@ -80,6 +80,8 @@ class SS_Settings(bpy.types.PropertyGroup):
     zebra_axis: bpy.props.EnumProperty(
         name="Axis", items=[(k, k, "") for k in zebra.AXES], default='Z',
         update=_zebra_update)
+    diagnose_report: bpy.props.StringProperty(options={'SKIP_SAVE'})
+    diagnose_done: bpy.props.BoolProperty(options={'SKIP_SAVE'})
     continuity_report: bpy.props.StringProperty(
         name="Continuity Report", default="[]", options={'HIDDEN', 'SKIP_SAVE'})
     comb_scale: bpy.props.FloatProperty(
@@ -406,6 +408,20 @@ class SS_PT_inspect(_SubPanel, bpy.types.Panel):
             jump = row.operator("spline_surface.seam_jump", text="", icon='RESTRICT_SELECT_OFF')
             jump.a, jump.b = r["a"], r["b"]
             col.label(text="    angle %.3g°, curvature %.1f%%" % (r["angle"], 100 * r["curvature"]))
+        layout.operator("spline_surface.diagnose", icon='CHECKMARK')
+        try:
+            issues = json.loads(s.diagnose_report or "[]")
+        except ValueError:
+            issues = []
+        if s.diagnose_done and not issues:
+            layout.label(text="No problems found", icon='CHECKMARK')
+        col = layout.column(align=True)
+        for i in issues:
+            row = col.row(align=True)
+            row.label(text=i["text"], icon='ERROR' if i["severity"] >= 3 else 'INFO')
+            jump = row.operator("spline_surface.seam_jump", text="", icon='RESTRICT_SELECT_OFF')
+            jump.a, jump.b = i["a"], i["b"]
+            col.label(text="    " + i["hint"])
 
 
 class SS_PT_output(_SubPanel, bpy.types.Panel):
