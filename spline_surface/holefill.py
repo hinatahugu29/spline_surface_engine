@@ -141,7 +141,8 @@ class SS_OT_fill_hole(pick.ModalPicker, bpy.types.Operator):
         pairs = [p.rsplit(":", 1) for p in self.picks.split(";") if p]
         return {"method": "fill", "sources": [p[0] for p in pairs],
                 "edges": [p[1] for p in pairs],
-                "continuity": self.continuity, "tension": self.tension, "layout": self.layout}
+                "continuity": self.continuity, "tension": self.tension, "layout": self.layout,
+                "merge": True}
 
     def execute(self, context):
         settings = context.scene.spline_surface

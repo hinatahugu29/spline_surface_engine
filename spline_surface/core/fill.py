@@ -16,7 +16,7 @@ import numpy as np
 
 from .corner import _refit, _side
 from .bezier import elevate_curve
-from .nurbs import basis_matrix, clamped_knots, fit_polyline_tangent
+from .nurbs import basis_matrix, clamped_knots, eval_points, fit_polyline_tangent
 
 MIN_POINTS = 6  # three rows from each side for G2
 STAR_POINTS = 13  # corner quads of N-sided fills: finer, so corner averaging stays local
@@ -205,10 +205,11 @@ def _halves(side):
     return halves
 
 
-def _star_quads(loop, ref, continuity, tension):
+def _star_quads(loop, ref, continuity, tension, centre=None, normal=None):
     """One quad per corner of an N-sided loop, around a shared centre point."""
     N = len(loop)
-    nc = ref / max(np.linalg.norm(ref), 1e-12)
+    nc = ref if normal is None else normal
+    nc = nc / max(np.linalg.norm(nc), 1e-12)
     halves = [_halves(s) for s in loop]
     mids, along, into = [], [], []
     for side, (first, _) in zip(loop, halves):
@@ -224,7 +225,8 @@ def _star_quads(loop, ref, continuity, tension):
             into[i] = d - np.dot(d, nc) * nc
     into = [d / max(np.linalg.norm(d), 1e-12) for d in into]
     # Each middle "aims" at the centre along its cross tangent; average the aims.
-    centre = np.mean([m + d * np.linalg.norm(c0 - m) for m, d in zip(mids, into)], axis=0)
+    if centre is None:
+        centre = np.mean([m + d * np.linalg.norm(c0 - m) for m, d in zip(mids, into)], axis=0)
 
     # Corner compatibility, so neighbouring quads see the same tangents:
     # - at a side's middle the spoke leaves along the side's cross tangent
@@ -399,7 +401,86 @@ def _radial_patches(loop, continuity, tension, lift=None):
 SMOOTH_CORNER = 30.0  # deg: boundary turning less than this is not a real corner
 
 
-def fill_patches(sides, continuity='G2', tension=1.0, tol=1e-3, layout='AUTO'):
+def _side_samples(side, t):
+    """Every row of a side (edge points, T, A) at parameters t: list aligned with rows."""
+    rows, k, _ = side
+    Bm = basis_matrix(len(rows[0]), k, t)
+    return [Bm @ R if _is_rows(R) else None for R in rows[:3]]
+
+
+def _join_sides(a, b, spans=24, k=6):
+    """One side running along side a and then side b (which starts where a ends).
+
+    Both are sampled by arc length and refitted on one B-spline, every row on the
+    same parameters. The cross rows are scaled so both pieces reach equally far
+    (T by s, A by s^2: the same patch, reparametrised across), else a narrow
+    neighbour (a fillet) next to a wide one would pull the fill's rows apart.
+    """
+    pieces = []
+    for side in (a, b):
+        t = np.linspace(0.0, 1.0, 60)
+        E, T, A = _side_samples(side, t)
+        length = np.linalg.norm(np.diff(E, axis=0), axis=1).sum()
+        pieces.append((E, T, A, length))
+    scale = [1.0 / max(np.linalg.norm(T, axis=1).mean(), 1e-12) if T is not None else 1.0
+             for _, T, _, _ in pieces]
+    reach = np.mean([p[3] for p in pieces])           # a common, sensible size
+    E = np.concatenate([pieces[0][0], pieces[1][0][1:]])
+    rows = [E]
+    for r in (1, 2):
+        if pieces[0][r] is None or pieces[1][r] is None:
+            rows.append(None)
+            continue
+        p = r                                          # T scales by s, A by s^2
+        parts = [pc[r] * (sc * reach) ** p for pc, sc in zip(pieces, scale)]
+        rows.append(np.concatenate([parts[0], parts[1][1:]]))
+    seg = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(E, axis=0), axis=1))]
+    t = seg / seg[-1]
+    n = spans + k - 1
+    Bm = basis_matrix(n, k, t)
+    # Exact at both ends and at the junction (the neighbours' shared corner, where
+    # To Mesh welds them): least squares with those three samples as constraints.
+    exact = [0, len(pieces[0][0]) - 1, len(t) - 1]
+    C = Bm[exact]
+    kkt = np.block([[2 * Bm.T @ Bm, C.T], [C, np.zeros((len(exact), len(exact)))]])
+    fitted = []
+    for R in rows:
+        if R is None:
+            fitted.append(None)
+            continue
+        rhs = np.vstack([2 * Bm.T @ R, R[exact]])
+        sol, *_ = np.linalg.lstsq(kkt, rhs, rcond=None)
+        fitted.append(sol[:n])
+    return fitted, k, a[2]
+
+
+def merge_smooth_corners(loop):
+    """Join neighbouring sides that continue each other smoothly (a fillet's end
+    edge and the wall it runs into), so the hole is filled by its real corners.
+
+    A quad corner where the boundary runs straight on folds the fill. Sides are
+    joined only when both carry the same kind of rows (two patch edges, or two
+    curves) and at least three real corners remain; otherwise the loop is kept.
+    """
+    loop = list(loop)
+    while len(loop) > 3:
+        turns = _corner_turn(loop)
+        real = sum(t >= SMOOTH_CORNER for t in turns)
+        cand = [j for j, t in enumerate(turns) if t < SMOOTH_CORNER
+                and (loop[j - 1][0][1] is None) == (loop[j][0][1] is None)
+                and (loop[j - 1][0][2] is None) == (loop[j][0][2] is None)]
+        if real < 3 or not cand:
+            break
+        j = cand[0]
+        joined = _join_sides(loop[j - 1], loop[j])
+        if j == 0:
+            loop = [joined] + loop[1:-1]
+        else:
+            loop = loop[:j - 1] + [joined] + loop[j + 1:]
+    return loop
+
+
+def fill_patches(sides, continuity='G2', tension=1.0, tol=1e-3, layout='AUTO', merge=False):
     """Nets filling the hole bounded by `sides` (from side_from_patch/curve).
 
     layout: 'GRID' = one patch for four sides, else one quad per corner around
@@ -409,6 +490,11 @@ def fill_patches(sides, continuity='G2', tension=1.0, tol=1e-3, layout='AUTO'):
     G0 uses the boundary's position only: no neighbour's slope bends the
     inside and a radial pole stays on the boundary's centroid, so a planar
     boundary gives a flat lid.
+    merge: for GRID and AUTO, first join sides that continue each other smoothly
+    (merge_smooth_corners), so a "four-sided" hole that is really a triangle (a
+    fillet's end edge running into its wall) is filled by its three real
+    corners instead of folding at the false one. Off for recipes made before it
+    existed: their part count must not change.
     Returns [(net, orders)].
     """
     if continuity not in ('G0', 'G1', 'G2'):
@@ -425,6 +511,20 @@ def fill_patches(sides, continuity='G2', tension=1.0, tol=1e-3, layout='AUTO'):
     flat = continuity == 'G0'
     if flat:
         loop = [([rows[0], None, None], k, sign) for rows, k, sign in loop]
+    grid = None
+    if merge and layout in ('AUTO', 'GRID') and len(loop) > 3:
+        joined = merge_smooth_corners(loop)
+        if len(joined) < len(loop):
+            if len(loop) == 4 and len(joined) == 3:
+                # the star's centre and its tangent plane from a one-patch fill of the
+                # same hole: averaging the sides' tangent planes puts it too deep
+                # (or too high) on a corner that wraps around
+                gnet, gorders = quad_net(loop, continuity, tension, STAR_POINTS, g1_first=True)
+                grid = (eval_points(gnet, gorders, [0.5], [0.5])[0],
+                        np.cross(eval_points(gnet, gorders, [0.5], [0.5], 1, 0)[0],
+                                 eval_points(gnet, gorders, [0.5], [0.5], 0, 1)[0]))
+            loop = joined
+            layout = 'GRID'
     if layout == 'AUTO':
         layout = 'RADIAL' if (len(loop) < 3 or min(_corner_turn(loop)) < SMOOTH_CORNER)             else 'GRID'
     if layout == 'RADIAL':
@@ -435,6 +535,10 @@ def fill_patches(sides, continuity='G2', tension=1.0, tol=1e-3, layout='AUTO'):
         raise ValueError("two sides can only be filled radially")
     if len(loop) == 4:
         nets = [quad_net(loop, continuity, tension, STAR_POINTS, g1_first=True)]
+    elif grid is not None:
+        centre, normal = grid
+        normal = normal * (1.0 if np.dot(normal, ref) >= 0 else -1.0)
+        nets = _star_quads(loop, ref, continuity, tension, centre=centre, normal=normal)
     else:
         nets = _star_quads(loop, ref, continuity, tension)
     return [(_orient(net, orders, ref), orders) for net, orders in nets]

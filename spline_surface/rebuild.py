@@ -139,6 +139,7 @@ def compute_fill(meta, settings):
         size = max(size, np.ptp(pts, axis=0).max())
         sides.append(side)
     return fill_patches(sides, meta["continuity"], meta.get("tension", 1.0),
+                        merge=meta.get("merge", False),
                         tol=settings.gap_tolerance * 0.1 * size + 1e-6,
                         layout=meta.get("layout", 'AUTO'))
 

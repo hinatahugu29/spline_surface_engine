@@ -152,9 +152,11 @@ def diagnose(patches, metas, seams):
                     key=lambda c: RANK.get(c, -1))
         if asked is not None and RANK[got] < RANK[asked]:
             follower = a if b in expected_seams(metas.get(a)) else b
-            if (metas.get(follower) or {}).get("method") == "fill":
-                hint = ("Fill Hole is only approximate near its corners; a 4-sided hole "
-                        "(Layout Grid) holds best")
+            fm = metas.get(follower) or {}
+            if fm.get("method") == "fill" and fm.get("merge") and got == 'open':
+                continue    # one piece of a split fill covers only part of that edge
+            if fm.get("method") == "fill":
+                hint = "Fill Hole is only approximate near its corners (curvature, G2)"
             else:
                 hint = "Regenerate %s, or redo its Match Edge (%s)" % (follower, asked)
             issues.append({"kind": "seam_below", "a": a, "b": b,

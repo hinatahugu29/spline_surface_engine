@@ -95,6 +95,33 @@ def segment_counts(patches, resolution, rel_tol=1e-3, curve_detail=0):
     return [(best[find((i, 0))], best[find((i, 1))]) for i in range(len(patches))]
 
 
+def chord_allowance(points, edges, base=0.05, cap=0.25):
+    """Per boundary edge, how far (relative to its length) the true seam may sag off it.
+
+    A chord whose neighbouring boundary edges turn away from it by phi at both
+    ends spans an arc that sags about length * phi / 4 off it. Straight runs, and
+    edges that turn at one end only (next to a panel's corner), keep `base`, so
+    the vertices of a panel across a small gap are not pulled in."""
+    P = np.asarray(points, float)
+    E = np.asarray(edges, int).reshape(-1, 2)
+    d = P[E[:, 1]] - P[E[:, 0]]
+    d /= np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-30)
+    at = {}
+    for i, (a, b) in enumerate(E):
+        at.setdefault(int(a), []).append(i)
+        at.setdefault(int(b), []).append(i)
+    out = np.full(len(E), base)
+    for i, (a, b) in enumerate(E):
+        ends = []
+        for v in (a, b):
+            turn = [np.arccos(np.clip(abs(np.dot(d[i], d[j])), 0.0, 1.0)) for j in at[int(v)] if j != i]
+            ends.append(max(turn) if turn else 0.0)
+        # an arc bends away at both ends; an edge next to a real corner only at one
+        phi = min(ends)
+        out[i] = min(cap, max(base, 0.3 * phi))
+    return out
+
+
 def t_junctions(points, edges, verts, abs_tol, rel_tol=0.05):
     """Vertices lying on the inside of an edge they don't belong to.
 
@@ -102,7 +129,8 @@ def t_junctions(points, edges, verts, abs_tol, rel_tol=0.05):
     (boundary) edges to test; verts: candidate vertex indices. A vertex hits
     an edge when it projects strictly inside it and lies within
     max(abs_tol, rel_tol * edge length) of it - the relative part lets a
-    curved seam's vertex sit off the coarse side's straight chord.
+    curved seam's vertex sit off the coarse side's straight chord. rel_tol may
+    be one value per edge (a chord across a tight bend sags further).
     Returns {edge row: [(fraction along the edge, vertex index)]}, sorted.
     """
     P = np.asarray(points, float)
@@ -110,7 +138,7 @@ def t_junctions(points, edges, verts, abs_tol, rel_tol=0.05):
     A, B = P[E[:, 0]], P[E[:, 1]]
     AB = B - A
     L2 = np.einsum("ij,ij->i", AB, AB)
-    tol = np.maximum(abs_tol, rel_tol * np.sqrt(L2))
+    tol = np.maximum(abs_tol, np.asarray(rel_tol, float) * np.sqrt(L2))
     hits = {}
     for v in verts:
         p = P[v]

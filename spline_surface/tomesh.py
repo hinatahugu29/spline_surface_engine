@@ -3,7 +3,7 @@ import bpy
 import numpy as np
 
 from .core.orient import facing_flips, flip_net
-from .core.meshing import segment_counts, t_junctions
+from .core.meshing import chord_allowance, segment_counts, t_junctions
 from .core.nurbs import eval_points
 from . import zebra
 from .recipe import world_net
@@ -22,7 +22,7 @@ def _stitch_t_junctions(bm, dist):
     E = np.array([[e.verts[0].index, e.verts[1].index] for e in boundary])
     candidates = sorted({v.index for e in boundary for v in e.verts})
     count = 0
-    for row, items in t_junctions(P, E, candidates, dist).items():
+    for row, items in t_junctions(P, E, candidates, dist, chord_allowance(P, E)).items():
         start, end = boundary[row].verts
         edge = boundary[row]
         prev = 0.0

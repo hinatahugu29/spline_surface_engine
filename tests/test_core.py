@@ -1479,6 +1479,64 @@ def test_diagnose():
     assert diagnose({}, {}, far) == []
 
 
+def test_fill_merges_straight_corner():
+    """A triangle whose bottom side is two patch edges meeting straight on: with merge
+    it is filled by its three real corners (three star pieces, flat, no fold)."""
+    from core.fill import fill_patches, side_from_patch
+    from core.diagnose import waviness
+    from core.nurbs import eval_points
+    g = np.linspace(0, 1, 4)
+
+    def patch(o, a, b):            # bilinear 4x4 net: o + u a + v b, the hole on v = 1
+        o, a, b = (np.array(x, float) for x in (o, a, b))
+        return o + g[:, None, None] * a + g[None, :, None] * b
+
+    P1 = patch((0, -1, 0), (1, 0, 0), (0, 1, 0))      # below A(0,0)-M(1,0)
+    P2 = patch((1, -1, 0), (1, 0, 0), (0, 1, 0))      # below M(1,0)-B(2,0)
+    P3 = patch((3, 1, 0), (-2, 2, 0), (-1, -1, 0))    # beyond B(2,0)-C(0,2)
+    P4 = patch((-1, 2, 0), (0, -2, 0), (1, 0, 0))     # left of C(0,2)-A(0,0)
+    sides = [side_from_patch(P, (4, 4), 'V1') for P in (P1, P2, P3, P4)]
+    old = fill_patches(sides, 'G1', layout='GRID')
+    new = fill_patches(sides, 'G1', layout='GRID', merge=True)
+    assert len(old) == 1 and len(new) == 3, (len(old), len(new))
+    for net, orders in new:
+        assert np.abs(net[..., 2]).max() < 1e-6                     # flat stays flat
+        assert waviness(net, orders)["inflections"] == 0
+    # together the pieces cover the triangle: area 2
+    area = 0.0
+    for net, orders in new:
+        t = np.linspace(0, 1, 41)
+        U, V = np.meshgrid(t, t, indexing="ij")
+        du = eval_points(net, orders, U.ravel(), V.ravel(), 1, 0)
+        dv = eval_points(net, orders, U.ravel(), V.ravel(), 0, 1)
+        area += np.abs(np.cross(du, dv)[:, 2]).mean()
+    assert abs(area - 2.0) < 0.05, area
+    # the joined side runs exactly through the corner its two edges share (M), so
+    # To Mesh can weld the pieces to both neighbours there
+    edge_pts = np.concatenate([eval_points(net, o, np.linspace(0, 1, 401), np.zeros(401))
+                               for net, o in new] + [eval_points(net, o, np.zeros(401),
+                               np.linspace(0, 1, 401)) for net, o in new])
+    assert np.linalg.norm(edge_pts - [1.0, 0.0, 0.0], axis=1).min() < 1e-9
+
+
+def test_chord_allowance():
+    from core.meshing import chord_allowance, t_junctions
+    # a straight edge next to a real corner keeps the strict 5%
+    P = np.array([[0, 0, 0], [1, 0, 0], [2, 0, 0], [2, 1, 0]], float)
+    E = np.array([[0, 1], [1, 2], [2, 3]])
+    assert chord_allowance(P, E)[1] == 0.05
+    # a coarse chord across a quarter arc (r = 1), its neighbours leaving along the
+    # arc's tangents: the arc's middle sags 21% of the chord off it and still welds
+    Q = np.array([[1, 0, 0], [2, 0, 0], [3, 1, 0], [3, 2, 0]], float)
+    F = np.array([[0, 1], [1, 2], [2, 3]])
+    allow = chord_allowance(Q, F)
+    assert allow[0] == 0.05 and allow[1] > 0.21, allow
+    mid = [2 + np.sin(np.pi / 4), 1 - np.cos(np.pi / 4), 0.0]
+    pts = np.vstack([Q, mid])
+    assert t_junctions(pts, F[1:2], [4], 1e-6, allow[1:2])
+    assert not t_junctions(pts, F[1:2], [4], 1e-6, 0.05)        # the old fixed 5% missed it
+
+
 def test_presets():
     from core.presets import KINDS, POINTS, build
     for kind in KINDS:

@@ -47,7 +47,7 @@ def run():
     spline_surface.register()
     ctx = bpy.context
     patches = [o for o in ctx.scene.objects if o.type == 'SURFACE' and o.visible_get()]
-    assert len(patches) == 34, len(patches)          # 17 per side (the Lip is hidden)
+    assert len(patches) == 42, len(patches)          # 21 per side (the Lip is hidden)
     for o in ctx.scene.objects:
         o.select_set(o in patches)
     ctx.view_layer.objects.active = patches[0]

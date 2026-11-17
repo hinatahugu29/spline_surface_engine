@@ -17,6 +17,7 @@ import os
 import sys
 
 import bmesh
+import numpy as np
 import bpy
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
@@ -71,11 +72,43 @@ def boundary_loops(bm):
     return loops
 
 
+def probe_seam(wall, pieces, samples=25):
+    """(largest gap, largest normal angle) between `wall`'s two ends across y and the
+    nearest points of `pieces`, sampled finely (Newton-free: a dense grid)."""
+    from spline_surface.core.nurbs import eval_points
+    pts, nrm = [], []
+    for o in pieces:
+        net, orders = world_net(o)
+        t = np.clip(np.linspace(0, 1, 200), 1e-4, 1 - 1e-4)
+        U, V = np.meshgrid(t, t, indexing="ij")
+        u, v = U.ravel(), V.ravel()
+        pts.append(eval_points(net, orders, u, v))
+        n = np.cross(eval_points(net, orders, u, v, 1, 0), eval_points(net, orders, u, v, 0, 1))
+        nrm.append(n / np.linalg.norm(n, axis=1, keepdims=True))
+    pts, nrm = np.concatenate(pts), np.concatenate(nrm)
+    net, orders = world_net(wall)
+    worst = [0.0, 0.0]
+    s = np.linspace(0.05, 0.95, samples)
+    for end in (1e-4, 1 - 1e-4):                     # the wall's front and rear end edges
+        u = np.full(samples, end)
+        q = eval_points(net, orders, u, s)
+        n = np.cross(eval_points(net, orders, u, s, 1, 0), eval_points(net, orders, u, s, 0, 1))
+        n /= np.linalg.norm(n, axis=1, keepdims=True)
+        d = np.linalg.norm(q[:, None] - pts[None], axis=2)
+        k = d.argmin(1)
+        near = d.min(1) < 5e-3                         # this end has a fill on it
+        if not near.any():
+            continue
+        ang = np.degrees(np.arccos(np.clip(np.abs((n * nrm[k]).sum(1)), 0, 1)))
+        worst = [max(worst[0], d.min(1)[near].max()), max(worst[1], ang[near].max())]
+    return worst
+
+
 def run():
     spline_surface.register()
     ctx = bpy.context
     patches = [o for o in ctx.scene.objects if o.type == 'SURFACE']
-    assert len(patches) == 14, len(patches)
+    assert len(patches) == 22, len(patches)
     for o in ctx.scene.objects:
         o.select_set(o.type == 'SURFACE')
     ctx.view_layer.objects.active = patches[0]
@@ -90,14 +123,16 @@ def run():
     print("diagnose:", len(issues), "issue(s)", kinds)
     # Fender and Hood sit apart on purpose (their fillet joins them): never "open"
     assert not [i for i in issues if i["kind"] == "seam_open"], issues
-    # v0.76: Fill Hole's corner zones keep the tangent plane (were G0, 0.55-0.58 deg)
-    from spline_surface.matching import measure_seams
-    nets = {o.name: world_net(o) for o in patches}
-    fill_seams = [r for r in measure_seams(nets, ctx.scene.spline_surface)
-                  if {"Fender", "Fender_mirror"} & {r["a"], r["b"]}
-                  and any(n.endswith(("_fill", "_fill_mirror")) for n in (r["a"], r["b"]))]
-    assert len(fill_seams) == 4 and all(r["grade"] in ("G1", "G2") for r in fill_seams), fill_seams
-    print("fill seams to the fender: max %.3f deg" % max(r["angle"] for r in fill_seams))
+    # v0.78: each corner is a triangle (the fillet's end runs straight into the wall), filled
+    # by three pieces around its real corners. Probe the fill along the fender's end edges:
+    # it must sit on them and leave in the fender's tangent plane (G1).
+    for wall in ("Fender", "Fender_mirror"):
+        pieces = [o for o in patches if "_fill" in o.name and "fillet" not in o.name
+                  and o.name.endswith("_mirror") == (wall != "Fender")]
+        assert len(pieces) == 6, [o.name for o in pieces]
+        worst = probe_seam(bpy.data.objects[wall], pieces)
+        print("fill to %s: gap <= %.2g, angle <= %.3f deg" % (wall, *worst))
+        assert worst[0] < 2e-3 and worst[1] < 0.3, worst
     for o in ctx.scene.objects:
         o.select_set(o.type == 'SURFACE')
     assert bpy.ops.spline_surface.to_mesh() == {'FINISHED'}
