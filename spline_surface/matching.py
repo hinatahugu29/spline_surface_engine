@@ -3,6 +3,7 @@ jump to a seam)."""
 import json
 
 import bpy
+import numpy as np
 
 from .core.diagnose import diagnose, drop_accepted, issue_keys
 
@@ -14,7 +15,7 @@ def accepted_marks(ob):
         return set(json.loads(ob.get(ACCEPT_KEY, "[]")))
     except (ValueError, TypeError):
         return set()
-from .core.continuity import find_shared_edge, grade, measure
+from .core.continuity import find_shared_edge, grade, measure, partial_contact
 from .recipe import (META_KEY, hand_edited, hand_edited_net, raw_meta,
                      replace_net, store_meta, world_net)
 from .rebuild import (_seam_tolerance, apply_match, compute_from_meta)
@@ -152,7 +153,10 @@ def patch_nets(context, report=None):
 
 
 def measure_seams(nets, settings):
-    """[dict(a, b, edge_a, edge_b, grade, gap, angle, curvature, size)] for every seam."""
+    """[dict(a, b, edge_a, edge_b, grade, gap, angle, curvature, size)] for every seam.
+
+    Seams along part of an edge (a split fill's piece on its neighbour) come with
+    partial=True: position and angle are measured there, curvature is not (0)."""
     names = sorted(nets)
     rows = []
     for i, a in enumerate(names):
@@ -160,6 +164,12 @@ def measure_seams(nets, settings):
             (Pa, oa), (Pb, ob_) = nets[a], nets[b]
             shared = find_shared_edge(Pa, Pb, _seam_tolerance(Pa, Pb, settings), oa, ob_)
             if shared is None:
+                size = np.ptp(np.concatenate([Pa.reshape(-1, 3), Pb.reshape(-1, 3)]), 0).max()
+                c = partial_contact(Pa, Pb, 1e-3 * size, oa, ob_)
+                if c is not None:
+                    m = {"gap": c["gap"], "angle": c["angle"], "curvature": 0.0, "size": float(size)}
+                    rows.append({"a": a, "b": b, "edge_a": c["edge_a"], "edge_b": c["edge_b"],
+                                 "grade": grade(m), "partial": True, **m})
                 continue
             m = measure(Pa, Pb, *shared[:3], oa, ob_)
             rows.append({"a": a, "b": b, "edge_a": shared[0], "edge_b": shared[1],

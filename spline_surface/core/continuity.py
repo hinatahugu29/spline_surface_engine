@@ -214,3 +214,58 @@ def grade(m, gap_rel=1e-4, angle_deg=0.1, curv_rel=0.02):
     if m["curvature"] > curv_rel:
         return "G1"
     return "G2"
+
+
+_EDGE_UV = {'U0': lambda t: (0 * t, t), 'U1': lambda t: (0 * t + 1, t),
+            'V0': lambda t: (t, 0 * t), 'V1': lambda t: (t, 0 * t + 1)}
+
+
+def _edge_samples(P, orders, edge, t):
+    """Points and unit normals along an edge (clamped a hair inside for the normal)."""
+    u, v = _EDGE_UV[edge](t)
+    pts = eval_points(P, orders, u, v)
+    ui, vi = np.clip(u, 1e-4, 1 - 1e-4), np.clip(v, 1e-4, 1 - 1e-4)
+    n = np.cross(eval_points(P, orders, ui, vi, 1, 0), eval_points(P, orders, ui, vi, 0, 1))
+    return pts, n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-24)
+
+
+def partial_contact(Pa, Pb, tol, orders_a=None, orders_b=None, samples=41, dense=241):
+    """A seam where part of an edge of one patch lies on an edge of the other.
+
+    Whole-edge seams are found by find_shared_edge; this one finds the rest: a
+    piece of a split fill along part of its neighbour's edge, a short patch on a
+    long one. For every pair of edges, the samples of the shorter stretch that lie
+    within `tol` of the other edge form the contact (at least three samples and a
+    twentieth of the larger patch). Returns dict(edge_a, edge_b, gap, angle,
+    length) for the longest contact - angle is the largest normal angle along it,
+    in degrees - or None.
+    """
+    orders_a = orders_a or bezier_orders(np.asarray(Pa))
+    orders_b = orders_b or bezier_orders(np.asarray(Pb))
+    size = np.ptp(np.concatenate([np.reshape(Pa, (-1, 3)), np.reshape(Pb, (-1, 3))]), 0).max()
+    t, td = np.linspace(0.0, 1.0, samples), np.linspace(0.0, 1.0, dense)
+    best = None
+    for ea in EDGES:
+        pa, na = _edge_samples(Pa, orders_a, ea, t)
+        for eb in EDGES:
+            pb, nb = _edge_samples(Pb, orders_b, eb, td)
+            # distance to the edge itself (its fine polyline's segments), not to its samples
+            a0, ab = pb[:-1], pb[1:] - pb[:-1]
+            f = np.clip(((pa[:, None] - a0[None]) * ab[None]).sum(2)
+                        / np.maximum((ab * ab).sum(1), 1e-30)[None], 0.0, 1.0)
+            dist = np.linalg.norm(a0[None] + f[..., None] * ab[None] - pa[:, None], axis=2)
+            seg = dist.argmin(1)
+            gap = dist[np.arange(len(t)), seg]
+            k = np.where(f[np.arange(len(t)), seg] < 0.5, seg, seg + 1)   # nearer sample's normal
+            on = gap <= tol
+            if on.sum() < 3:
+                continue
+            length = np.linalg.norm(np.diff(pa[on], axis=0), axis=1).sum()
+            if length < 0.05 * size:
+                continue
+            ang = np.degrees(np.arccos(np.clip(np.abs((na[on] * nb[k[on]]).sum(1)), 0.0, 1.0)))
+            cand = {"edge_a": ea, "edge_b": eb, "gap": float(gap[on].max()),
+                    "angle": float(ang.max()), "length": float(length)}
+            if best is None or length > best["length"]:
+                best = cand
+    return best

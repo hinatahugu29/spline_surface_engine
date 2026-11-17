@@ -150,6 +150,8 @@ def diagnose(patches, metas, seams):
             continue                     # trimmed apart by their fillet, which joins them
         asked = max((expected_seams(metas.get(a)).get(b), expected_seams(metas.get(b)).get(a)),
                     key=lambda c: RANK.get(c, -1))
+        if r.get("partial") and got == 'G1' and asked == 'G2':
+            continue                     # curvature is not measured along part of an edge
         if asked is not None and RANK[got] < RANK[asked]:
             follower = a if b in expected_seams(metas.get(a)) else b
             fm = metas.get(follower) or {}

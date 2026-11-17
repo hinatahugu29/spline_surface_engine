@@ -1544,6 +1544,27 @@ def test_chord_allowance():
     assert not t_junctions(pts, F[1:2], [4], 1e-6, 0.05)        # the old fixed 5% missed it
 
 
+def test_partial_contact():
+    from core.continuity import find_shared_edge, partial_contact
+    g = np.linspace(0, 1, 4)
+
+    def patch(o, a, b):
+        o, a, b = (np.array(x, float) for x in (o, a, b))
+        return o + g[:, None, None] * a + g[None, :, None] * b
+
+    long_ = patch((0, -1, 0), (2, 0, 0), (0, 1, 0))           # its v=1 edge: x 0..2 at y=0
+    short = patch((0.5, 0, 0), (1, 0, 0), (0, 1, 0))           # its v=0 edge: x 0.5..1.5 at y=0
+    assert find_shared_edge(long_, short, 1e-3) is None       # not a whole-edge seam
+    c = partial_contact(long_, short, 1e-3)
+    assert c and {c["edge_a"], c["edge_b"]} == {"V1", "V0"} and c["angle"] < 1e-6, c
+    assert abs(c["length"] - 1.0) < 0.06, c
+    tilt = short.copy()                                         # kinked 5 degrees along the seam
+    tilt[..., 2] = tilt[..., 1] * np.tan(np.radians(5))
+    assert abs(partial_contact(long_, tilt, 1e-3)["angle"] - 5.0) < 0.1
+    apart = short + [0, 0.004, 0]                               # a 4 mm panel gap: not a seam
+    assert partial_contact(long_, apart, 1e-3 * 2.0) is None
+
+
 def test_presets():
     from core.presets import KINDS, POINTS, build
     for kind in KINDS:
