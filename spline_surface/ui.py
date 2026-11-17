@@ -384,6 +384,9 @@ class SS_PT_inspect(_SubPanel, bpy.types.Panel):
             row.prop(s, "pgap_target")
             row.prop(s, "pgap_tolerance")
             layout.prop(s, "pgap_search")
+            row = layout.row(align=True)
+            row.operator("spline_surface.even_gap", icon='ALIGN_JUSTIFY')
+            row.operator("spline_surface.even_gap", text="", icon='X').remove = True
             col = layout.column(align=True)
             for j in panelgap.joints():
                 col.label(text="%s | %s" % (j["a"], j["b"]), icon='ARROW_LEFTRIGHT')

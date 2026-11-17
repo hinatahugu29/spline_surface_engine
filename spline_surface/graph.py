@@ -21,6 +21,8 @@ def _inputs(meta):
     """Names of the objects a recipe reads."""
     names = list(meta.get("sources", []))
     names += [m["ref"] for m in meta.get("matches", [])]
+    if meta.get("gap", {}).get("ref"):
+        names.append(meta["gap"]["ref"])
     if meta.get("target", {}).get("source"):
         names.append(meta["target"]["source"])
     return names
@@ -168,7 +170,7 @@ def relink_scene_copies(scene):
 
 # Recipe fields that hold settings, never object names.
 _NOT_NAMES = {"method", "edge", "edges", "continuity", "kind", "axis", "fp", "ver",
-              "layout", "net", "orders", "edge_t", "edge_r"}
+              "layout", "net", "orders", "edge_t", "edge_r", "edge_ref"}
 
 
 def _rename_in(value, old, new, key=None):

@@ -1381,6 +1381,33 @@ def test_panel_gap():
     assert np.allclose(np.abs(N[:, 2]), 1.0)
 
 
+def test_even_gap():
+    from core.gap import even_gap_net, measure_gap, edge_normals
+    g = np.linspace(0, 1, 4)
+    U, V = np.meshgrid(g, g, indexing="ij")
+    A = np.stack([U, V, 0.1 * np.sin(np.pi * U)], -1)            # a gently curved panel, y in 0..1
+    t = np.linspace(0, 1, 40)
+    # the neighbour's edge: A's own edge moved out 20-50 mm (tapering) and 4 mm proud
+    neighbour = edge_line(A, 'V1', 40) + np.stack([0 * t, 0.02 + 0.03 * t, 0 * t + 0.004], -1)
+    for edge in ['V1']:
+        net, orders, (before, after) = even_gap_net(A, (4, 4), edge, neighbour, 0.01)
+        assert before > 0.02 and after < 1e-3, (before, after)
+        m = measure_gap(edge_line(net, 'V1'), neighbour, edge_normals(net, orders, 'V1', 30))
+        assert np.abs(m["gap"] - 0.01).max() < 1.5e-3 and m["step"].max() < 1.5e-3, m
+        assert np.allclose(net[:, 0], A[:, 0])                   # the opposite edge stays put
+    # not flush: the step is kept
+    net2, _, _ = even_gap_net(A, (4, 4), 'V1', neighbour, 0.01, flush=False)
+    m2 = measure_gap(edge_line(net2, 'V1'), neighbour, edge_normals(net2, (4, 4), 'V1', 30))
+    assert m2["step"].mean() > 0.003
+
+
+def edge_line(net, edge, n=30):
+    from core.nurbs import eval_points
+    s = np.linspace(0, 1, n)
+    o = {'V1': (s, np.ones(n)), 'V0': (s, np.zeros(n)), 'U1': (np.ones(n), s), 'U0': (np.zeros(n), s)}[edge]
+    return eval_points(net, (net.shape[0], net.shape[1]), *o)
+
+
 def test_presets():
     from core.presets import KINDS, POINTS, build
     for kind in KINDS:

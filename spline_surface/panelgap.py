@@ -4,15 +4,20 @@ While on, every pair of free edges from different patches that face each
 other (a panel joint) is drawn as short rungs across the gap, green where the
 gap is within tolerance of the target and orange where it is off. The Inspect
 panel lists each joint's smallest, largest and mean gap and its step (how far
-one panel sits proud of the other). The geometry lives in core.gap.
+one panel sits proud of the other). Even Gap moves the active panel's edge so
+the joint is the target gap all along (and flush), and keeps it so when the
+other panel moves. The geometry lives in core.gap.
 """
+import json
+
 import bpy
 import gpu
 import numpy as np
 from gpu_extras.batch import batch_for_shader
 
-from .core.gap import edge_normals, find_gap_pairs, measure_gap
-from .recipe import surface_edges, world_net
+from .core.gap import edge_normals, even_gap_net, find_gap_pairs, measure_gap
+from .recipe import (EDGE_KEYS, META_KEY, edge_polyline, hand_edited_net, raw_meta, replace_net,
+                     store_meta, surface_edges, world_net)
 
 GOOD = (0.25, 0.9, 0.35, 1.0)
 OFF = (1.0, 0.55, 0.15, 1.0)
@@ -136,7 +141,100 @@ class SS_OT_panel_gap(bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (SS_OT_panel_gap,)
+def facing_edges(a, b, search=0.0):
+    """(edge of a, edge of b) of the joint between patches a and b, or None.
+
+    The pair whose edges lie closest on average, among those within `search`
+    (0: 5% of the larger patch) along most of their length."""
+    (na, oa), (nb, ob) = world_net(a), world_net(b)
+    lines = {(a.name, e): edge_polyline(na, oa, e, SAMPLES) for e in EDGE_KEYS}
+    lines.update({(b.name, e): edge_polyline(nb, ob, e, SAMPLES) for e in EDGE_KEYS})
+    size = max(np.ptp(na.reshape(-1, 3), 0).max(), np.ptp(nb.reshape(-1, 3), 0).max())
+    search = search if search > 0 else 0.05 * size
+    best = None
+    for ka, kb in find_gap_pairs(lines, search, touch=0.0, coverage=0.6):
+        if ka[0] != a.name:
+            ka, kb = kb, ka
+        d = measure_gap(lines[ka], lines[kb])["dist"].mean()
+        if best is None or d < best[0]:
+            best = (d, ka[1], kb[1])
+    return None if best is None else best[1:]
+
+
+class SS_OT_even_gap(bpy.types.Operator):
+    bl_idname = "spline_surface.even_gap"
+    bl_label = "Even Gap"
+    bl_description = ("Move the active panel's edge so the gap to the other selected panel is the "
+                      "Target all along (and the two sit level). The active panel keeps following "
+                      "the other one when it moves")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    target: bpy.props.FloatProperty(
+        name="Gap", default=-1.0, min=-1.0, max=100.0, unit='LENGTH',
+        description="The gap to keep; below 0 uses Panel Gap's Target")
+    flush: bpy.props.BoolProperty(
+        name="Flush", default=True,
+        description="Also bring the edge level with the other panel (no step)")
+    remove: bpy.props.BoolProperty(
+        name="Remove", default=False, options={'SKIP_SAVE'},
+        description="Stop keeping the gap (the shape stays as it is)")
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.active_object
+        return context.mode == 'OBJECT' and ob is not None and ob.type == 'SURFACE'
+
+    def invoke(self, context, event):
+        if self.target < 0:
+            self.target = context.scene.spline_surface.pgap_target
+        return self.execute(context)
+
+    def execute(self, context):
+        ob = context.active_object
+        meta = json.loads(ob[META_KEY]) if META_KEY in ob else None
+        if self.remove:
+            if not meta or "gap" not in meta:
+                self.report({'INFO'}, "%s keeps no gap" % ob.name)
+                return {'CANCELLED'}
+            meta.pop("gap")
+            store_meta(ob, meta)
+            self.report({'INFO'}, "%s no longer keeps its gap" % ob.name)
+            return {'FINISHED'}
+        others = [o for o in context.selected_objects if o.type == 'SURFACE' and o is not ob]
+        if len(others) != 1:
+            self.report({'ERROR'}, "Select the other panel too (the active one moves)")
+            return {'CANCELLED'}
+        ref = others[0]
+        s = context.scene.spline_surface
+        target = self.target if self.target >= 0 else s.pgap_target
+        pair = facing_edges(ob, ref, s.pgap_search)
+        if pair is None:
+            self.report({'ERROR'}, "No edges of %s and %s face each other (raise Search in "
+                                   "Panel Gap or move the panels closer)" % (ob.name, ref.name))
+            return {'CANCELLED'}
+        net, orders = world_net(ob)
+        rnet, rorders = world_net(ref)
+        line = edge_polyline(rnet, rorders, pair[1], 64)
+        try:
+            new, new_orders, (before, after) = even_gap_net(net, orders, pair[0], line, target,
+                                                            flush=self.flush)
+        except (ValueError, np.linalg.LinAlgError) as e:
+            self.report({'ERROR'}, str(e))
+            return {'CANCELLED'}
+        if meta is None or hand_edited_net(meta, net, orders):
+            # the shape before the gap becomes the recipe, as Match Edge does
+            meta = raw_meta(net, orders, **{k: meta[k] for k in ("matches",) if meta and k in meta})
+        replace_net(ob, new, s, new_orders)
+        meta["gap"] = {"ref": ref.name, "edge": pair[0], "edge_ref": pair[1],
+                       "target": target, "flush": self.flush}
+        store_meta(ob, meta)
+        mark_dirty()
+        self.report({'INFO'}, "%s %s: gap %.4g (worst error %.2g -> %.2g)"
+                    % (ob.name, pair[0], target, before, after))
+        return {'FINISHED'}
+
+
+classes = (SS_OT_panel_gap, SS_OT_even_gap)
 
 
 def register():

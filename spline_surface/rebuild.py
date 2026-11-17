@@ -22,6 +22,7 @@ from .core.mirror import mirror_net, symmetrize
 from .core.network import build_network
 from .core.offset import offset_net
 from .core.continuity import edge_pair_gap, find_shared_edge, match_net
+from .core.gap import even_gap_net
 from .core.extend import bezier_orders, extend_net
 from .core.loft import add_rows, loft_net, order_sections
 from .recipe import META_KEY, META_VERSION, NET_OVERRIDE, edge_polyline, world_net
@@ -356,6 +357,10 @@ def compute_from_meta(meta, context):
         net, orders = apply_match(net, orders, *world_net(ref), match["continuity"], settings,
                                   match)
         msg += ", %s to %s" % (match["continuity"], ref.name)
+    gap = meta.get("gap")
+    if gap:
+        net, orders = apply_gap(net, orders, gap)
+        msg += ", %.4g gap to %s" % (gap["target"], gap["ref"])
     sym = meta.get("symmetry")
     if sym:
         net, fixed = symmetrize(net, sym["axis"], sym.get("offset", 0.0), sym["tol"])
@@ -407,3 +412,16 @@ def apply_match(net, orders, ref_net, ref_orders, continuity, settings, match=No
     if match is not None:
         match.update(zip(MATCH_PAIR_KEYS, pair))
     return out
+
+
+def apply_gap(net, orders, gap):
+    """Even Gap's recipe step: run `gap["edge"]` of the patch `gap["target"]`
+    away from edge `gap["edge_ref"]` of patch `gap["ref"]` (flush if asked)."""
+    ref = bpy.data.objects.get(gap["ref"])
+    if ref is None:
+        raise ValueError("Gap partner missing: %s" % gap["ref"])
+    rnet, rorders = world_net(ref)
+    line = edge_polyline(rnet, rorders, gap["edge_ref"], 64)
+    net, orders, _ = even_gap_net(net, orders, gap["edge"], line, gap["target"],
+                                  flush=gap.get("flush", True))
+    return net, orders

@@ -8,7 +8,8 @@ the second, split into the gap proper (across the surface) and the step
 """
 import numpy as np
 
-from .nurbs import eval_points
+from .extend import bezier_orders, edge_frame, frame_orders
+from .nurbs import basis_matrix, eval_curve, eval_points
 
 
 def closest_on_polyline(points, line):
@@ -78,3 +79,63 @@ def find_gap_pairs(edges, search, touch=1e-6, coverage=0.7):
                     and da.mean() > touch:
                 out.append((ka, kb))
     return out
+
+
+def _framed_indices(shape, edge):
+    idx = np.stack(np.meshgrid(np.arange(shape[0]), np.arange(shape[1]), indexing="ij"), -1)
+    return edge_frame(idx, edge)[0].astype(int)
+
+
+def even_gap_net(net, orders, edge, line_b, target, flush=True, iterations=4, samples=None):
+    """Move `edge` of a patch so it runs `target` away from polyline `line_b`.
+
+    The gap is measured across the surface, as measure_gap does: at every
+    sample of the edge the closest point of `line_b` is found, and the edge
+    point is put `target` from it, in the patch's tangent plane, on the side it
+    already sits. With `flush` the step along the normal is removed too (the
+    two panels end level); without it the step is kept.
+
+    Only the edge row and the one or two rows inside it move, all by the same
+    amount, so the slope and curvature across the edge are kept and the
+    opposite edge is not touched. Returns (net, orders, (worst gap error before,
+    after)).
+    """
+    net = np.asarray(net, dtype=float)
+    orders = tuple(orders or bezier_orders(net))
+    line_b = np.asarray(line_b, dtype=float)
+    C = edge_frame(net, edge)[0].copy()           # axis 0 along the edge, the edge is C[:, -1]
+    ka, kc = frame_orders(orders, edge)
+    n, m = C.shape[:2]
+    rows = max(1, min(3, m - 1))                  # the first row (opposite edge) stays put
+    S = samples or max(24, 4 * n)
+    t = np.linspace(0.0, 1.0, S)
+    B = basis_matrix(n, ka, t)                    # (S, n): edge samples from edge control points
+    d_across = basis_matrix(m, kc, 1.0, 1)[0]
+
+    def errors(C):
+        pts = B @ C[:, -1]
+        along = eval_curve(C[:, -1], ka, t, 1)
+        across = B @ np.einsum("j,ijd->id", d_across, C)
+        nrm = np.cross(along, across)
+        nrm /= np.maximum(np.linalg.norm(nrm, axis=1, keepdims=True), 1e-12)
+        across_u = across / np.maximum(np.linalg.norm(across, axis=1, keepdims=True), 1e-12)
+        near, _ = closest_on_polyline(pts, line_b)
+        vec = pts - near
+        h = (vec * nrm).sum(1)
+        w = vec - h[:, None] * nrm
+        wl = np.linalg.norm(w, axis=1)
+        # with no in-plane offset yet (touching), push outwards along the patch
+        dirn = np.where(wl[:, None] > 1e-9, w / np.maximum(wl, 1e-12)[:, None], across_u)
+        want = near + target * dirn + (0.0 if flush else h[:, None] * nrm)
+        return pts, want, np.abs(wl - target).max()
+
+    _, _, before = errors(C)
+    for _ in range(iterations):
+        pts, want, _ = errors(C)
+        dP, *_ = np.linalg.lstsq(B, want - pts, rcond=None)
+        C[:, m - rows:] += dP[:, None, :]
+    _, _, after = errors(C)
+    out = net.copy()
+    idx = _framed_indices(net.shape[:2], edge)
+    out[idx[..., 0], idx[..., 1]] = C
+    return out, orders, (float(before), float(after))

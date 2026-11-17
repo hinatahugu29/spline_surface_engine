@@ -120,6 +120,56 @@ def follow_map_checks(fol, ref):
     print("follow map: %d seam(s), %d arc(s)" % (len(seam), len(arcs)))
 
 
+def even_gap_follows():
+    """Even Gap: the active panel's edge runs the target gap from its neighbour,
+    level with it, and keeps doing so when the neighbour moves."""
+    from spline_surface import live as live_mod
+    from spline_surface.bridge.write_surface import build_surface_data
+    from spline_surface.core.gap import edge_normals, measure_gap
+    from spline_surface.recipe import META_KEY, edge_polyline, raw_meta, store_meta
+    ctx = bpy.context
+    settings = ctx.scene.spline_surface
+    g = np.linspace(0, 1, 4)
+    xs, ys = np.meshgrid(g, g, indexing="ij")
+    door = np.stack([xs + 400, ys, 0.1 * np.sin(np.pi * xs)], -1)
+    fender = door.copy()
+    fender[..., 1] += 1.0 + 0.02 + 0.03 * xs            # 20-50 mm away, tapering
+    fender[..., 2] += 0.004                             # and 4 mm proud
+    obs = []
+    for name, net in (("GapFender", fender), ("GapDoor", door)):
+        cu = build_surface_data(name, net, settings.resolution)
+        ob = bpy.data.objects.new(name, cu)
+        ctx.collection.objects.link(ob)
+        store_meta(ob, raw_meta(net, world_net(ob)[1]))
+        obs.append(ob)
+    ref, door_ob = obs
+
+    def joint():
+        (P, o), (R, ro) = world_net(door_ob), world_net(ref)
+        m = measure_gap(edge_polyline(P, o, 'V1', 30), edge_polyline(R, ro, 'V0', 64),
+                        edge_normals(P, o, 'V1', 30))
+        return m["gap"], m["step"]
+
+    select([door_ob, ref])
+    ctx.view_layer.objects.active = door_ob
+    assert bpy.ops.spline_surface.even_gap(target=0.01, flush=True) == {'FINISHED'}
+    gap = json.loads(door_ob[META_KEY])["gap"]
+    assert gap["ref"] == ref.name and gap["edge"] == 'V1' and gap["edge_ref"] == 'V0', gap
+    gp, st = joint()
+    assert np.abs(gp - 0.01).max() < 1.5e-3 and st.max() < 1.5e-3, (gp, st)
+    assert live_mod.dependency_graph()[ref.name] >= {door_ob.name}
+    ref.location.y = 0.01                                # the fender moves 10 mm further out
+    ref.location.z = 0.005
+    ctx.view_layer.update()
+    res = live_mod.update_chain([ref.name], ctx)
+    assert door_ob.name in res["ok"], res
+    gp, st = joint()
+    assert np.abs(gp - 0.01).max() < 1.5e-3 and st.max() < 1.5e-3, (gp, st)
+    assert bpy.ops.spline_surface.even_gap(remove=True) == {'FINISHED'}
+    assert "gap" not in json.loads(door_ob[META_KEY])
+    print("even gap: %.4g-%.4g after the neighbour moved" % (gp.min(), gp.max()))
+
+
 def match_links_far_move():
     """Match Edge keeps following a reference moved far beyond Gap Tolerance;
     links can be listed, changed and removed afterwards."""
@@ -2152,6 +2202,7 @@ def run():
     zs = [p.normal.z for p in me_f.polygons]
     assert all(z > 0 for z in zs) or all(z < 0 for z in zs), "mixed winding"
     match_links_far_move()
+    even_gap_follows()
     deferred_rebuilds()
     duplicate_edges_to_coons()
     scene_full_copy()            # last: switches the context scene
