@@ -1416,6 +1416,15 @@ def test_presets():
     (_, hood), = build('HOOD', length=2.0, width=1.0, crown=0.1)
     assert abs(np.ptp(hood[..., 1]) - 2.0) < 1e-9 and abs(np.ptp(hood[..., 0]) - 1.0) < 1e-9
     assert 0.10 < hood[..., 2].max() <= 0.13 and hood[:, 0, 2].max() <= 0.031   # crowned: edges lower
+    from core.presets import SEAMS
+    for kind, seams in SEAMS.items():                    # the joined panels share their seam edge
+        nets = [n for _, n in build(kind)]
+        for a, ea, b, eb in seams:
+            ka = {'U0': nets[a][0], 'U1': nets[a][-1], 'V0': nets[a][:, 0], 'V1': nets[a][:, -1]}[ea]
+            kb = {'U0': nets[b][0], 'U1': nets[b][-1], 'V0': nets[b][:, 0], 'V1': nets[b][:, -1]}[eb]
+            assert np.allclose(ka, kb), kind
+    (_, bump), = build('BUMPER', width=2.0, wrap=0.3)
+    assert abs(np.ptp(bump[..., 0]) - 2.0) < 1e-9 and bump[0, 0, 1] > bump[0, 2, 1]   # ends swept back
     (_, half), = build('HOOD', width=1.0, half=True)
     assert abs(half[..., 0].min()) < 1e-9 and abs(half[..., 0].max() - 0.5) < 1e-9
     (_, d), = build('DOOR', length=1.0, height=0.8)

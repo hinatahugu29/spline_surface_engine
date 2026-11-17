@@ -1954,7 +1954,7 @@ def run():
         o.hide_set(False)
 
     # ---- v0.43: Presets drop in starting panels
-    for kind in ('HOOD', 'ROOF', 'DOOR'):
+    for kind in ('HOOD', 'ROOF', 'DOOR', 'BUMPER'):
         bpy.context.scene.cursor.location = (0, 900, 0)
         before = {o.name for o in bpy.data.objects}
         assert bpy.ops.spline_surface.add_preset(kind=kind) == {'FINISHED'}
@@ -1972,6 +1972,13 @@ def run():
     before = {o.name for o in bpy.data.objects}
     assert bpy.ops.spline_surface.add_preset(kind='HOOD_FENDER', radius=0.0) == {'FINISHED'}
     assert len([o for o in bpy.data.objects if o.name not in before]) == 2
+    for i, kind in enumerate(('TRUNK', 'ROOF_SIDE')):       # v0.74: more joined presets
+        bpy.context.scene.cursor.location = (0, 960 + 20 * i, 0)
+        before = {o.name for o in bpy.data.objects}
+        assert bpy.ops.spline_surface.add_preset(kind=kind, radius=0.05) == {'FINISHED'}
+        new = [o for o in bpy.data.objects if o.name not in before]
+        methods = sorted(json.loads(o[spline_surface.operators.META_KEY])["method"] for o in new)
+        assert methods == ["blend", "fillet_trim", "fillet_trim"], (kind, methods)
 
     # ---- v0.44: Blueprints stand a reference drawing at its real size
     import tempfile
