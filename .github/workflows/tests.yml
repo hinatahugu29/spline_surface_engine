@@ -43,7 +43,7 @@ jobs:
             https://download.blender.org/release/Blender${MAJOR}/blender-${BLENDER_VERSION}-linux-x64.tar.xz
           mkdir blender
           tar -xf blender.tar.xz -C blender --strip-components=1
-      - name: Background suites (Blender, sample)
+      - name: Background suites (Blender, samples)
         env:
           BLENDER: ${{ github.workspace }}/blender/blender
-        run: python tools/run_tests.py blender sample
+        run: python tools/run_tests.py blender sample body

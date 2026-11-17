@@ -1,6 +1,6 @@
 """Run every test and print one line per suite.
 
-    py tools/run_tests.py            # all five suites
+    py tools/run_tests.py            # all six suites
     py tools/run_tests.py core sample  # only these
 
 Blender is taken from the BLENDER environment variable, else from the usual
@@ -37,6 +37,8 @@ def suites(blender, logdir):
         "blender": ([blender, "-b", "--factory-startup", "--python", "tests/test_blender.py"], "ALL OK"),
         "sample": ([blender, "-b", "--factory-startup", "samples/hood_fender.blend",
                     "--python", "tests/test_sample.py"], "ALL OK"),
+        "body": ([blender, "-b", "--factory-startup", "samples/body_front_cabin.blend",
+                  "--python", "tests/test_body.py"], "ALL OK"),
         "gui": ([blender, "--factory-startup", "--python", "tests/test_gui.py", "--",
                  os.path.join(logdir, "gui.log")], os.path.join(logdir, "gui.log")),
         "modal": ([blender, "--factory-startup", "--enable-event-simulate", "--python",
@@ -51,7 +53,7 @@ def passed(name, proc, check):
     out = proc.stdout + proc.stderr
     if name == "core":
         return "Traceback" not in out
-    if name in ("blender", "sample"):
+    if name in ("blender", "sample", "body"):
         return check in out.splitlines()
     with open(check, encoding="utf-8") as f:       # gui / modal: the log's last line
         lines = [ln for ln in f.read().splitlines() if ln.strip()]

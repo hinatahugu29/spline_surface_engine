@@ -4,6 +4,7 @@
 
 | バージョン | 日付 | 内容 |
 |---|---|---|
+| 0.77.0 | 2026-11-17 | From building a larger sample (front of a body with its cabin, samples/body_front_cabin.blend; findings in docs/VALIDATION_body.md): Even Gap works on joints that only partly face each other (a door edge longer than the fender edge) and warns when it opens a seam with a neighbour; Split Patch on a filleted panel freezes the fillet's other panel instead of leaving it unbuildable; Diagnose reports an open seam only for a near miss. New test tests/test_body.py |
 | 0.76.0 | 2026-11-17 | Fill Hole: near the corners, where two sides want the same control points, the tangent rows now win over the curvature rows. On the sample the Fender to Fill seams go from G0 (0.55-0.58 deg) to G1 (0.07-0.09 deg); nothing else changes. The sample is rebuilt; its test checks these seams |
 | 0.75.0 | 2026-11-17 | Diagnose (Inspect): lists quality problems worst first with a suggestion each: seams weaker than the recipe asks for, kinks nothing asked for, and wavy patches (curvature changing sign or bumping along the iso-lines). Fillet members and Mirror Group copies are judged by their recipes. On the sample it finds the known Fill Hole corner approximation |
 | 0.74.0 | 2026-11-17 | Presets: Trunk (lid and rear panel), Roof + Side (half roof and the side of the greenhouse), Bumper (a fascia whose ends sweep back); the joined ones are rounded with Fillet like Hood + Fender. Sweep: R turns the profile with the rail as it bends (without twisting); the recipe keeps it |
