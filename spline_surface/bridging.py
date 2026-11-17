@@ -298,7 +298,8 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
     bl_description = ("Carry the shape of one patch edge (the profile) along another patch edge "
                       "(the rail). Click the profile edge, then the rail edge. "
                       "F in the viewport: start from the rail's other end; S: let the profile's other end "
-                      "run straight out of its patch instead of following the rail")
+                      "run straight out of its patch instead of following the rail; R: turn the "
+                      "profile with the rail")
     bl_options = {'REGISTER', 'UNDO'}
 
     source_a: bpy.props.StringProperty(name="Profile Patch")
@@ -313,6 +314,10 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
         name="Straight", default=False,
         description="The profile's other end does not follow the rail but runs straight out of "
                     "its patch (the profile is stretched between the two)")
+    rotate: bpy.props.BoolProperty(
+        name="Rotate", default=False,
+        description="Turn the profile with the rail as it bends (without twisting), instead of "
+                    "moving it unturned. Straight and Target are not used")
     length: bpy.props.FloatProperty(
         name="Length", default=0.0, min=0.0, max=1000.0, unit='LENGTH',
         description="How far the straight end runs (0: as far as the rail's end has gone in that direction, so the ends line up)")
@@ -347,14 +352,17 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
         tgt = {'NONE': "length", 'EDGE': "edge",
                'PLANE': "plane %s=%.3g" % ("XYZ"[int(self.target_axis)], self.target_value)}[self.target_mode]
         context.area.header_text_set(
-            "Sweep: %s   F: flip   S: straight %s   T: target (%s)%s   Esc/RMB: cancel"
-            % (step, "on" if self.straight else "off", tgt,
+            "Sweep: %s   F: flip   R: rotate %s   S: straight %s   T: target (%s)%s   Esc/RMB: cancel"
+            % (step, "on" if self.rotate else "off", "on" if self.straight else "off", tgt,
                "   X/Y/Z: plane axis" if self.target_mode == 'PLANE' else ""))
 
     def _meta(self):
         meta = {"method": "sweep", "sources": [self.source_a, self.source_b],
                 "edges": [self.edge_a, self.edge_b], "flip": self.flip,
                 "straight": self.straight, "length": self.length}
+        if self.rotate:
+            meta["rotate"] = True
+            return meta
         if self.target_mode == 'EDGE' and self.target_source:
             meta["target"] = {"kind": "edge", "source": self.target_source, "edge": self.target_edge}
         elif self.target_mode == 'PLANE':
@@ -438,6 +446,11 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
             self.flip = not self.flip
             self._update_preview(context)
             return {'RUNNING_MODAL'}
+        if event.type == 'R' and event.value == 'PRESS':
+            self.rotate = not self.rotate
+            self._header(context)
+            self._update_preview(context)
+            return {'RUNNING_MODAL'}
         if event.type == 'S' and event.value == 'PRESS':
             self.straight = not self.straight
             self._header(context)
@@ -460,7 +473,7 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
         if self.target_mode == 'EDGE' and not self.target_source:
             self.report({'ERROR'}, "Pick a target edge or curve")
             return {'CANCELLED'}
-        if self.target_mode != 'NONE' and not self.straight:
+        if self.target_mode != 'NONE' and not self.straight and not self.rotate:
             self.straight = True
         result = super().execute(context)
         if result == {'FINISHED'} and rebuild.sweep_note:

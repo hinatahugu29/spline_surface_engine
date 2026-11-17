@@ -96,6 +96,8 @@ def compute_sweep(sources, meta):
     (Pa, oa), (Pb, ob) = world_net(sources[0]), world_net(sources[1])
     args = (Pa, oa, meta["edges"][0], Pb, ob, meta["edges"][1], meta.get("flip", False),
             meta.get("straight", False), meta.get("length", 0.0))
+    if meta.get("rotate"):
+        return sweep_net(*args, rotate=True)
     try:
         return sweep_net(*args, target=sweep_target(meta))
     except ValueError as e:

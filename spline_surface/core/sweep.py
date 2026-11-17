@@ -12,12 +12,19 @@ Writing the straight run as another offset curve A(v) (a line, parametrised like
 the rail), S = profile(u) + A(v) + s(u) (rail(v) - rail(0) - A(v)) with s running from 0
 at the straight end to 1 at the rail end. s is linear in u, so it is exact too:
 a clamped B-spline reproduces a linear function with its Greville abscissae.
+
+With `rotate`, the profile turns with the rail instead: at each rail control
+point the profile is turned by the rotation that carries the rail's direction
+at the start to its direction there (parallel transport, so it does not twist
+about the rail). Column j of the net is rail point j + R_j (profile - rail
+start). The edge on the rail stays exact; elsewhere it is the usual control
+polygon approximation of a rotating sweep, close for rails with a few points.
 """
 import numpy as np
 
 from .extend import edge_derivatives, edge_frame, frame_orders
 from .linked import edge_order, edge_row
-from .nurbs import clamped_knots
+from .nurbs import clamped_knots, eval_curve
 
 
 def greville(n, k):
@@ -64,8 +71,35 @@ def straight_run(origin, out, target):
     return best[1]
 
 
+def _rotation(a, b):
+    """The smallest rotation (3x3) taking unit vector a to unit vector b."""
+    v = np.cross(a, b)
+    c = float(np.dot(a, b))
+    if c < -1.0 + 1e-9:                             # opposite: half turn about any normal of a
+        n = np.cross(a, [1.0, 0.0, 0.0])
+        if np.linalg.norm(n) < 1e-6:
+            n = np.cross(a, [0.0, 1.0, 0.0])
+        n /= np.linalg.norm(n)
+        return 2.0 * np.outer(n, n) - np.eye(3)
+    K = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+    return np.eye(3) + K + K @ K / (1.0 + c)
+
+
+def rail_rotations(rail, k):
+    """Parallel-transport rotations along a rail (control points `rail`, order k),
+    one per control point, taken at its Greville abscissa; the first is identity."""
+    g = greville(len(rail), k)
+    tan = eval_curve(rail, k, g, 1)
+    tan /= np.maximum(np.linalg.norm(tan, axis=1, keepdims=True), 1e-12)
+    out, R = [np.eye(3)], np.eye(3)
+    for a, b in zip(tan[:-1], tan[1:]):
+        R = _rotation(a, b) @ R                     # step by step: no twist about the rail
+        out.append(R)
+    return np.array(out)
+
+
 def sweep_net(P, orders_p, edge_p, R, orders_r, edge_r, flip=False, straight=False, length=0.0,
-              target=None):
+              target=None, rotate=False):
     """Net and orders of the profile `edge_p` of net P swept along `edge_r` of net R.
 
     The rail is walked from the end nearest to the profile; flip walks it from the other end.
@@ -86,6 +120,10 @@ def sweep_net(P, orders_p, edge_p, R, orders_r, edge_r, flip=False, straight=Fal
         raise ValueError("the rail edge has no length")
     offsets = rail - rail[0]
     orders = (edge_order(orders_p, edge_p), edge_order(orders_r, edge_r))
+    if rotate:
+        rot = rail_rotations(rail, orders[1])
+        rel = prof - rail[0]
+        return rail[None, :, :] + np.einsum("jab,ib->ija", rot, rel), orders
     if not straight:
         return prof[:, None, :] + offsets[None, :, :], orders
     k_along, k_across = frame_orders(orders_p, edge_p)

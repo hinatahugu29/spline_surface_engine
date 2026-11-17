@@ -1408,6 +1408,25 @@ def edge_line(net, edge, n=30):
     return eval_points(net, (net.shape[0], net.shape[1]), *o)
 
 
+def test_sweep_rotate():
+    from core.sweep import sweep_net
+    # rail: a quarter turn in the xy plane (cubic arc), starting along +x at the origin
+    k = 0.5523
+    rail_pts = np.array([[0, 0, 0], [k, 0, 0], [1, 1 - k, 0], [1, 1, 0]], float)
+    R = np.stack([rail_pts, rail_pts + [0, 0, -0.5]], 1)          # rail on its V... edge
+    R = np.transpose(R, (0, 1, 2))                                  # (4, 2, 3): u along the rail
+    # profile: a straight upright edge at the rail start, 0.3 tall, leaning out along -y
+    prof = np.array([[0, 0, 0], [0, -0.1, 0.1], [0, -0.2, 0.2], [0, -0.3, 0.3]], float)
+    P = np.stack([prof, prof + [-0.5, 0, 0]], 1)                     # (4, 2, 3): profile is the V0 edge
+    net, orders = sweep_net(P, (4, 2), 'V0', R, (4, 2), 'V0', rotate=True)
+    assert net.shape == (4, 4, 3)
+    assert np.allclose(net[0], rail_pts)                            # the rail edge is exact
+    end = net[:, -1] - rail_pts[-1]                                 # the profile at the rail end
+    assert np.allclose(end[-1], [0.3, 0, 0.3], atol=1e-6), end[-1]   # turned a quarter: -y -> +x
+    plain, _ = sweep_net(P, (4, 2), 'V0', R, (4, 2), 'V0')
+    assert np.allclose(plain[-1, -1] - rail_pts[-1], [0, -0.3, 0.3])  # without: moved unturned
+
+
 def test_presets():
     from core.presets import KINDS, POINTS, build
     for kind in KINDS:

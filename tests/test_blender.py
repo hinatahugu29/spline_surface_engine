@@ -2130,6 +2130,22 @@ def run():
     vl.update()
     assert straight_check() < 1e-5
     print("sweep follows profile and rail", sw.name)
+    # ---- v0.74: Rotate turns the profile with the rail; the recipe keeps it
+    assert bpy.ops.spline_surface.sweep(source_a=sw_prof.name, edge_a='U1', source_b=sw_rail.name,
+                                        edge_b='V1', rotate=True) == {'FINISHED'}
+    sw = bpy.context.active_object
+    assert json.loads(sw[spline_surface.operators.META_KEY]).get("rotate") is True
+    def rotate_check():
+        from spline_surface.core.sweep import sweep_net
+        (Pa, oa), (Pb, ob_) = world_net(sw_prof), world_net(sw_rail)
+        want, _ = sweep_net(Pa, oa, 'U1', Pb, ob_, 'V1', rotate=True)
+        if json.loads(sw[spline_surface.operators.META_KEY]).get("normal_flip"):
+            want = want[::-1]
+        return float(np.abs(world_net(sw)[0] - want).max())
+    assert rotate_check() < 1e-5
+    sw_rail.scale.z = 1.4
+    vl.update()
+    assert rotate_check() < 1e-5
     # ---- v0.61: the straight end stops at a target (plane or edge)
     ops = spline_surface.operators
     far_pt = world_net(sw_prof)[0][-1, -1]
