@@ -5,7 +5,7 @@ blender -b --factory-startup --python tools/build_sample_body.py -- [out.blend] 
 Half a body (x >= 0, centre line on x = 0, y forward, z up), then mirrored:
 
 - front: crowned hood, fender wall, rounded shoulder (Fillet), nose and cowl
-  extended off the hood (Extend G2), both corners closed with Fill Hole
+  extended off the hood (Extend G2), the front corner closed with Fill Hole
 - bumper: an upright fascia below the nose, joined to it with Bridge Edges
 - cabin: Roof + Side preset, windshield bridged from the cowl to the roof
 - door: below the side, behind the fender; Even Gap evens its front edge to the
@@ -201,7 +201,8 @@ def close_corner(tag, ext, front):
 
 
 step("fill front corner", close_corner("Front", NOSE, True))
-step("fill rear corner", close_corner("Rear", COWL, False))
+# No rear corner fill here (the hood sample has one): the door's front edge meets the
+# fender's rear end, so a fill there would lie on top of the door.
 
 # ---------------------------------------------------------------- 2. bumper
 
