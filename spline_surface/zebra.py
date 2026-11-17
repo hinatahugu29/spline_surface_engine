@@ -9,7 +9,6 @@ import json
 import math
 
 import bpy
-from bpy.app.handlers import persistent
 
 MAT_NAME = "SS_Zebra"
 ORIG_KEY = "spline_surface_orig_mats"
@@ -157,25 +156,63 @@ class SS_OT_zebra_toggle(bpy.types.Operator):
         return {'FINISHED'}
 
 
-@persistent      # kept when another file is opened
-def _on_depsgraph(scene, depsgraph):
-    settings = getattr(scene, "spline_surface", None)
+def stripe_new(context):
+    """While zebra is on, stripe the visible patches that have no stripes yet.
+
+    Called as each of the add-on's operators finishes (see wrap_operators), so
+    the material swap lands in that operator's undo step. It used to run from
+    a depsgraph handler, after the step was stored: a patch striped there (the
+    body sample's hidden Lip) kept pointing at the stripe material when an undo
+    freed it, and the next undo crashed Blender in curve_foreach_id."""
+    settings = getattr(context.scene, "spline_surface", None)
     if settings is None or not settings.zebra_on:
         return
-    for u in depsgraph.updates:
-        idb = getattr(u.id, "original", u.id)
-        if isinstance(idb, bpy.types.Object) and idb.type == 'SURFACE' and not is_on(idb):
-            enable(idb, settings)
+    for ob in context.visible_objects:
+        if ob.type == 'SURFACE' and not is_on(ob):
+            enable(ob, settings)
+
+
+def wrap_operators(classes):
+    """Make the add-on's undoable operators stripe new patches before they return."""
+    import functools
+
+    def after(context, result):
+        if isinstance(result, set) and 'FINISHED' in result:
+            try:
+                stripe_new(context)
+            except Exception:
+                import traceback
+                traceback.print_exc()
+        return result
+
+    # Blender checks the argument count, so each method keeps its own signature
+    def wrap(meth, fn):
+        if meth == "execute":
+            def run(self, context):
+                return after(context, fn(self, context))
+        else:
+            def run(self, context, event):
+                return after(context, fn(self, context, event))
+        functools.update_wrapper(run, fn)
+        run._stripes = True
+        return run
+
+    for cls in classes:
+        if (cls is SS_OT_zebra_toggle or not getattr(cls, "bl_idname", "").startswith("spline_surface.")
+                or 'UNDO' not in getattr(cls, "bl_options", ())):
+            continue
+        for meth in ("execute", "invoke", "modal"):
+            fn = cls.__dict__.get(meth)
+            if fn is not None and not getattr(fn, "_stripes", False):
+                setattr(cls, meth, wrap(meth, fn))
 
 
 classes = (SS_OT_zebra_toggle,)
 
 
 def register():
-    if _on_depsgraph not in bpy.app.handlers.depsgraph_update_post:
-        bpy.app.handlers.depsgraph_update_post.append(_on_depsgraph)
+    pass
 
 
 def unregister():
-    if _on_depsgraph in bpy.app.handlers.depsgraph_update_post:
-        bpy.app.handlers.depsgraph_update_post.remove(_on_depsgraph)
+    pass

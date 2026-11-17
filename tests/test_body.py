@@ -128,6 +128,15 @@ def run():
     print("marked %d vertices in 'non_manifold'" % marked)
     assert marked >= nonmanifold
     bm.free()
+    # v0.82.2: Zebra stripes patches inside its own operator only. A depsgraph handler used to
+    # stripe the hidden Lip after the undo step was stored, and Ctrl+Z then crashed Blender
+    from spline_surface import zebra
+    assert bpy.ops.spline_surface.zebra_toggle() == {'FINISHED'}
+    bpy.context.view_layer.update()
+    lip = bpy.data.objects["Lip"]
+    assert not lip.visible_get() and not zebra.is_on(lip)
+    assert zebra.is_on(bpy.data.objects["Door"])
+    assert bpy.ops.spline_surface.zebra_toggle() == {'FINISHED'}
     # v0.82.1: a patch moved by hand is skipped by its own rebuild, but what reads it still
     # follows it (after an undo, resync walks the whole graph: Side's mirror copy stayed behind)
     from spline_surface.rebuild import compute_from_meta

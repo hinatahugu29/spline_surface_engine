@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Spline Surface",
     "author": "hinata",
-    "version": (0, 82, 1),
+    "version": (0, 82, 2),
     "blender": (5, 0, 0),
     "location": "View3D > Sidebar > Spline Surface",
     "description": "Build smooth NURBS patches from boundary curves",
@@ -25,6 +25,7 @@ def _add_menu(self, context):
 
 
 def register():
+    zebra.wrap_operators(classes)
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.Scene.spline_surface = bpy.props.PointerProperty(type=ui.SS_Settings)
