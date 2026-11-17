@@ -959,7 +959,7 @@ def test_insert_line():
     assert np.abs(nurbs.eval_surface(net, (4, 4), g, g) - nurbs.eval_surface(new, o, g, g)).max() < 1e-9
     # multi-span along V: one more point, ends fixed, shape moves only a little on a smooth net
     xs = np.linspace(0, 1, 7)
-    smooth = np.stack(np.meshgrid(xs, xs, indexing="ij") + [0.3 * np.sin(2 * np.meshgrid(xs, xs, indexing="ij")[1])], -1)
+    smooth = np.stack(list(np.meshgrid(xs, xs, indexing="ij")) + [0.3 * np.sin(2 * np.meshgrid(xs, xs, indexing="ij")[1])], -1)
     new, o, exact = insert_line(smooth, (4, 4), 1)
     assert not exact and new.shape == (7, 8, 3) and o == (4, 4)
     assert np.allclose(new[:, 0], smooth[:, 0]) and np.allclose(new[:, -1], smooth[:, -1])
