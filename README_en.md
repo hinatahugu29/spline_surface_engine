@@ -23,7 +23,7 @@ Requires Blender 5.0 or later (tested with 5.2 on Windows).
 - **Build from curves**: Coons patch from 3 to 4 boundary curves, Loft through section curves (click them in the order to pass through), Curve Network from a grid of crossing curves (G2 inside).
 - **Body panel presets and blueprints**: start from a Hood, Roof, Door or Hood + Fender; place side, front and top drawings at real size.
 - **It remembers how a patch was made**: move a source patch or curve and everything built from it is rebuilt (Live Update). Match Edge links a patch to its neighbour so it keeps following it, however far it moves. Follow Arrows draws who follows whom. Mirror Group keeps the other half in step.
-- **Check the result**: seam colours (G2 green, G1 yellow, G0 red), zebra stripes, curvature comb and map, a continuity list that jumps to the worst seam, panel gap measurement.
+- **Check the result**: seam colours (G2 green, G1 yellow, G0 red), zebra stripes, curvature comb and map, a continuity list that jumps to the worst seam, Diagnose (seams weaker than asked for, wavy patches, each with a suggested fix), panel gap measurement and Even Gap (even out a panel joint and keep it so).
 - **Shape it**: Soft Pull, Fair, Refine, Add Row, Cage (lattice).
 - **Output**: To Mesh welds the patches into one gap-free mesh, mostly quads.
 

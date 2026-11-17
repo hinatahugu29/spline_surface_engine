@@ -3,9 +3,9 @@
 車のような滑らかな曲面を、NURBS の慣れなしで作れるようにする Blender 5.x アドオン。
 最終出力はメッシュ。操作はボタンとクリック選択が基本で、ギズモは操作が固まってから載せる。
 
-## 現在地（2026-11-16、v0.72.0）
+## 現在地（2026-11-17、v0.76.0）
 
-**v0.72.0 を公開候補（Release Candidate）とする。** 第1〜第4段階の作業はすべて終わった。公開前の確認も、自動で確かめられるものはすべてテストにした。残りは公開の手続き（アカウントでの操作）と、手で触ったときの感触の確認だけ。
+**v0.72.0 を公開候補（Release Candidate）とした。** その後 v0.73〜v0.76 で、内部の整理（下の「v0.73〜v0.76 の整理」）と、Even Gap・Presets の追加・Sweep の Rotate・Diagnose・Fill Hole の角の改善を入れた。 第1〜第4段階の作業はすべて終わった。公開前の確認も、自動で確かめられるものはすべてテストにした。残りは公開の手続き（アカウントでの操作）と、手で触ったときの感触の確認だけ。
 
 | 段階 | 目的 | 状況 |
 |---|---|---|
@@ -41,6 +41,16 @@
 | 5. Fillet・Flange・Fill Hole のクリック操作（クリック、Enter、ホイール、C キー、Esc） | `test_gui_modal.py`（画面上の継ぎ目・辺の位置にイベントを送る） |
 | 6. To Mesh の結果に穴や裏返りがない | `test_sample.py`（境界はボディの外周1周のみ、向きの食い違い・非多様体・つぶれた面が 0） |
 
+### v0.73〜v0.76 の整理
+
+| 項目 | 内容 |
+|---|---|
+| テストの一括実行 | `py tools/run_tests.py`（5本、`--no-gui` で画面つきを除く。Blender は環境変数 `BLENDER` か既定の場所） |
+| CI | `.github/workflows/tests.yml`：計算のテストと、Blender 5.0 のバックグラウンドのテスト。GitHub ではまだ走らせていない（push 後に確認） |
+| 形の回帰チェック | `tests/sample_snapshot.json`：サンプルを作り直した制御点を記録と比べる。形を変える修正のあとは `-- --update` で書き直す |
+| `rebuild.py` | 作り直しの計算と、作り方の登録（`@recipe("name")`）。新しい種類の面は登録だけで Live Update・Regenerate に乗る |
+| 分割 | `operators.py` → `creating.py`・`matching.py`・`extending.py`・`holefill.py`。`live.py` → `graph.py`（依存関係）・`links.py`（連続性と追従の変更）・`live.py`（作り直しとハンドラ） |
+
 ## 方針
 
 - **機能を足すより、実際に1つのものを作って詰まりを拾う**。機能の網羅は一段落した
@@ -58,7 +68,7 @@
 | 状態の表示 | GPU オーバーレイ（描画のみ） |
 | 作った後の値の直接ドラッグ | ギズモ（レシピの値を書き換えて作り直す） |
 
-## できていること（v0.72.0）
+## できていること（v0.76.0）
 
 | 分類 | 機能 |
 |---|---|
@@ -66,7 +76,7 @@
 | 伸ばす・つなぐ | Extend Edge、Bridge Edges、Sweep（Straight、Target）、Match Edge（G0/G1/G2、Spread、大きく動かしても切れない追従）、Corner Fill、Fill Hole（3辺以上、カーブ混在、G0 は平らなフタ）、Flange（Outside、Edit Flange）、Fillet（複数の継ぎ目、トリム、コーナーパッチ、半径の変更）、Split Patch、Duplicate Edge as Curve（辺・等パラメータ線をカーブに。Shift+クリックで複数）、Offset Surface、Continuity の後からの変更 |
 | まとめて扱う | Live Update、Linked Edit、Edge Chain、Merge Patches、Cage、Mirror Group（Scope、Unlink、Remove）、Select／Regenerate Group、Follow Arrows／List Links（追従関係の表示） |
 | 面の内側の編集 | Soft Pull（起点：点／線／制御点、減衰5種、連続ストローク）、Control Mesh、Fair、Refine、Add Row、Origin to Center、Align Normals |
-| 確認 | Zebra（Width、Soft）、Seam Colors、Curvature Comb、Curvature Map、Control Points、Check Continuity（悪い順、ジャンプ）、Panel Gap |
+| 確認 | Zebra（Width、Soft）、Seam Colors、Curvature Comb、Curvature Map、Control Points、Check Continuity（悪い順、ジャンプ）、Diagnose（直し方の案つき）、Panel Gap と Even Gap |
 | ギズモ | Extend の長さ、Offset Surface の距離、Fillet の半径 |
 | 出力 | To Mesh（均一な密度、T 字頂点の接続と溶接、四角形化、Curve Detail、面の向きの統一）、Trim to Mesh（見た目の確認用の試作） |
 | 基盤 | 複数スパンの NURBS、面ごとの作り方の記録（レシピ）と Regenerate、手で直した面の検出、名前の変更の追従、Undo／Redo 後の同期、Copy Bug Report |
