@@ -133,6 +133,14 @@ def run():
         worst = probe_seam(bpy.data.objects[wall], pieces)
         print("fill to %s: gap <= %.2g, angle <= %.3f deg" % (wall, *worst))
         assert worst[0] < 2e-3 and worst[1] < 0.3, worst
+    # every seam of the fill pieces, as Check Continuity and Diagnose measure them: no
+    # piece may be paired with a longer edge it only partly lies on (that read 12 deg)
+    from spline_surface.matching import measure_seams
+    nets = {o.name: world_net(o) for o in patches}
+    fill_rows = [r for r in measure_seams(nets, ctx.scene.spline_surface)
+                 if any("_fill" in n and "fillet" not in n for n in (r["a"], r["b"]))]
+    print("fill seams: %d, worst %.3f deg" % (len(fill_rows), max(r["angle"] for r in fill_rows)))
+    assert fill_rows and max(r["angle"] for r in fill_rows) < 1.0, fill_rows
     for o in ctx.scene.objects:
         o.select_set(o.type == 'SURFACE')
     assert bpy.ops.spline_surface.to_mesh() == {'FINISHED'}

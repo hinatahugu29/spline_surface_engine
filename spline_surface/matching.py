@@ -163,15 +163,19 @@ def measure_seams(nets, settings):
         for b in names[i + 1:]:
             (Pa, oa), (Pb, ob_) = nets[a], nets[b]
             shared = find_shared_edge(Pa, Pb, _seam_tolerance(Pa, Pb, settings), oa, ob_)
-            if shared is None:
-                size = np.ptp(np.concatenate([Pa.reshape(-1, 3), Pb.reshape(-1, 3)]), 0).max()
+            size = np.ptp(np.concatenate([Pa.reshape(-1, 3), Pb.reshape(-1, 3)]), 0).max()
+            m = measure(Pa, Pb, *shared[:3], oa, ob_) if shared is not None else None
+            c = None
+            if m is None or m["gap"] > 1e-3 * size:
+                # no seam, or "the same edge" only on average (a piece along part of a
+                # longer edge): measure what really touches instead, if anything does
                 c = partial_contact(Pa, Pb, 1e-3 * size, oa, ob_)
+            if shared is None or c is not None:
                 if c is not None:
                     m = {"gap": c["gap"], "angle": c["angle"], "curvature": 0.0, "size": float(size)}
                     rows.append({"a": a, "b": b, "edge_a": c["edge_a"], "edge_b": c["edge_b"],
                                  "grade": grade(m), "partial": True, **m})
                 continue
-            m = measure(Pa, Pb, *shared[:3], oa, ob_)
             rows.append({"a": a, "b": b, "edge_a": shared[0], "edge_b": shared[1],
                          "grade": grade(m), **m})
     return rows

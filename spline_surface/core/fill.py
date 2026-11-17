@@ -408,7 +408,7 @@ def _side_samples(side, t):
     return [Bm @ R if _is_rows(R) else None for R in rows[:3]]
 
 
-def _join_sides(a, b, spans=24, k=6):
+def _join_sides(a, b, spans=48, k=6):
     """One side running along side a and then side b (which starts where a ends).
 
     Both are sampled by arc length and refitted on one B-spline, every row on the
