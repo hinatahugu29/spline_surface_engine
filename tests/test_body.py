@@ -151,6 +151,23 @@ def run():
                  - world_net(mirror)[0]).max()
     print("resync with Side moved by hand: skipped %s, mirror off by %.2g" % (res["skipped"], off))
     assert "Side" in res["skipped"] and "Side_mirror" not in res["skipped"] and off < 1e-6, res
+    # v0.82.3: an operator that changes a source's point count rebuilds what reads it before
+    # it returns (one undo step); the mirror copy used to follow from a timer with a step of its own
+    door, door_m = bpy.data.objects["Door"], bpy.data.objects["Door_mirror"]
+    count = lambda o: len(o.data.splines[0].points)
+    n0 = count(door)
+    for o in bpy.context.scene.objects:
+        o.select_set(o is door)
+    bpy.context.view_layer.objects.active = door
+    assert bpy.ops.spline_surface.refine() == {'FINISHED'}
+    print("refine Door: %d -> %d points, mirror copy %d" % (n0, count(door), count(door_m)))
+    assert count(door) > n0 and count(door_m) == count(door)
+    # what an undo cannot rebuild in place is listed (the sidebar says to Regenerate it)
+    settings.live_update = False
+    assert bpy.ops.spline_surface.refine() == {'FINISHED'}
+    settings.live_update = True
+    res = live.resync(bpy.context)
+    assert "Door_mirror" in res["stale"] and count(door_m) < count(door), res["stale"]
     # v0.82.1: right after opening the file, one discrete change of a source (a value
     # typed in the sidebar) is followed; it used to become Live Update's baseline instead
     bpy.ops.wm.open_mainfile(filepath=bpy.data.filepath)

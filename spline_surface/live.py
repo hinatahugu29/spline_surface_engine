@@ -41,6 +41,7 @@ def _write_in_place(ob, net, orders):
 
 
 HAND_EDITED = "edited by hand"
+POINT_COUNT = "point count changed"
 
 
 def rebuild(ob, context, force=False, in_place_only=False, allow_new_data=True):
@@ -62,9 +63,9 @@ def rebuild(ob, context, force=False, in_place_only=False, allow_new_data=True):
         net, orders, msg = compute_from_meta(meta, context)
         if not _write_in_place(ob, net, orders):
             if in_place_only:
-                return "skipped", "point count changed"
+                return "skipped", POINT_COUNT
             if not allow_new_data:
-                return "deferred", "point count changed"
+                return "deferred", POINT_COUNT
             replace_net(ob, net, context.scene.spline_surface, orders)
     except ValueError as e:
         FAILED[ob.name] = str(e)
@@ -83,7 +84,7 @@ def update_chain(names, context, in_place_only=False, allow_new_data=True):
     "deferred" (what reads them waits too, under "waiting") for run_deferred().
     """
     result = {"ok": [], "skipped": [], "error": [], "unchanged": [], "deferred": [],
-              "waiting": []}
+              "waiting": [], "stale": []}
     blocked = set()
     waiting = set()
     changed = set(names)
@@ -114,6 +115,9 @@ def update_chain(names, context, in_place_only=False, allow_new_data=True):
         result[status].append(name)
         if status == "deferred":
             waiting.add(name)
+        elif status == "skipped" and why == POINT_COUNT:
+            result["stale"].append(name)     # in place only (after an undo): left as it was
+            blocked.add(name)
         elif status == "skipped" and why == HAND_EDITED:
             # kept as the user shaped it, which is what its dependents read: they
             # follow it (a mirror copy of a hand-moved panel, after an undo)
@@ -300,6 +304,46 @@ def _on_depsgraph(scene, depsgraph):
         _state["busy"] = False
 
 
+def settle(context):
+    """Rebuild what an operator changed before its undo step is stored.
+
+    Otherwise Live Update runs from the depsgraph handler after the step, and a
+    patch whose point count changed is rebuilt from a timer that stores a step
+    of its own: the first Ctrl+Z then only undid that (Door refined, its mirror
+    copy back to the old point count), or seemed to do nothing. Called by
+    finish.py as each undoable operator of the add-on returns."""
+    settings = getattr(context.scene, "spline_surface", None)
+    if (settings is None or not settings.live_update or _state["busy"]
+            or context.mode != 'OBJECT'):
+        return None
+    changed = []
+    for name in dependency_graph():
+        ob = bpy.data.objects.get(name)
+        if ob is None:
+            continue
+        sig = _signature(ob)
+        if name in _state["fps"] and _state["fps"][name] != sig:
+            changed.append(name)
+        _state["fps"][name] = sig
+    if not changed:
+        return None
+    _state["busy"] = True
+    try:
+        # still inside the operator: new datablocks are part of its undo step
+        result = update_chain(changed, context)
+        for name in result["ok"]:
+            ob = bpy.data.objects.get(name)
+            if ob is not None:
+                _state["fps"][name] = _signature(ob)
+        _deferred.difference_update(result["ok"])
+        return result
+    except Exception:
+        traceback.print_exc()
+        return None
+    finally:
+        _state["busy"] = False
+
+
 _deferred = set()   # patches whose point count changed, rebuilt from a timer
 
 
@@ -330,7 +374,7 @@ def run_deferred(context):
     if not names:
         return None
     result = {"ok": [], "skipped": [], "error": [], "unchanged": [], "deferred": [],
-              "waiting": []}
+              "waiting": [], "stale": []}
     _state["busy"] = True
     try:
         done = []
@@ -457,7 +501,13 @@ def _on_load(*_):
 
 def _deferred_resync():
     try:
-        resync(bpy.context)
+        result = resync(bpy.context)
+        settings = getattr(bpy.context.scene, "spline_surface", None)
+        if result and result["stale"] and settings is not None:
+            # their point count differs from what their recipe now builds; making new
+            # data right after an undo would corrupt undo memory, so say so instead
+            settings.live_note = ("not rebuilt after undo (point count changed): %s - "
+                                  "select and Regenerate" % ", ".join(result["stale"]))
     except Exception:
         traceback.print_exc()
     return None     # run once

@@ -156,13 +156,14 @@ def s_check_undo2():
     bad = all_valid()
     log(("OK  " if not bad else "BAD ") + "undo once after Add Row: every patch still valid", bad)
     S["results"].append(("undo once valid", not bad))
-    log("    offset grid", world_net(bpy.data.objects[S["offset"]])[0].shape, "sync:", out_of_sync())
+    log("    offset grid", world_net(bpy.data.objects[S["offset"]])[0].shape)
+    # v0.82.3: Add Row rebuilds what reads it before it returns, so one undo takes back both
+    check("undo once: back before Add Row")
 def s_undo3(): log("undo", op(bpy.ops.ed.undo))
 def s_check_undo3():
     bad = all_valid()
     S["results"].append(("undo twice valid", not bad))
-    log("    offset grid", world_net(bpy.data.objects[S["offset"]])[0].shape)
-    check("undo twice: back before Add Row")
+    check("undo twice: back before the far move, followers with it")
 def s_redo2(): log("redo", op(bpy.ops.ed.redo)); log("redo", op(bpy.ops.ed.redo))
 def s_check_redo2():
     bad = all_valid()

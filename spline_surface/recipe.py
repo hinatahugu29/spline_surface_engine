@@ -74,6 +74,10 @@ def store_meta(ob, meta):
     meta.setdefault("ver", META_VERSION)
     meta["fp"] = fingerprint(*world_net(ob))
     ob[META_KEY] = json.dumps(meta)
+    # Tag the object: a custom property alone does not, and undo then keeps the object
+    # as it is in memory (new fingerprint) while it restores the curve (old points),
+    # so after a second Ctrl+Z the patch looked edited by hand and stopped following
+    ob.update_tag()
 
 
 def raw_meta(net, orders, **extra):

@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Spline Surface",
     "author": "hinata",
-    "version": (0, 82, 2),
+    "version": (0, 82, 3),
     "blender": (5, 0, 0),
     "location": "View3D > Sidebar > Spline Surface",
     "description": "Build smooth NURBS patches from boundary curves",
@@ -10,6 +10,7 @@ bl_info = {
 
 import bpy  # noqa: E402
 
+from . import finish  # noqa: E402
 from . import blueprints, bugreport, cage, controlmesh, ctrlpoints, curvature, curvetools, filleting, flanging, followmap, gizmos, linked, links, live, netcheck, bridging, operators, orienting, panelgap, presetting, projecting, pulling, seams, shaping, splitting, trimming, symmetry, tomesh, ui, zebra  # noqa: E402
 
 classes = (ui.classes + blueprints.classes + bugreport.classes + operators.classes + bridging.classes + tomesh.classes + orienting.classes + filleting.classes + flanging.classes + live.classes + links.classes + linked.classes
@@ -25,7 +26,7 @@ def _add_menu(self, context):
 
 
 def register():
-    zebra.wrap_operators(classes)
+    finish.wrap_operators(classes)
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.Scene.spline_surface = bpy.props.PointerProperty(type=ui.SS_Settings)

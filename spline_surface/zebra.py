@@ -159,7 +159,7 @@ class SS_OT_zebra_toggle(bpy.types.Operator):
 def stripe_new(context):
     """While zebra is on, stripe the visible patches that have no stripes yet.
 
-    Called as each of the add-on's operators finishes (see wrap_operators), so
+    Called as each of the add-on's operators finishes (see finish.py), so
     the material swap lands in that operator's undo step. It used to run from
     a depsgraph handler, after the step was stored: a patch striped there (the
     body sample's hidden Lip) kept pointing at the stripe material when an undo
@@ -170,41 +170,6 @@ def stripe_new(context):
     for ob in context.visible_objects:
         if ob.type == 'SURFACE' and not is_on(ob):
             enable(ob, settings)
-
-
-def wrap_operators(classes):
-    """Make the add-on's undoable operators stripe new patches before they return."""
-    import functools
-
-    def after(context, result):
-        if isinstance(result, set) and 'FINISHED' in result:
-            try:
-                stripe_new(context)
-            except Exception:
-                import traceback
-                traceback.print_exc()
-        return result
-
-    # Blender checks the argument count, so each method keeps its own signature
-    def wrap(meth, fn):
-        if meth == "execute":
-            def run(self, context):
-                return after(context, fn(self, context))
-        else:
-            def run(self, context, event):
-                return after(context, fn(self, context, event))
-        functools.update_wrapper(run, fn)
-        run._stripes = True
-        return run
-
-    for cls in classes:
-        if (cls is SS_OT_zebra_toggle or not getattr(cls, "bl_idname", "").startswith("spline_surface.")
-                or 'UNDO' not in getattr(cls, "bl_options", ())):
-            continue
-        for meth in ("execute", "invoke", "modal"):
-            fn = cls.__dict__.get(meth)
-            if fn is not None and not getattr(fn, "_stripes", False):
-                setattr(cls, meth, wrap(meth, fn))
 
 
 classes = (SS_OT_zebra_toggle,)
