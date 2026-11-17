@@ -120,6 +120,61 @@ def follow_map_checks(fol, ref):
     print("follow map: %d seam(s), %d arc(s)" % (len(seam), len(arcs)))
 
 
+def split_keeps_links():
+    """Split Patch: a Match Edge link on an edge that is not cut goes to the piece
+    holding that edge and keeps following; one on a cut edge is reported."""
+    from spline_surface import live as live_mod
+    from spline_surface.bridge.write_surface import build_surface_data
+    from spline_surface.core.continuity import find_shared_edge, grade, measure
+    from spline_surface.core.extend import extend_net
+    from spline_surface.recipe import META_KEY, raw_meta, store_meta
+    ctx = bpy.context
+    settings = ctx.scene.spline_surface
+    xs, ys = np.meshgrid(np.linspace(0, 3, 4), np.linspace(-500, -497, 4), indexing="ij")
+    A = np.stack([xs, ys, 0.3 * np.sin(xs) * np.cos(ys - ys.min())], -1)
+    B, _ = extend_net(A, "V1", 1.5, "G1", degree=3)
+    B = np.array(B)
+    B[:, 1:, 2] += 0.3
+    obs = []
+    for name, net in (("SplitRef", A), ("SplitFollow", B)):
+        cu = build_surface_data(name, net, settings.resolution)
+        ob = bpy.data.objects.new(name, cu)
+        ctx.collection.objects.link(ob)
+        store_meta(ob, raw_meta(net, world_net(ob)[1]))
+        obs.append(ob)
+    ref, fol = obs
+    select([fol, ref])
+    ctx.view_layer.objects.active = fol
+    assert bpy.ops.spline_surface.match_edge(continuity='G1') == {'FINISHED'}
+    edge_t = json.loads(fol[META_KEY])["matches"][0]["edge_t"]
+    keep = 'U' if edge_t[0] == 'U' else 'V'                 # this direction leaves edge_t whole
+    before = {o.name for o in bpy.data.objects}
+    select([fol])
+    assert bpy.ops.spline_surface.split_patch(source=fol.name, direction=keep, t=0.5) == {'FINISHED'}
+    piece = next(o for o in bpy.data.objects if o.name not in before)
+    holder = fol if edge_t[1] == '0' else piece
+    other = piece if holder is fol else fol
+    assert [m["ref"] for m in json.loads(holder[META_KEY]).get("matches", [])] == [ref.name]
+    # the other piece follows its sibling across the cut, so the two stay joined
+    assert [m["ref"] for m in json.loads(other[META_KEY]).get("matches", [])] == [holder.name]
+
+    def seam(ob):
+        (P, o), (R, ro) = world_net(ob), world_net(ref)
+        size = np.ptp(np.concatenate([P.reshape(-1, 3), R.reshape(-1, 3)]), 0).max()
+        sh = find_shared_edge(P, R, 1e-3 * size, o, ro)
+        return None if sh is None else grade(measure(P, R, *sh[:3], o, ro))
+    ref.location.z = 0.4
+    ctx.view_layer.update()
+    res = live_mod.update_chain([ref.name], ctx)
+    assert holder.name in res["ok"], res
+    assert seam(holder) in ("G1", "G2"), seam(holder)
+    assert other.name in res["ok"] + res["unchanged"], res
+    (Ph, oh), (Po, oo) = world_net(holder), world_net(other)
+    cut = find_shared_edge(Po, Ph, 1e-4, oo, oh)
+    assert cut is not None and cut[3] < 1e-6, cut
+    print("split keeps the match: %s follows %s" % (holder.name, ref.name))
+
+
 def even_gap_follows():
     """Even Gap: the active panel's edge runs the target gap from its neighbour,
     level with it, and keeps doing so when the neighbour moves."""
@@ -2235,6 +2290,7 @@ def run():
     assert all(z > 0 for z in zs) or all(z < 0 for z in zs), "mixed winding"
     match_links_far_move()
     even_gap_follows()
+    split_keeps_links()
     deferred_rebuilds()
     duplicate_edges_to_coons()
     scene_full_copy()            # last: switches the context scene

@@ -425,6 +425,11 @@ def apply_gap(net, orders, gap):
         raise ValueError("Gap partner missing: %s" % gap["ref"])
     rnet, rorders = world_net(ref)
     line = edge_polyline(rnet, rorders, gap["edge_ref"], 64)
-    net, orders, _ = even_gap_net(net, orders, gap["edge"], line, gap["target"],
-                                  flush=gap.get("flush", True), reach=gap.get("reach"))
+    try:
+        net, orders, _ = even_gap_net(net, orders, gap["edge"], line, gap["target"],
+                                      flush=gap.get("flush", True), reach=gap.get("reach"))
+    except ValueError as e:
+        if "faces" not in str(e):
+            raise
+        # moved out of reach (or a split piece beside the joint): nothing to even now
     return net, orders

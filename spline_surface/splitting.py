@@ -27,6 +27,56 @@ def _freeze(ob, meta):
     store_meta(ob, raw_meta(net, orders))
 
 
+def carry_links(meta, direction, net, orders, pieces):
+    """The Match Edge and Even Gap links of a split patch, dealt to its pieces.
+
+    meta: the patch's recipe before the split; net/orders: its shape then;
+    pieces: [(net, orders)] of piece a and piece b. A link on an edge that is
+    not cut goes to the piece that keeps that edge (its key stays the same). An
+    Even Gap on a cut edge goes to every piece whose part of it faces the
+    partner (Even Gap only evens the facing part). A Match on a cut edge cannot
+    follow on half an edge: it is dropped and named.
+    Returns ([extra recipe fields for a, for b], dropped partner names).
+    """
+    from .core.gap import closest_on_polyline
+    from .recipe import edge_polyline
+    edge_map, cut_edges = _EDGE_MAP[direction]
+    out = [{}, {}]
+    dropped = []
+    for m in (meta or {}).get("matches", []):
+        e = m.get("edge_t")
+        ref = bpy.data.objects.get(m.get("ref", ""))
+        if e is None and ref is not None:
+            rnet, rorders = world_net(ref)
+            size = np.ptp(np.concatenate([net.reshape(-1, 3), rnet.reshape(-1, 3)]), 0).max()
+            shared = find_shared_edge(net, rnet, 1e-3 * size + 1e-9, orders, rorders)
+            e = shared[0] if shared is not None else None
+        if e in edge_map:
+            out[edge_map[e] == 'b'].setdefault("matches", []).append(dict(m))
+        else:
+            dropped.append(m.get("ref", "?"))
+    gap = (meta or {}).get("gap")
+    if gap:
+        e = gap["edge"]
+        if e in edge_map:
+            out[edge_map[e] == 'b']["gap"] = dict(gap)
+        else:
+            ref = bpy.data.objects.get(gap["ref"])
+            line = None
+            if ref is not None:
+                rnet, rorders = world_net(ref)
+                line = edge_polyline(rnet, rorders, gap["edge_ref"], 64)
+            for i, (pnet, porders) in enumerate(pieces):
+                if line is None:
+                    break
+                _, d = closest_on_polyline(edge_polyline(pnet, porders, e, 24), line)
+                if (d <= gap.get("reach", np.inf)).any():
+                    out[i]["gap"] = dict(gap)
+            if not any("gap" in o for o in out):
+                dropped.append(gap["ref"])
+    return out, dropped
+
+
 def _fillet_partner(meta, name):
     """True if `meta` is a fillet trim (at any depth) made together with patch `name`."""
     m = meta
@@ -241,17 +291,33 @@ class SS_OT_split_patch(pick.ModalPicker, bpy.types.Operator):
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
         mirrors = _mirrors_of(source.name)
+        links, dropped = carry_links(_meta(source), self.direction, net, orders, [(A, oa), (B, ob_)])
+        # A piece that now follows something moves; its sibling must come along at the
+        # cut or a crack opens. The piece with no links of its own follows the other
+        # (G2: the surface was smooth across the cut).
+        follower = None
+        if links[0] or links[1]:
+            follower = 0 if not links[0] else 1
         live._state["busy"] = True
         try:
             replace_net(source, A, settings, oa)
-            store_meta(source, raw_meta(A, oa))
+            store_meta(source, raw_meta(A, oa, **links[0]))
             cu = build_surface_data(source.name + "_split", B, settings.resolution, ob_)
             for mat in zebra.real_materials(source):
                 cu.materials.append(mat)
             piece = bpy.data.objects.new(cu.name, cu)
             (source.users_collection[0] if source.users_collection
              else context.collection).objects.link(piece)
-            store_meta(piece, raw_meta(B, ob_))
+            if follower == 0:
+                links[0].setdefault("matches", []).append(
+                    {"ref": source.name + "_split", "continuity": 'G2', "spread": False})
+            elif follower == 1:
+                links[1].setdefault("matches", []).append(
+                    {"ref": source.name, "continuity": 'G2', "spread": False})
+            store_meta(piece, raw_meta(B, ob_, **links[1]))
+            if follower == 0:
+                links[0]["matches"][-1]["ref"] = piece.name
+                store_meta(source, raw_meta(A, oa, **links[0]))
             frozen = retarget(source, piece, self.direction, A, oa, B, ob_)
             for m in mirrors:
                 meta = dict(_meta(m), sources=[piece.name])
@@ -272,11 +338,16 @@ class SS_OT_split_patch(pick.ModalPicker, bpy.types.Operator):
         msg = "Split %s at %.3f" % (source.name, t)
         if err > 1e-6:
             msg += " (fitted, max deviation %.3g)" % err
+        if dropped:
+            # following on a cut edge is lost: say so instead of going quiet
+            msg += "; no longer follows (its edge was cut): " + ", ".join(sorted(set(dropped)))
         if frozen:
             self.report({'WARNING'}, msg + "; frozen (their edge was cut): " + ", ".join(frozen))
         elif result["skipped"] or result["error"]:
             self.report({'WARNING'}, msg + "; not rebuilt: "
                         + ", ".join(result["skipped"] + result["error"]))
+        elif dropped:
+            self.report({'WARNING'}, msg)
         else:
             self.report({'INFO'}, msg)
         return {'FINISHED'}

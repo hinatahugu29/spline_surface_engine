@@ -4,7 +4,8 @@
 
 Opens the sample built by tools/build_sample_body.py, rebuilds every patch from
 its recipe, and checks what the build set up still holds: the Even Gap joints
-(door to fender kept by its recipe; window to door as built) at 4 mm and flush, the frozen fillet partners
+(door to fender; front window to door, handed on by Split Patch) at 4 mm and
+flush, also after the door is raised, the frozen fillet partners
 after Split Patch, Diagnose without false "open" seams, and a clean To Mesh.
 Prints "ALL OK".
 """
@@ -54,17 +55,30 @@ def run():
     assert bpy.ops.spline_surface.regenerate_all() == {'FINISHED'}
     assert not live.FAILED, live.FAILED
 
-    # Split Patch keeps the side's pieces as they are (their recipe no longer evens the
-    # beltline), so the front window is measured against the door directly.
-    from spline_surface.panelgap import facing_edges
-    win, door = bpy.data.objects["Side_split_split"], bpy.data.objects["Door"]
-    e_win, e_door, reach = facing_edges(win, door)
-    belt = {"ref": "Door", "edge": e_win, "edge_ref": e_door, "reach": reach}
-    for name, g in (("Door", None), ("Side_split_split", belt)):
-        gap, step = joint(name, g)
+    # The side was evened to the door before it was split; Split Patch hands the gap to
+    # the piece that faces the door (the front window).
+    assert "gap" in meta("Side_split_split") and "gap" not in meta("Side")
+    for name in ("Door", "Side_split_split"):
+        gap, step = joint(name)
         print("%s joint: gap %.4f-%.4f, step <= %.4f over %d samples"
               % (name, gap.min(), gap.max(), step.max(), len(gap)))
         assert len(gap) >= 8 and np.abs(gap - 0.004).max() < 1e-3 and step.max() < 1e-3, name
+    # raise the door 5 mm: the front window's bottom follows, still joined to the B-pillar
+    door = bpy.data.objects["Door"]
+    door.location.z += 0.005
+    ctx.view_layer.update()
+    res = live.update_chain(["Door"], ctx)
+    assert "Side_split_split" in res["ok"], res
+    gap, step = joint("Side_split_split")
+    print("after raising the door: belt gap %.4f-%.4f" % (gap.min(), gap.max()))
+    assert np.abs(gap - 0.004).max() < 1e-3 and step.max() < 1e-3
+    from spline_surface.core.continuity import find_shared_edge
+    (Pw, ow), (Pp, op) = world_net(bpy.data.objects["Side_split_split"]), world_net(bpy.data.objects["Side_split"])
+    shared = find_shared_edge(Pw, Pp, 1e-3, ow, op)
+    assert shared is not None and shared[3] < 5e-4, shared      # the window and the pillar stay joined
+    door.location.z -= 0.005
+    ctx.view_layer.update()
+    live.update_chain(["Door"], ctx)
     # splitting the side froze its fillet partners instead of leaving them unbuildable
     assert meta("Roof")["method"] == "raw" and meta("Side_fillet")["method"] == "raw"
     assert meta("Lip_sweep").get("rotate") is True
