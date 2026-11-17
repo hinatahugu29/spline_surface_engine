@@ -142,7 +142,8 @@ class SS_OT_panel_gap(bpy.types.Operator):
 
 
 def facing_edges(a, b, search=0.0):
-    """(edge of a, edge of b) of the joint between patches a and b, or None.
+    """(edge of a, edge of b, reach) of the joint between patches a and b, or None
+    (reach: how far apart the two may be and still count as facing, twice the search).
 
     The pair whose edges lie closest on average, among those within `search`
     (0: 5% of the larger patch) along most of their length."""
@@ -152,13 +153,15 @@ def facing_edges(a, b, search=0.0):
     size = max(np.ptp(na.reshape(-1, 3), 0).max(), np.ptp(nb.reshape(-1, 3), 0).max())
     search = search if search > 0 else 0.05 * size
     best = None
-    for ka, kb in find_gap_pairs(lines, search, touch=0.0, coverage=0.6):
+    for ka, kb in find_gap_pairs(lines, search, touch=0.0, partial=True):
         if ka[0] != a.name:
             ka, kb = kb, ka
-        d = measure_gap(lines[ka], lines[kb])["dist"].mean()
+        d = measure_gap(lines[ka], lines[kb])["dist"]
+        close = d <= search
+        d = d[close].mean() / close.mean()          # the facing part, favouring longer joints
         if best is None or d < best[0]:
             best = (d, ka[1], kb[1])
-    return None if best is None else best[1:]
+    return None if best is None else best[1:] + (2.0 * search,)
 
 
 class SS_OT_even_gap(bpy.types.Operator):
@@ -217,7 +220,7 @@ class SS_OT_even_gap(bpy.types.Operator):
         line = edge_polyline(rnet, rorders, pair[1], 64)
         try:
             new, new_orders, (before, after) = even_gap_net(net, orders, pair[0], line, target,
-                                                            flush=self.flush)
+                                                            flush=self.flush, reach=pair[2])
         except (ValueError, np.linalg.LinAlgError) as e:
             self.report({'ERROR'}, str(e))
             return {'CANCELLED'}
@@ -226,12 +229,38 @@ class SS_OT_even_gap(bpy.types.Operator):
             meta = raw_meta(net, orders, **{k: meta[k] for k in ("matches",) if meta and k in meta})
         replace_net(ob, new, s, new_orders)
         meta["gap"] = {"ref": ref.name, "edge": pair[0], "edge_ref": pair[1],
-                       "target": target, "flush": self.flush}
+                       "target": target, "flush": self.flush, "reach": pair[2]}
         store_meta(ob, meta)
         mark_dirty()
-        self.report({'INFO'}, "%s %s: gap %.4g (worst error %.2g -> %.2g)"
-                    % (ob.name, pair[0], target, before, after))
+        msg = "%s %s: gap %.4g (worst error %.2g -> %.2g)" % (ob.name, pair[0], target, before, after)
+        opened = opened_seams(context, ob, net, orders, new, new_orders)
+        if opened:
+            # the ends of the evened edge moved, and neighbours sharing a side edge
+            # (pieces of a split, say) do not follow: say so instead of leaving a crack
+            self.report({'WARNING'}, msg + "; this opened the seam with " + ", ".join(opened)
+                        + " (even the gap before splitting, or Match Edge them to it)")
+        else:
+            self.report({'INFO'}, msg)
         return {'FINISHED'}
+
+
+def opened_seams(context, ob, net, orders, new, new_orders):
+    """Patches that shared an edge with `ob` before (net) but no longer do (new)."""
+    from .core.continuity import find_shared_edge
+    size = float(np.ptp(np.asarray(net).reshape(-1, 3), axis=0).max())
+    tol = 1e-4 * size + 1e-9
+    out = []
+    for other in context.visible_objects:
+        if other is ob or other.type != 'SURFACE':
+            continue
+        try:
+            onet, oorders = world_net(other)
+        except ValueError:
+            continue
+        if find_shared_edge(net, onet, tol, orders, oorders) is not None \
+                and find_shared_edge(new, onet, tol, new_orders, oorders) is None:
+            out.append(other.name)
+    return sorted(out)
 
 
 classes = (SS_OT_panel_gap, SS_OT_even_gap)

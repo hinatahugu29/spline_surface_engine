@@ -19,6 +19,8 @@ from .nurbs import eval_points
 
 RANK = {'open': 0, 'G0': 1, 'G1': 2, 'G2': 3}
 # How bad each issue is, for sorting: higher first.
+# An open seam is reported only up to this gap (relative to the size): a near miss.
+NEAR_MISS = 0.02
 SEVERITY = {"seam_open": 5, "seam_below": 4, "seam_kink": 3, "inflection": 2, "bumpy": 1}
 
 
@@ -159,8 +161,10 @@ def diagnose(patches, metas, seams):
                            "text": "%s | %s: %s, the recipe asks for %s" % (a, b, got, asked),
                            "hint": hint})
         elif got == 'open':
+            if r.get("gap", 0.0) > NEAR_MISS * r.get("size", np.inf):
+                continue                 # well apart: a panel between them, or on purpose
             issues.append({"kind": "seam_open", "a": a, "b": b,
-                           "text": "%s | %s: the edges almost meet (gap)" % (a, b),
+                           "text": "%s | %s: the edges almost meet (gap %.3g)" % (a, b, r.get("gap", 0.0)),
                            "hint": "Match Edge G0 or higher closes it"})
         elif got == 'G0' and asked is None:
             issues.append({"kind": "seam_kink", "a": a, "b": b,

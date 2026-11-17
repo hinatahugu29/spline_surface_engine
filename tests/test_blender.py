@@ -1979,6 +1979,15 @@ def run():
         new = [o for o in bpy.data.objects if o.name not in before]
         methods = sorted(json.loads(o[spline_surface.operators.META_KEY])["method"] for o in new)
         assert methods == ["blend", "fillet_trim", "fillet_trim"], (kind, methods)
+    # splitting one fillet member freezes the other, whose trim can no longer be redone
+    side = next(o for o in new if json.loads(o[spline_surface.operators.META_KEY])["method"]
+                == "fillet_trim" and o.name.startswith("Side"))
+    roof = next(o for o in new if o.name.startswith("Roof"))
+    select([side])
+    assert bpy.ops.spline_surface.split_patch(source=side.name, direction='U', t=0.5) == {'FINISHED'}
+    assert json.loads(roof[spline_surface.operators.META_KEY])["method"] == "raw"
+    res = spline_surface.live.update_chain([roof.name, side.name], bpy.context)
+    assert not res["error"], res
 
     # ---- v0.44: Blueprints stand a reference drawing at its real size
     import tempfile

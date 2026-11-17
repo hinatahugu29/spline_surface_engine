@@ -27,6 +27,16 @@ def _freeze(ob, meta):
     store_meta(ob, raw_meta(net, orders))
 
 
+def _fillet_partner(meta, name):
+    """True if `meta` is a fillet trim (at any depth) made together with patch `name`."""
+    m = meta
+    while m and m.get("method") == "fillet_trim":
+        if name in m.get("fillet", {}).get("members", []):
+            return True
+        m = m.get("base")
+    return False
+
+
 def retarget(source, piece_b, direction, net_a, orders_a, net_b, orders_b):
     """Point recipes that read `source` at the right piece. Returns frozen names."""
     edge_map, cut_edges = _EDGE_MAP[direction]
@@ -36,6 +46,12 @@ def retarget(source, piece_b, direction, net_a, orders_a, net_b, orders_b):
         if meta is None or ob in (source, piece_b):
             continue
         changed = False
+        if _fillet_partner(meta, source.name):
+            # trimmed together with the split patch, which no longer carries the
+            # fillet: the trim cannot be redone, so keep the shape as it is
+            _freeze(ob, meta)
+            frozen.append(ob.name)
+            continue
         names = meta.get("sources", [])
         if source.name in names:
             method = meta["method"]

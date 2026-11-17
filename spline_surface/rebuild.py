@@ -425,5 +425,5 @@ def apply_gap(net, orders, gap):
     rnet, rorders = world_net(ref)
     line = edge_polyline(rnet, rorders, gap["edge_ref"], 64)
     net, orders, _ = even_gap_net(net, orders, gap["edge"], line, gap["target"],
-                                  flush=gap.get("flush", True))
+                                  flush=gap.get("flush", True), reach=gap.get("reach"))
     return net, orders

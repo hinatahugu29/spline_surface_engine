@@ -56,12 +56,16 @@ def measure_gap(line_a, line_b, normals_a=None):
     return {"a": line_a, "b": near, "dist": dist, "gap": gap, "step": step}
 
 
-def find_gap_pairs(edges, search, touch=1e-6, coverage=0.7):
+def find_gap_pairs(edges, search, touch=1e-6, coverage=0.7, partial=False):
     """Pairs of facing edges from different patches.
 
     edges: {(patch, edge): polyline}. Two edges face each other when at least
     `coverage` of each one's samples lie within `search` of the other and they
-    are not touching (mean distance above `touch`). Returns [(key_a, key_b)].
+    are not touching (mean distance above `touch`). With `partial`, joints that
+    overlap only in part count too: each edge covered for a sixth of its
+    length and one of them for a quarter (a door's front edge running past the
+    end of the fender's rear edge; a side window over the rear of a door).
+    Returns [(key_a, key_b)].
     """
     keys = list(edges)
     out = []
@@ -75,8 +79,12 @@ def find_gap_pairs(edges, search, touch=1e-6, coverage=0.7):
                 continue
             _, da = closest_on_polyline(la, lb)
             _, db = closest_on_polyline(lb, la)
-            if (da <= search).mean() >= coverage and (db <= search).mean() >= coverage \
-                    and da.mean() > touch:
+            ca, cb = (da <= search).mean(), (db <= search).mean()
+            if partial:
+                covered = max(ca, cb) >= 0.25 and min(ca, cb) >= 1.0 / 6.0
+            else:
+                covered = ca >= coverage and cb >= coverage
+            if covered and da.mean() > touch:
                 out.append((ka, kb))
     return out
 
@@ -86,7 +94,8 @@ def _framed_indices(shape, edge):
     return edge_frame(idx, edge)[0].astype(int)
 
 
-def even_gap_net(net, orders, edge, line_b, target, flush=True, iterations=4, samples=None):
+def even_gap_net(net, orders, edge, line_b, target, flush=True, iterations=4, samples=None,
+                 reach=None):
     """Move `edge` of a patch so it runs `target` away from polyline `line_b`.
 
     The gap is measured across the surface, as measure_gap does: at every
@@ -94,6 +103,10 @@ def even_gap_net(net, orders, edge, line_b, target, flush=True, iterations=4, sa
     point is put `target` from it, in the patch's tangent plane, on the side it
     already sits. With `flush` the step along the normal is removed too (the
     two panels end level); without it the step is kept.
+
+    With `reach`, only the part of the edge that faces `line_b` is evened: the
+    samples further than `reach` from it, or past its ends, keep their place
+    (a door edge longer than the fender edge it meets).
 
     Only the edge row and the one or two rows inside it move, all by the same
     amount, so the slope and curvature across the edge are kept and the
@@ -127,12 +140,25 @@ def even_gap_net(net, orders, edge, line_b, target, flush=True, iterations=4, sa
         # with no in-plane offset yet (touching), push outwards along the patch
         dirn = np.where(wl[:, None] > 1e-9, w / np.maximum(wl, 1e-12)[:, None], across_u)
         want = near + target * dirn + (0.0 if flush else h[:, None] * nrm)
-        return pts, want, np.abs(wl - target).max()
+        want = np.where(facing[:, None], want, pts)
+        return pts, want, np.abs(wl - target)[facing].max()
 
+    facing = np.ones(S, bool)
+    if reach is not None:
+        pts0 = B @ C[:, -1]
+        near0, d0 = closest_on_polyline(pts0, line_b)
+        at_end = np.minimum(np.linalg.norm(near0 - line_b[0], axis=1),
+                            np.linalg.norm(near0 - line_b[-1], axis=1)) < 1e-9 + 1e-6 * reach
+        facing = (d0 <= reach) & ~at_end
+        if not facing.any():
+            raise ValueError("no part of the edge faces the other panel")
     _, _, before = errors(C)
     for _ in range(iterations):
         pts, want, _ = errors(C)
-        dP, *_ = np.linalg.lstsq(B, want - pts, rcond=None)
+        # The part not facing the other edge only loosely keeps its place, so a
+        # single-span edge can bend into the gap without rippling.
+        w = np.where(facing, 1.0, 0.05)[:, None]
+        dP, *_ = np.linalg.lstsq(w * B, w * (want - pts), rcond=None)
         C[:, m - rows:] += dP[:, None, :]
     _, _, after = errors(C)
     out = net.copy()

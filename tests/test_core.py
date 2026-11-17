@@ -1401,6 +1401,26 @@ def test_even_gap():
     assert m2["step"].mean() > 0.003
 
 
+def test_even_gap_partial():
+    """A door edge twice as long as the fender edge it meets: only the facing half moves."""
+    from core.gap import even_gap_net, find_gap_pairs
+    g = np.linspace(0, 1, 6)
+    U, V = np.meshgrid(g, g, indexing="ij")
+    door = np.stack([0 * U + 1.0, -0.02 - 0.02 * V - 1.0 * U, -0.5 + 1.0 * V], -1)   # front edge u=0
+    t = np.linspace(0, 1, 30)
+    fender_edge = np.stack([0 * t + 1.0, 0 * t, -0.5 + 0.5 * t], -1)               # lower half only
+    door_front = edge_line(door, 'U0', 30)
+    assert find_gap_pairs({("d", "U0"): door_front, ("f", "U0"): fender_edge}, 0.07, coverage=0.6) == []
+    assert find_gap_pairs({("d", "U0"): door_front, ("f", "U0"): fender_edge}, 0.07, coverage=0.6,
+                          partial=True) == [(("d", "U0"), ("f", "U0"))]
+    net, orders, (before, after) = even_gap_net(door, (6, 6), 'U0', fender_edge, 0.004, reach=0.07)
+    front = edge_line(net, 'U0', 30)
+    low = front[:, 2] < -0.05
+    assert np.abs(-front[low, 1] - 0.004).max() < 2e-3, front[low, 1]      # evened where they face
+    assert front[-1, 1] < -0.02                                           # the top stays clear
+    assert after < before
+
+
 def edge_line(net, edge, n=30):
     from core.nurbs import eval_points
     s = np.linspace(0, 1, n)
@@ -1453,6 +1473,10 @@ def test_diagnose():
     apart = [{"a": "P", "b": "Q", "grade": "open", "angle": 0.0, "curvature": 0.0}]
     assert diagnose({}, {"P": trimmed, "Q": trimmed}, apart) == []          # the fillet joins them
     assert [i["kind"] for i in diagnose({}, {}, apart)] == ["seam_open"]
+    near = [dict(apart[0], gap=0.005, size=1.0)]
+    far = [dict(apart[0], gap=0.1, size=1.0)]                  # a pillar strip between them
+    assert [i["kind"] for i in diagnose({}, {}, near)] == ["seam_open"]
+    assert diagnose({}, {}, far) == []
 
 
 def test_presets():
