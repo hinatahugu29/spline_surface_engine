@@ -5,7 +5,14 @@
 Checks that every patch rebuilds from its recipe, and that To Mesh gives one
 clean mesh: no holes along the seams (the only open border is the outline of
 the whole body), one consistent winding, no collapsed faces. Prints "ALL OK".
+
+It also compares every rebuilt patch with tests/sample_snapshot.json (the control
+points after the rebuild), so a refactoring that changes a shape is caught. After a
+change that is meant to move the shapes, write a new snapshot:
+
+    blender -b --factory-startup samples/hood_fender.blend --python tests/test_sample.py -- --update
 """
+import json
 import os
 import sys
 
@@ -16,6 +23,35 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, ROOT)
 import spline_surface  # noqa: E402
 from spline_surface import live  # noqa: E402
+from spline_surface.recipe import world_net  # noqa: E402
+
+SNAPSHOT = os.path.join(ROOT, "tests", "sample_snapshot.json")
+SNAPSHOT_TOL = 1e-5
+
+
+def check_snapshot(patches):
+    """Compare the rebuilt control points with the stored ones (or store them)."""
+    now = {}
+    for o in patches:
+        net, orders = world_net(o)
+        now[o.name] = {"shape": list(net.shape), "orders": list(orders),
+                       "points": [round(float(x), 7) for x in net.ravel()]}
+    if "--update" in sys.argv or not os.path.exists(SNAPSHOT):
+        with open(SNAPSHOT, "w", encoding="utf-8") as f:
+            json.dump(now, f, indent=0, sort_keys=True)
+        print("snapshot written:", len(now), "patches")
+        return
+    with open(SNAPSHOT, encoding="utf-8") as f:
+        old = json.load(f)
+    assert sorted(old) == sorted(now), (sorted(old), sorted(now))
+    worst = 0.0
+    for name, a in now.items():
+        b = old[name]
+        assert a["shape"] == b["shape"] and a["orders"] == b["orders"], name
+        d = max(abs(x - y) for x, y in zip(a["points"], b["points"]))
+        assert d < SNAPSHOT_TOL, "%s moved by %g" % (name, d)
+        worst = max(worst, d)
+    print("snapshot: %d patches match (largest difference %.2g)" % (len(now), worst))
 
 
 def boundary_loops(bm):
@@ -45,6 +81,7 @@ def run():
     ctx.view_layer.objects.active = patches[0]
     assert bpy.ops.spline_surface.regenerate_all() == {'FINISHED'}
     assert not live.FAILED, live.FAILED
+    check_snapshot(patches)
     assert bpy.ops.spline_surface.to_mesh() == {'FINISHED'}
     mesh_ob = ctx.active_object
     assert mesh_ob.type == 'MESH'
