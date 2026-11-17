@@ -105,6 +105,12 @@ def run():
     print("body mesh: faces %d, wrong-way edges %d, non-manifold %d, collapsed %d"
           % (len(bm.faces), wrong_way, nonmanifold, tiny))
     assert tiny == 0
+    # the moulding lip meets the bumper and the nose bridge on one edge: To Mesh marks it
+    group = ctx.active_object.vertex_groups.get("non_manifold")
+    assert nonmanifold > 0 and group is not None
+    marked = sum(1 for v in ctx.active_object.data.vertices if any(g.group == group.index for g in v.groups))
+    print("marked %d vertices in 'non_manifold'" % marked)
+    assert marked >= nonmanifold
     bm.free()
     spline_surface.unregister()
     print("ALL OK")

@@ -155,6 +155,7 @@ def run():
           "collapsed faces %d" % (len(bm.faces), loops, wrong_way, nonmanifold, tiny))
     assert wrong_way == 0 and nonmanifold == 0 and tiny == 0
     assert loops == 1, loops          # the outline of the body only: no holes at the seams
+    assert mesh_ob.vertex_groups.get("non_manifold") is None     # nothing to mark here
     bm.free()
     spline_surface.unregister()
     print("ALL OK")

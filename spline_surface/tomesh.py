@@ -66,6 +66,9 @@ def _split_ngons(bm):
     return cuts
 
 
+NON_MANIFOLD = "non_manifold"   # point attribute / vertex group: where 3+ patches share an edge
+
+
 def weld_mesh(name, surfaces, resolution, context=None, quads=True, curve_detail=0):
     """One mesh of all patches, sampled uniformly and welded along shared edges.
 
@@ -119,9 +122,16 @@ def weld_mesh(name, surfaces, resolution, context=None, quads=True, curve_detail
         _split_ngons(bm)
     for f in bm.faces:
         f.smooth = True
+    # Edges where three or more patches meet (a moulding on a seam, a flange off
+    # a joint) cannot be one surface: mark their vertices so they can be found.
+    crowded = {v.index for e in bm.edges if len(e.link_faces) > 2 for v in e.verts}
     me = bpy.data.meshes.new(name)
     bm.to_mesh(me)
     bm.free()
+    if crowded:
+        attr = me.attributes.new(NON_MANIFOLD, 'BOOLEAN', 'POINT')
+        for i in crowded:
+            attr.data[i].value = True
     return me, fallback
 
 
@@ -161,6 +171,7 @@ class SS_OT_to_mesh(bpy.types.Operator):
             mob = bpy.data.objects.new(me.name, me)
             context.collection.objects.link(mob)
             created.append(mob)
+            crowded = mark_crowded(mob)
         else:
             for ob in surfaces:
                 for sp in ob.data.splines:
@@ -179,12 +190,29 @@ class SS_OT_to_mesh(bpy.types.Operator):
             mob.select_set(True)
         context.view_layer.objects.active = created[-1]
         msg = "Created %d mesh object(s)" % len(created)
+        if self.weld and crowded:
+            msg += ("; %d vertices sit on edges shared by three or more patches (not manifold): "
+                    "see the '%s' vertex group" % (crowded, NON_MANIFOLD))
         if weld_fallback:
             self.report({'WARNING'}, msg + "; not a clean patch, seam may not be welded: "
                         + ", ".join(weld_fallback))
+        elif self.weld and crowded:
+            self.report({'WARNING'}, msg)
         else:
             self.report({'INFO'}, msg)
         return {'FINISHED'}
+
+
+def mark_crowded(ob):
+    """Copy weld_mesh's non-manifold marks into a vertex group. Returns the count."""
+    attr = ob.data.attributes.get(NON_MANIFOLD)
+    if attr is None:
+        return 0
+    idx = [i for i, a in enumerate(attr.data) if a.value]
+    ob.data.attributes.remove(attr)      # first: a vertex group may not share its name
+    if idx:
+        ob.vertex_groups.new(name=NON_MANIFOLD).add(idx, 1.0, 'REPLACE')
+    return len(idx)
 
 
 classes = (SS_OT_to_mesh,)
