@@ -1565,6 +1565,35 @@ def test_partial_contact():
     assert partial_contact(long_, apart, 1e-3 * 2.0) is None
 
 
+def test_spoke_fields_g1():
+    """The two quads' cross fields along a star spoke stay coplanar with it (G1) and
+    end on the half-side tangent and on each quad's other spoke at the centre."""
+    from core.fill import _spoke_fields
+    from core.nurbs import basis_matrix
+    rng_ = np.random.default_rng(3)
+    for _ in range(5):
+        c = np.zeros(3)
+        dirs = [np.array([np.cos(a), np.sin(a), 0.0]) for a in np.radians([90, 215, 330])]
+        dirs = [d + 0.15 * rng_.normal(size=3) * [1, 1, 0] for d in dirs]
+        dirs = [d / np.linalg.norm(d) for d in dirs]
+        m = c + dirs[0] * 1.0 + [0, 0, 0.2]
+        E = np.array([m, m + [0.05, -0.2, 0.0], m + [0.08, -0.4, -0.05], c + dirs[0] * 0.4,
+                      c + dirs[0] * 0.2, c])
+        D0 = np.array([-0.5, 0.05, 0.1])
+        X1, Y1 = dirs[2] * 0.9, dirs[1] * 1.1
+        Xc, Yc = _spoke_fields(E, D0, X1, Y1)
+        t = np.linspace(0, 1, 40)
+        X, Y = basis_matrix(6, 6, t) @ Xc, basis_matrix(6, 6, t) @ Yc
+        dE = basis_matrix(6, 6, t, 1) @ E
+        vol = np.abs(np.einsum("ij,ij->i", np.cross(X, Y), dE))
+        scale = np.linalg.norm(X, axis=1) * np.linalg.norm(Y, axis=1) * np.linalg.norm(dE, axis=1)
+        assert (vol / scale).max() < 1e-9                      # coplanar all along: G1
+        side = np.einsum("ij,ij->i", np.cross(dE, X), np.cross(dE, Y))
+        assert (side < 0).all()                                # on opposite sides of the spoke
+        assert np.allclose(X[0], D0) and np.allclose(Y[0], -D0)
+        assert np.allclose(X[-1], X1) and np.allclose(Y[-1], Y1)
+
+
 def test_presets():
     from core.presets import KINDS, POINTS, build
     for kind in KINDS:

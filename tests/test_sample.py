@@ -141,6 +141,10 @@ def run():
                  if any("_fill" in n and "fillet" not in n for n in (r["a"], r["b"]))]
     print("fill seams: %d, worst %.3f deg" % (len(fill_rows), max(r["angle"] for r in fill_rows)))
     assert fill_rows and max(r["angle"] for r in fill_rows) < 1.0, fill_rows
+    # the three pieces of a fill join each other G1, centre included (was up to 0.31 deg)
+    inner = [r for r in fill_rows if all("_fill" in n and "fillet" not in n for n in (r["a"], r["b"]))]
+    print("between fill pieces: worst %.3f deg" % max(r["angle"] for r in inner))
+    assert len(inner) == 12 and max(r["angle"] for r in inner) < 0.1, inner
     for o in ctx.scene.objects:
         o.select_set(o.type == 'SURFACE')
     assert bpy.ops.spline_surface.to_mesh() == {'FINISHED'}

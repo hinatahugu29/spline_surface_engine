@@ -205,6 +205,47 @@ def _halves(side):
     return halves
 
 
+def _spoke_fields(E, D0, X1, Y1):
+    """Cross-derivative rows on the two sides of a spoke (quintic Bezier E, middle of
+    a side -> centre), for a G1 join of the two quads at every point of it.
+
+    G1 along the spoke only asks the two sides' cross derivatives X(t), Y(t) to be
+    coplanar with the spoke's tangent E'(t), on opposite sides of it. So both are
+    built from one field D(t) plus multiples of E'(t):
+        X = D + lam(t) E',   Y = -q(t) D + mu(t) E'
+    with D linear, q, lam, mu linear in t: X and Y are then quintics (exact in the
+    spoke's own Bezier basis) and lie in span(D, E') everywhere. At t = 0 they are
+    D0 and -D0 (the half-sides' tangents); at t = 1 exactly X1 and Y1 (the tangents
+    of the quads' other spokes at the centre). One opposite pair (X = -Y) could
+    only average X1 and -Y1, which differ unless N = 4: a kink at the centre.
+    Returns (X rows, Y rows), 6 control points each.
+    """
+    t = np.linspace(0.0, 1.0, 13)
+    dE = basis_matrix(6, 6, t, 1) @ E
+    e1 = dE[-1]
+    ee = max(np.dot(e1, e1), 1e-24)
+    lam1 = np.dot(X1, e1) / ee
+    D1 = X1 - lam1 * e1                               # X1 without its part along the spoke
+    mu1 = np.dot(Y1, e1) / ee
+    Yp = Y1 - mu1 * e1
+    dd = np.dot(D1, D1)
+    q1 = -np.dot(Yp, D1) / dd if dd > 1e-24 else -1.0
+    if q1 <= 0.0 or np.linalg.norm(Yp + q1 * D1) > 1e-6 * (np.linalg.norm(Y1) + 1e-12):
+        # the other spokes do not lie on either side of this one (a degenerate star):
+        # fall back to one opposite pair splitting the two wishes
+        D1 = 0.5 * (X1 - Y1)
+        lam1 = mu1 = 0.0
+        q1 = 1.0
+    s = t[:, None]
+    D = D0 + (D1 - D0) * s
+    X = D + lam1 * s * dE
+    Y = -(1.0 + (q1 - 1.0) * s) * D + mu1 * s * dE
+    B = basis_matrix(6, 6, t)
+    Xc, *_ = np.linalg.lstsq(B, X, rcond=None)
+    Yc, *_ = np.linalg.lstsq(B, Y, rcond=None)
+    return Xc, Yc
+
+
 def _star_quads(loop, ref, continuity, tension, centre=None, normal=None):
     """One quad per corner of an N-sided loop, around a shared centre point."""
     N = len(loop)
@@ -233,8 +274,8 @@ def _star_quads(loop, ref, continuity, tension, centre=None, normal=None):
     #   alpha_i T_i (and the half-sides use that same reach alpha_i);
     # - the spoke's cross tangent there is half the side's own tangent (each
     #   half-side covers half of the side's parameter range).
-    # At the centre N quads meet; for N != 4 no regular quad layout is G1
-    # there, so the spoke's cross tangent splits the two neighbours' wishes.
+    # At the centre N quads meet; each quad's cross tangent along a spoke ends on
+    # the tangent of its own other spoke there (_spoke_fields), so they join G1.
     T_mid, alpha, dirs, lengths = [], [], [], []
     for i, side in enumerate(loop):
         (E, T, _), k, _ = side[0][:3], side[1], side[2]
@@ -253,21 +294,25 @@ def _star_quads(loop, ref, continuity, tension, centre=None, normal=None):
         P1 = m + alpha[i] * T_mid[i] / 5.0
         P4 = centre + dirs[i] * L / 5.0
         E = np.array([m, P1, m + 2 * (P1 - m), centre + 2 * (P4 - centre), P4, centre])
+        # Cross fields on both sides of the spoke. At the side's middle both are the
+        # half-side's tangent (opposite ways); at the centre each must be the tangent
+        # of its own quad's other spoke there. They need not be opposite to be G1,
+        # only coplanar with the spoke's own tangent: see _spoke_fields.
         D0 = -0.5 * along[i]
-        D1 = 0.5 * (dirs[i - 1] * lengths[i - 1] - dirs[(i + 1) % N] * lengths[(i + 1) % N])
-        D = D0 + (D1 - D0) * np.linspace(0.0, 1.0, 6)[:, None]
-        spokes.append((E, D))
+        X1 = dirs[i - 1] * lengths[i - 1]               # into quad i: towards spoke i-1
+        Y1 = dirs[(i + 1) % N] * lengths[(i + 1) % N]   # into quad i+1: towards spoke i+1
+        spokes.append((E,) + _spoke_fields(E, D0, X1, Y1))
 
     quads = []
     for j in range(N):
-        Ej, Dj = spokes[j]
-        Ep, Dp = spokes[j - 1]
-        zero = np.zeros_like(Dj)
+        Ej, Xj, _ = spokes[j]
+        Ep, _, Yp = spokes[j - 1]
+        zero = np.zeros_like(Xj)
         first = (halves[j][0][0][:3] + [alpha[j]], halves[j][0][1], halves[j][0][2])
         second = (halves[j - 1][1][0][:3] + [alpha[j - 1]], halves[j - 1][1][1],
                   halves[j - 1][1][2])
-        spoke_j = ([Ej, Dj, zero, 1.0], 6, 0.0)      # m_j -> centre, pointing into quad j
-        spoke_p = ([Ep, -Dp, zero, 1.0], 6, 0.0)     # m_{j-1} -> centre, into quad j
+        spoke_j = ([Ej, Xj, zero, 1.0], 6, 0.0)      # m_j -> centre, pointing into quad j
+        spoke_p = ([Ep, Yp, zero, 1.0], 6, 0.0)      # m_{j-1} -> centre, into quad j
         loop_j = [first, spoke_j, _rev(spoke_p), second]
         quads.append(quad_net(loop_j, continuity, tension, STAR_POINTS, g1_first=True))
     return quads
