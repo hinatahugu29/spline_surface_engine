@@ -20,7 +20,7 @@ from . import pick
 from .bridge.read_curves import read_polyline
 from .core.curveedit import fair_chain, nearest_param, pull_chain
 from .core.network import diagnose_network
-from .operators import network_tolerance
+from .rebuild import network_tolerance
 
 PICK_PIXELS = 30.0
 AXES = {'X': (1.0, 0.0, 0.0), 'Y': (0.0, 1.0, 0.0), 'Z': (0.0, 0.0, 1.0)}

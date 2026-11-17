@@ -2,9 +2,9 @@
 property), and the open-edge helpers built on top of world_net().
 
 Pure IO/geometry primitives with no dependency on the compute_* recipe
-dispatch (that stays in operators.py, since it in turn depends on every
+dispatch (that lives in rebuild.py, since it in turn depends on every
 core.* builder); every other module here (live, linked, splitting, symmetry,
-cage, seams) only needs this layer, not operators.py's much larger surface.
+cage, seams) only needs this layer, not rebuild.py's much larger surface.
 """
 import hashlib
 import json

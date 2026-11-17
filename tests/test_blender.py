@@ -314,7 +314,15 @@ def scene_full_copy():
     print("scene full copy: %d copied patch(es) relinked" % len(relinks))
 
 
+def recipe_registry():
+    from spline_surface.rebuild import RECIPES
+    expected = {"coons", "loft", "extend", "flange", "sweep", "corner", "fill", "blend",
+                "fillet", "fillet_trim", "network", "offset", "mirror", "raw"}
+    assert expected <= set(RECIPES), expected - set(RECIPES)
+
+
 def run():
+    recipe_registry()
     spline_surface.register()
     for o in list(bpy.data.objects):
         bpy.data.objects.remove(o)
@@ -1725,7 +1733,7 @@ def run():
     assert np.mean([f.normal.z for f in bpy.context.active_object.data.polygons]) > 0.9
 
     # ---- v0.41: Flange folds a rounded wall off a patch edge
-    from spline_surface.operators import compute_flange  # noqa: F401
+    from spline_surface.rebuild import compute_flange  # noqa: F401
     bpy.context.scene.cursor.location = (0, 700, 0)
     bpy.ops.spline_surface.add_patch(shape='PLANE', points_u=5, points_v=5)
     panel = bpy.context.active_object
@@ -2075,7 +2083,7 @@ def run():
             assert bpy.ops.spline_surface.sweep(
                 source_a=sw_prof.name, edge_a='U1', source_b=sw_rail.name, edge_b='V1', straight=True,
                 target_mode='PLANE', target_axis=str(axis), target_value=value) == {'FINISHED'}
-            if ops.sweep_note is None:
+            if spline_surface.rebuild.sweep_note is None:
                 got_plane = (bpy.context.active_object, axis, value)
                 break
         if got_plane:
@@ -2103,7 +2111,7 @@ def run():
         assert bpy.ops.spline_surface.sweep(
             source_a=sw_prof.name, edge_a='U1', source_b=sw_rail.name, edge_b='V1', straight=True,
             target_mode='PLANE', target_axis=str(axis), target_value=far_value) == {'FINISHED'}
-        notes.append(ops.sweep_note)
+        notes.append(spline_surface.rebuild.sweep_note)
     assert any(n and "Target not used" in n for n in notes), notes
     # ---- v0.60: patches that touch face the same way (Align Normals, new patches, To Mesh)
     def facing(ob):

@@ -5,8 +5,8 @@ from .bridge.write_surface import build_surface_data
 from . import pick
 from . import zebra
 from .recipe import EDGE_KEYS, OPPOSITE_EDGE, _make_active, iso_lines, store_meta, surface_edges
-from . import operators
-from .operators import compute_blend, compute_corner, compute_sweep
+from . import rebuild
+from .rebuild import compute_blend, compute_corner, compute_sweep
 from .orienting import face_like
 
 
@@ -463,8 +463,8 @@ class SS_OT_sweep(_EdgePairPicker, bpy.types.Operator):
         if self.target_mode != 'NONE' and not self.straight:
             self.straight = True
         result = super().execute(context)
-        if result == {'FINISHED'} and operators.sweep_note:
-            self.report({'WARNING'}, operators.sweep_note)
+        if result == {'FINISHED'} and rebuild.sweep_note:
+            self.report({'WARNING'}, rebuild.sweep_note)
         return result
 
 

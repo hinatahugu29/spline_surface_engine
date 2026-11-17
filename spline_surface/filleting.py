@@ -22,7 +22,7 @@ from .core.continuity import find_shared_edge
 from .core.fill import fill_patches, side_from_patch
 from .core.fillet import corner_loops, multi_fillet
 from .core.orient import flip_net, part_flips
-from .operators import _seam_tolerance, compute_fill, compute_fillet_trim
+from .rebuild import _seam_tolerance, compute_fill, compute_fillet_trim
 from .recipe import (META_KEY, edge_polyline, hand_edited, hand_edited_net, iso_lines, raw_meta,
                      replace_net, store_meta, world_net)
 
@@ -46,7 +46,7 @@ def set_fillet_radius(context, fillet_id, radius):
     """Redo fillet `fillet_id` with a new radius; its bridges and corner
     patches follow. Nothing changes if any member can't be redone (e.g. the
     radius no longer fits) or was edited by hand since."""
-    from . import live  # live imports operators, which this module imports
+    from . import live  # live imports rebuild, which this module imports
     members = fillet_members(fillet_id)
     if not members:
         raise ValueError("fillet not found")
@@ -84,7 +84,7 @@ def flange_recipe(meta):
 def set_flange(context, ob, angle=None, length=None):
     """Change a flange wall's angle / length after the fact. The rounded fold and everything
     built on the wall follow. Raises ValueError (and changes nothing) if it can't be done."""
-    from . import live  # live imports operators, which this module imports
+    from . import live  # live imports rebuild, which this module imports
     meta = json.loads(ob[META_KEY])
     if flange_recipe(meta) is None:
         raise ValueError("%s is not a flange wall" % ob.name)

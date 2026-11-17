@@ -12,7 +12,7 @@ import traceback
 import bpy
 import numpy as np
 
-from .operators import compute_from_meta
+from .rebuild import compute_from_meta
 from .recipe import (ADDON_WRITES, META_KEY, ROUND_DECIMALS, hand_edited, raw_meta,
                      replace_net, store_meta, world_net)
 

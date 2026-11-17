@@ -13,7 +13,7 @@ import bpy
 from . import pick, zebra
 from .orienting import face_like
 from .bridge.write_surface import build_surface_data
-from .operators import compute_flange
+from .rebuild import compute_flange
 from .filleting import flange_recipe, set_flange
 from .recipe import META_KEY, _make_active, store_meta, surface_edges
 

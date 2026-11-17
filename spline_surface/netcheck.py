@@ -14,7 +14,7 @@ from gpu_extras.batch import batch_for_shader
 
 from .bridge.read_curves import read_polyline
 from .core.network import diagnose_network
-from .operators import BOUNDARY_TYPES, network_tolerance
+from .rebuild import BOUNDARY_TYPES, network_tolerance
 
 FAMILY = {0: (0.35, 0.65, 1.0, 1.0), 1: (0.35, 0.95, 0.45, 1.0), None: (0.6, 0.6, 0.6, 1.0)}
 TANGLED = (1.0, 0.6, 0.15, 1.0)

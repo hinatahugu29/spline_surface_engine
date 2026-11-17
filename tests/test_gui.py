@@ -23,7 +23,7 @@ from spline_surface import live  # noqa: E402,F401
 from spline_surface.bridge.write_surface import build_surface_data  # noqa: E402
 from spline_surface.core.continuity import find_shared_edge, grade, measure  # noqa: E402
 from spline_surface.core.extend import extend_net  # noqa: E402
-from spline_surface.operators import compute_from_meta  # noqa: E402
+from spline_surface.rebuild import compute_from_meta  # noqa: E402
 from spline_surface.recipe import META_KEY, hand_edited, raw_meta, store_meta, world_net  # noqa: E402
 
 extra = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []

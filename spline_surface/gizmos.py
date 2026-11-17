@@ -201,7 +201,7 @@ class SS_GGT_fillet_radius(_RecipeArrow, bpy.types.GizmoGroup):
         found = _fillet_bridge(context.active_object)
         if found is None:
             return
-        from .operators import compute_from_meta, fillet_base
+        from .rebuild import compute_from_meta, fillet_base
         meta, side_meta = found
         try:
             base, base_orders, _ = compute_from_meta(
