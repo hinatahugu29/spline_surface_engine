@@ -221,11 +221,20 @@ _EDGE_UV = {'U0': lambda t: (0 * t, t), 'U1': lambda t: (0 * t + 1, t),
 
 
 def _edge_samples(P, orders, edge, t):
-    """Points and unit normals along an edge (clamped a hair inside for the normal)."""
+    """Points and unit normals along an edge.
+
+    The normal is taken right on the edge. Only where the surface is degenerate
+    there (a collapsed corner, no normal) is it taken a hair inside: always
+    stepping inside moved it along the edge too, and on a steep patch the two
+    sides of a seam then read their normals at different points (0.2-0.5 deg)."""
     u, v = _EDGE_UV[edge](t)
     pts = eval_points(P, orders, u, v)
-    ui, vi = np.clip(u, 1e-4, 1 - 1e-4), np.clip(v, 1e-4, 1 - 1e-4)
-    n = np.cross(eval_points(P, orders, ui, vi, 1, 0), eval_points(P, orders, ui, vi, 0, 1))
+    n = np.cross(eval_points(P, orders, u, v, 1, 0), eval_points(P, orders, u, v, 0, 1))
+    size = np.linalg.norm(n, axis=1)
+    bad = size < 1e-9 * max(size.max(), 1e-30)
+    if bad.any():
+        ui, vi = np.clip(u[bad], 1e-4, 1 - 1e-4), np.clip(v[bad], 1e-4, 1 - 1e-4)
+        n[bad] = np.cross(eval_points(P, orders, ui, vi, 1, 0), eval_points(P, orders, ui, vi, 0, 1))
     return pts, n / np.maximum(np.linalg.norm(n, axis=1, keepdims=True), 1e-24)
 
 
@@ -264,14 +273,18 @@ def partial_contact(Pa, Pb, tol, orders_a=None, orders_b=None, samples=41, dense
             dist = np.linalg.norm(a0[None] + f[..., None] * ab[None] - pa[:, None], axis=2)
             seg = dist.argmin(1)
             gap = dist[np.arange(len(t)), seg]
-            k = np.where(f[np.arange(len(t)), seg] < 0.5, seg, seg + 1)   # nearer sample's normal
             on = gap <= tol
             if on.sum() < 3:
                 continue
             length = np.linalg.norm(np.diff(pa[on], axis=0), axis=1).sum()
             if length < 0.05 * size:
                 continue
-            ang = np.degrees(np.arccos(np.clip(np.abs((na[on] * nb[k[on]]).sum(1)), 0.0, 1.0)))
+            # the other patch's normal at the exact foot point, not at its nearest sample:
+            # on a tight fillet the normal turns about a degree between samples
+            idx = np.arange(len(t))[on]
+            foot = td[seg[idx]] + f[idx, seg[idx]] * (td[1] - td[0])
+            _, nb_on = _edge_samples(Pb, orders_b, eb, foot)
+            ang = np.degrees(np.arccos(np.clip(np.abs((na[on] * nb_on).sum(1)), 0.0, 1.0)))
             cand = {"edge_a": ea, "edge_b": eb, "gap": float(gap[on].max()),
                     "angle": float(ang.max()), "length": float(length)}
             if best is None or length > best["length"]:

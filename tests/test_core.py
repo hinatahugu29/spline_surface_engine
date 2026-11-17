@@ -1594,6 +1594,24 @@ def test_spoke_fields_g1():
         assert np.allclose(X[-1], X1) and np.allclose(Y[-1], Y1)
 
 
+def test_partial_contact_tight_bend():
+    """On a tight bend the normal turns quickly: both normals must be read at the same
+    point, right on the edge (stepping a hair inside moved them apart along the edge
+    and showed ~0.5 deg on a perfect seam)."""
+    from core.continuity import partial_contact
+
+    def parabolic(x0, x1, y0, y1, c=100.0):       # z = c x^2: steep (radius 5 mm at x = 0)
+        xs = np.array([x0, 0.5 * (x0 + x1), x1])
+        zs = np.array([c * x0 * x0, c * x0 * x1, c * x1 * x1])   # exact quadratic Bezier
+        return np.stack([np.stack([xs, 0 * xs + y, zs], -1) for y in (y0, y1)], 1)
+
+    A = parabolic(0.0, 0.8, -1.0, 0.0)            # its edge at y = 0 runs x 0..0.8
+    B = parabolic(0.0, 0.4, 0.0, 1.0)             # the same surface beyond, x 0..0.4 only
+    c = partial_contact(A, B, 1e-3, (3, 2), (3, 2))
+    assert c is not None and c["gap"] < 1e-9, c
+    assert c["angle"] < 1e-3, c                   # one smooth surface: no kink (read 0.46 before)
+
+
 def test_presets():
     from core.presets import KINDS, POINTS, build
     for kind in KINDS:

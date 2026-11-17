@@ -173,8 +173,10 @@ def measure_seams(nets, settings):
             if shared is None or c is not None:
                 if c is not None:
                     m = {"gap": c["gap"], "angle": c["angle"], "curvature": 0.0, "size": float(size)}
+                    g = grade(m)
+                    # curvature is not measured along part of an edge: G1 at best
                     rows.append({"a": a, "b": b, "edge_a": c["edge_a"], "edge_b": c["edge_b"],
-                                 "grade": grade(m), "partial": True, **m})
+                                 "grade": 'G1' if g == 'G2' else g, "partial": True, **m})
                 continue
             rows.append({"a": a, "b": b, "edge_a": shared[0], "edge_b": shared[1],
                          "grade": grade(m), **m})
