@@ -157,7 +157,7 @@ def match_links_far_move():
     entry = json.loads(fol[META_KEY])["matches"][0]
     assert entry["spread"] is True and {"edge_t", "edge_r", "reversed"} <= set(entry), entry
     assert seam() == "G2"
-    assert live_mod.match_followers(ref.name) == [(fol.name, "G2")]
+    assert spline_surface.links.match_followers(ref.name) == [(fol.name, "G2")]
     # Far beyond Gap Tolerance (10% of the size): the match used to be lost here.
     for dz in (0.2, 1.0, 2.5):
         ref.location.z = dz
@@ -189,7 +189,7 @@ def match_links_far_move():
     meta = json.loads(fol[META_KEY])
     assert meta["method"] == "raw" and not meta.get("matches")
     assert np.allclose(world_net(fol)[0], shape)
-    assert live_mod.match_followers(ref.name) == []
+    assert spline_surface.links.match_followers(ref.name) == []
     ref.location.z = 1.0
     ctx.view_layer.update()
     res = live_mod.update_chain([ref.name], ctx)

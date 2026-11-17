@@ -215,7 +215,7 @@ class SS_PT_grow(_SubPanel, bpy.types.Panel):
         col.operator("spline_surface.split_patch", icon='MOD_EDGESPLIT')
         col.operator("spline_surface.duplicate_edge_curve", icon='CURVE_DATA')
         layout.operator("spline_surface.offset_surface", icon='MOD_OFFSET')
-        from .live import continuity_recipe
+        from .links import continuity_recipe
         meta = continuity_recipe(context.active_object)
         if meta is not None:
             box = layout.box()
@@ -232,7 +232,7 @@ class SS_PT_grow(_SubPanel, bpy.types.Panel):
 
 def _draw_match_links(layout, ob):
     """The Match Edge links of the active patch: what it follows, what follows it."""
-    from .live import match_entries, match_followers
+    from .links import match_entries, match_followers
     if ob is None or ob.type != 'SURFACE':
         return
     entries = match_entries(ob)

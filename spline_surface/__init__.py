@@ -10,9 +10,9 @@ bl_info = {
 
 import bpy  # noqa: E402
 
-from . import blueprints, bugreport, cage, controlmesh, ctrlpoints, curvature, curvetools, filleting, flanging, followmap, gizmos, linked, live, netcheck, bridging, operators, orienting, panelgap, presetting, projecting, pulling, seams, shaping, splitting, trimming, symmetry, tomesh, ui, zebra  # noqa: E402
+from . import blueprints, bugreport, cage, controlmesh, ctrlpoints, curvature, curvetools, filleting, flanging, followmap, gizmos, linked, links, live, netcheck, bridging, operators, orienting, panelgap, presetting, projecting, pulling, seams, shaping, splitting, trimming, symmetry, tomesh, ui, zebra  # noqa: E402
 
-classes = (ui.classes + blueprints.classes + bugreport.classes + operators.classes + bridging.classes + tomesh.classes + orienting.classes + filleting.classes + flanging.classes + live.classes + linked.classes
+classes = (ui.classes + blueprints.classes + bugreport.classes + operators.classes + bridging.classes + tomesh.classes + orienting.classes + filleting.classes + flanging.classes + live.classes + links.classes + linked.classes
            + cage.classes + symmetry.classes + splitting.classes + seams.classes + ctrlpoints.classes
            + curvature.classes + netcheck.classes + curvetools.classes + pulling.classes + controlmesh.classes
            + followmap.classes + panelgap.classes + presetting.classes + projecting.classes + trimming.classes + shaping.classes + zebra.classes + gizmos.classes)
