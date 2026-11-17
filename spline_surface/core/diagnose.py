@@ -130,8 +130,45 @@ def _through_mirrors(metas):
         mapped["matches"] = [dict(x, ref=copy_of.get(x.get("ref"), x.get("ref")))
                              for x in orig.get("matches", [])]
         mapped["sources"] = [copy_of.get(s, s) for s in orig.get("sources", [])]
+        if isinstance(orig.get("fillet"), dict):
+            # the copies are joined by the fillet's copy: the original and its copy
+            # are not "trimmed apart by the same fillet" (they meet on the mirror plane)
+            fillet = orig["fillet"]
+            mapped["fillet"] = dict(fillet, id="%s|mirror" % fillet.get("id"))
         out[name] = mapped
     return out
+
+
+def _asked(a, b, metas):
+    """The continuity the recipes ask for between a and b (the stronger), or None."""
+    return max((expected_seams(metas.get(a)).get(b), expected_seams(metas.get(b)).get(a)),
+               key=lambda c: RANK.get(c, -1))
+
+
+def _apart_on_purpose(r, metas):
+    a, b = r["a"], r["b"]
+    fa = _fillet_id(metas.get(a))
+    if fa is not None and fa == _fillet_id(metas.get(b)):
+        return True                      # trimmed apart by their fillet, which joins them
+    if r["grade"] != 'open':
+        return False
+    if _asked(a, b, metas) is None:
+        # nothing asked for this seam: well apart is a panel between them, or on purpose
+        return r.get("gap", 0.0) > NEAR_MISS * r.get("size", np.inf)
+    follower = a if b in expected_seams(metas.get(a)) else b
+    fm = metas.get(follower) or {}
+    return fm.get("method") == "fill" and bool(fm.get("merge"))   # a piece covers part of that edge
+
+
+def drop_intended(seams, metas):
+    """`seams` without the ones apart on purpose: two patches their fillet
+    trimmed apart, a piece of a split fill measured against the whole edge it
+    covers only part of, and edges well apart that no recipe joins.
+
+    seams: [dict(a, b, grade, gap, size)] as Check Continuity measures them;
+    metas: {name: recipe dict or None}."""
+    metas = _through_mirrors(metas)
+    return [r for r in seams if not _apart_on_purpose(r, metas)]
 
 
 def diagnose(patches, metas, seams):
@@ -142,21 +179,16 @@ def diagnose(patches, metas, seams):
     them. Returns [dict(kind, a, b, text, hint, severity)].
     """
     issues = []
+    seams = drop_intended(seams, metas)
     metas = _through_mirrors(metas)
     for r in seams:
         a, b, got = r["a"], r["b"], r["grade"]
-        fa = _fillet_id(metas.get(a))
-        if fa is not None and fa == _fillet_id(metas.get(b)):
-            continue                     # trimmed apart by their fillet, which joins them
-        asked = max((expected_seams(metas.get(a)).get(b), expected_seams(metas.get(b)).get(a)),
-                    key=lambda c: RANK.get(c, -1))
+        asked = _asked(a, b, metas)
         if r.get("partial") and got == 'G1' and asked == 'G2':
             continue                     # curvature is not measured along part of an edge
         if asked is not None and RANK[got] < RANK[asked]:
             follower = a if b in expected_seams(metas.get(a)) else b
             fm = metas.get(follower) or {}
-            if fm.get("method") == "fill" and fm.get("merge") and got == 'open':
-                continue    # one piece of a split fill covers only part of that edge
             if fm.get("method") == "fill":
                 hint = "Fill Hole is only approximate near its corners (curvature, G2)"
             else:
@@ -165,8 +197,6 @@ def diagnose(patches, metas, seams):
                            "text": "%s | %s: %s, the recipe asks for %s" % (a, b, got, asked),
                            "hint": hint})
         elif got == 'open':
-            if r.get("gap", 0.0) > NEAR_MISS * r.get("size", np.inf):
-                continue                 # well apart: a panel between them, or on purpose
             issues.append({"kind": "seam_open", "a": a, "b": b,
                            "text": "%s | %s: the edges almost meet (gap %.3g)" % (a, b, r.get("gap", 0.0)),
                            "hint": "Match Edge G0 or higher closes it"})

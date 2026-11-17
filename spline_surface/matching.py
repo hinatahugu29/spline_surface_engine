@@ -152,35 +152,59 @@ def patch_nets(context, report=None):
     return nets
 
 
-def measure_seams(nets, settings):
-    """[dict(a, b, edge_a, edge_b, grade, gap, angle, curvature, size)] for every seam.
+def measure_pair(a, b, nets, settings):
+    """The seam between patches a and b as measure_seams lists it, or None.
 
-    Seams along part of an edge (a split fill's piece on its neighbour) come with
-    partial=True: position and angle are measured there, curvature is not (0)."""
+    A seam along part of an edge (a split fill's piece on its neighbour) comes
+    with partial=True: position and angle are measured there, curvature is not (0)."""
+    (Pa, oa), (Pb, ob_) = nets[a], nets[b]
+    ca, cb = Pa.reshape(-1, 3), Pb.reshape(-1, 3)
+    tol = _seam_tolerance(Pa, Pb, settings)
+    size = np.ptp(np.concatenate([ca, cb]), 0).max()
+    pad = max(tol, 1e-3 * size)
+    if np.any(ca.min(0) - pad > cb.max(0)) or np.any(cb.min(0) - pad > ca.max(0)):
+        return None                       # control hulls apart: no edge can touch
+    shared = find_shared_edge(Pa, Pb, tol, oa, ob_)
+    m = measure(Pa, Pb, *shared[:3], oa, ob_) if shared is not None else None
+    c = None
+    if m is None or m["gap"] > 1e-3 * size:
+        # no seam, or "the same edge" only on average (a piece along part of a
+        # longer edge): measure what really touches instead, if anything does
+        c = partial_contact(Pa, Pb, 1e-3 * size, oa, ob_)
+    if c is not None:
+        m = {"gap": c["gap"], "angle": c["angle"], "curvature": 0.0, "size": float(size)}
+        g = grade(m)
+        # curvature is not measured along part of an edge: G1 at best
+        return {"a": a, "b": b, "edge_a": c["edge_a"], "edge_b": c["edge_b"],
+                "grade": 'G1' if g == 'G2' else g, "partial": True, **m}
+    if shared is None:
+        return None
+    return {"a": a, "b": b, "edge_a": shared[0], "edge_b": shared[1], "grade": grade(m), **m}
+
+
+def measure_seams(nets, settings):
+    """[dict(a, b, edge_a, edge_b, grade, gap, angle, curvature, size)] for every
+    seam among `nets` ({name: (net, orders)}); see measure_pair."""
     names = sorted(nets)
     rows = []
     for i, a in enumerate(names):
         for b in names[i + 1:]:
-            (Pa, oa), (Pb, ob_) = nets[a], nets[b]
-            shared = find_shared_edge(Pa, Pb, _seam_tolerance(Pa, Pb, settings), oa, ob_)
-            size = np.ptp(np.concatenate([Pa.reshape(-1, 3), Pb.reshape(-1, 3)]), 0).max()
-            m = measure(Pa, Pb, *shared[:3], oa, ob_) if shared is not None else None
-            c = None
-            if m is None or m["gap"] > 1e-3 * size:
-                # no seam, or "the same edge" only on average (a piece along part of a
-                # longer edge): measure what really touches instead, if anything does
-                c = partial_contact(Pa, Pb, 1e-3 * size, oa, ob_)
-            if shared is None or c is not None:
-                if c is not None:
-                    m = {"gap": c["gap"], "angle": c["angle"], "curvature": 0.0, "size": float(size)}
-                    g = grade(m)
-                    # curvature is not measured along part of an edge: G1 at best
-                    rows.append({"a": a, "b": b, "edge_a": c["edge_a"], "edge_b": c["edge_b"],
-                                 "grade": 'G1' if g == 'G2' else g, "partial": True, **m})
-                continue
-            rows.append({"a": a, "b": b, "edge_a": shared[0], "edge_b": shared[1],
-                         "grade": grade(m), **m})
+            r = measure_pair(a, b, nets, settings)
+            if r is not None:
+                rows.append(r)
     return rows
+
+
+def recipes(names):
+    """{name: recipe dict or None} of the patches called `names`."""
+    out = {}
+    for name in names:
+        ob = bpy.data.objects.get(name)
+        try:
+            out[name] = json.loads(ob[META_KEY]) if ob is not None and META_KEY in ob else None
+        except ValueError:
+            out[name] = None
+    return out
 
 
 class SS_OT_diagnose(bpy.types.Operator):
@@ -199,14 +223,7 @@ class SS_OT_diagnose(bpy.types.Operator):
     def execute(self, context):
         settings = context.scene.spline_surface
         nets = patch_nets(context, self.report)
-        metas = {}
-        for name in nets:
-            ob = bpy.data.objects[name]
-            try:
-                metas[name] = json.loads(ob[META_KEY]) if META_KEY in ob else None
-            except ValueError:
-                metas[name] = None
-        issues = diagnose(nets, metas, measure_seams(nets, settings))
+        issues = diagnose(nets, recipes(nets), measure_seams(nets, settings))
         issues, hidden = drop_accepted(
             issues, {name: accepted_marks(bpy.data.objects[name]) for name in nets})
         settings.diagnose_report = json.dumps(issues)

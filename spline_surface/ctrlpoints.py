@@ -24,7 +24,7 @@ _state = {"handle": None, "patches": [], "dirty": False, "counts": (0, 0)}
 def pin_masks(context, objects):
     """{name: (world net, orders, pinned mask)} for `objects` (SURFACE patches)."""
     pinned = {ob.name: [] for ob in objects}
-    for s in shared_seams(context):
+    for s in shared_seams(context, among=set(pinned)):
         if s["a"] in pinned:
             pinned[s["a"]].append((s["edge_a"], s["grade"]))
         if s["b"] in pinned:

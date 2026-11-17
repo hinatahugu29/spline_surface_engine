@@ -1477,6 +1477,24 @@ def test_diagnose():
     far = [dict(apart[0], gap=0.1, size=1.0)]                  # a pillar strip between them
     assert [i["kind"] for i in diagnose({}, {}, near)] == ["seam_open"]
     assert diagnose({}, {}, far) == []
+    # v0.82: Seam Colors drops the same seams as Diagnose (one rule, drop_intended)
+    from core.diagnose import drop_intended
+    merged = {"method": "fill", "sources": ["Q"], "continuity": "G2", "merge": True}
+    rows = [dict(apart[0], gap=0.005, size=1.0)]
+    assert drop_intended(rows, {"P": trimmed, "Q": trimmed}) == []      # their fillet joins them
+    assert drop_intended(rows, {"P": merged}) == []                      # a piece of a split fill
+    assert drop_intended(rows, {}) == rows                               # a near miss stays
+    assert drop_intended(far, {}) == []                                  # well apart, nothing asked
+    # a Mirror Group copy of a fillet's patch meets its original on the mirror plane: kept
+    mirror = {"method": "mirror", "sources": ["P"]}
+    centre = [{"a": "P", "b": "P_mirror", "grade": "G2", "gap": 0.0, "size": 1.0}]
+    assert drop_intended(centre, {"P": trimmed, "P_mirror": mirror}) == centre
+    pair = [{"a": "P_mirror", "b": "Q_mirror", "grade": "open", "gap": 0.005, "size": 1.0}]
+    assert drop_intended(pair, {"P": trimmed, "Q": trimmed, "P_mirror": mirror,
+                                "Q_mirror": {"method": "mirror", "sources": ["Q"]}}) == []
+    asked_far = [dict(far[0])]
+    assert drop_intended(asked_far, {"P": {"method": "raw", "sources": [],
+                                           "matches": [{"ref": "Q", "continuity": "G1"}]}}) == asked_far
     from core.diagnose import drop_accepted, issue_keys
     kink = {"kind": "seam_kink", "a": "B", "b": "D"}
     wave = {"kind": "inflection", "a": "W", "b": "W"}

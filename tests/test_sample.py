@@ -123,6 +123,15 @@ def run():
     print("diagnose:", len(issues), "issue(s)", kinds)
     # Fender and Hood sit apart on purpose (their fillet joins them): never "open"
     assert not [i for i in issues if i["kind"] == "seam_open"], issues
+    # v0.82: Seam Colors measures as Diagnose does: nothing magenta ("open") here, and the
+    # split fill's pieces show along the part of the edge they cover
+    from spline_surface.seams import shared_seams
+    colours = shared_seams(ctx)
+    assert not [s for s in colours if s["grade"] == 'open'], [(s["a"], s["b"]) for s in colours
+                                                              if s["grade"] == 'open']
+    assert [s for s in colours if s["partial"]]
+    # and the seam on the mirror plane is drawn (a fillet's patch and its mirror copy)
+    assert ("Hood", "Hood_mirror") in {(s["a"], s["b"]) for s in colours}
     # v0.78: each corner is a triangle (the fillet's end runs straight into the wall), filled
     # by three pieces around its real corners. Probe the fill along the fender's end edges:
     # it must sit on them and leave in the fender's tangent plane (G1).

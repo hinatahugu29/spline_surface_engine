@@ -8,8 +8,7 @@ import gpu
 import numpy as np
 from gpu_extras.batch import batch_for_shader
 
-from .core.continuity import find_shared_edge, grade, measure
-from .rebuild import _seam_tolerance
+from .core.diagnose import drop_intended
 from .recipe import edge_polyline, world_net
 
 COLORS = {'G2': (0.25, 0.9, 0.35, 1.0), 'G1': (1.0, 0.85, 0.2, 1.0),
@@ -17,18 +16,36 @@ COLORS = {'G2': (0.25, 0.9, 0.35, 1.0), 'G1': (1.0, 0.85, 0.2, 1.0),
 GRADES = ('G2', 'G1', 'G0', 'open')
 
 _state = {"handle": None, "seams": [], "dirty": False, "counts": {}}
+# measured pairs, keyed by both nets' bytes: an edit re-measures only the pairs it touched
+_pairs = {}
 
 
-def _bbox_overlap(Pa, Pb, pad):
-    a, b = Pa.reshape(-1, 3), Pb.reshape(-1, 3)
-    return np.all(a.min(0) - pad <= b.max(0)) and np.all(b.min(0) - pad <= a.max(0))
+def _key(net):
+    return hash(net.tobytes())
 
 
-def shared_seams(context):
+def _contact(Pa, oa, ea, Pb, ob_, eb, tol, samples=120):
+    """The stretch of edge ea of patch a lying on edge eb of patch b (world points)."""
+    pa = edge_polyline(Pa, oa, ea, samples)
+    pb = edge_polyline(Pb, ob_, eb, 241)
+    a0, ab = pb[:-1], pb[1:] - pb[:-1]
+    f = np.clip(((pa[:, None] - a0[None]) * ab[None]).sum(2)
+                / np.maximum((ab * ab).sum(1), 1e-30)[None], 0.0, 1.0)
+    d = np.linalg.norm(pa[:, None] - (a0[None] + f[..., None] * ab[None]), axis=2).min(1)
+    on = np.flatnonzero(d <= tol)
+    return pa[on.min():on.max() + 1] if len(on) >= 2 else pa
+
+
+def shared_seams(context, among=None):
     """[dict(a, b, edge_a, edge_b, grade, measure, polyline)] for visible patches.
 
-    `polyline` follows edge_a in world space.
+    Measured as Check Continuity does (seams along part of an edge included),
+    without the seams Diagnose knows are apart on purpose (two patches a
+    fillet trimmed apart, a split fill's piece against a whole edge). With
+    `among` (names), only seams with one of those patches. `polyline` follows
+    edge_a in world space (only the touching stretch along part of an edge).
     """
+    from .matching import measure_pair, recipes
     settings = context.scene.spline_surface
     nets = {}
     for ob in context.visible_objects:
@@ -37,22 +54,31 @@ def shared_seams(context):
                 nets[ob.name] = world_net(ob)
             except ValueError:
                 pass
+    keys = {n: _key(P) for n, (P, _) in nets.items()}
     names = sorted(nets)
-    seams = []
+    rows = []
+    seen = set()
     for i, a in enumerate(names):
-        Pa, oa = nets[a]
         for b in names[i + 1:]:
-            Pb, ob_ = nets[b]
-            tol = _seam_tolerance(Pa, Pb, settings)
-            if not _bbox_overlap(Pa, Pb, tol):
+            if among is not None and a not in among and b not in among:
                 continue
-            shared = find_shared_edge(Pa, Pb, tol, oa, ob_)
-            if shared is None:
-                continue
-            m = measure(Pa, Pb, *shared[:3], oa, ob_)
-            seams.append({"a": a, "b": b, "edge_a": shared[0], "edge_b": shared[1],
-                          "grade": grade(m), "measure": m,
-                          "polyline": edge_polyline(Pa, oa, shared[0], 48)})
+            k = (a, b, keys[a], keys[b], settings.gap_tolerance)
+            seen.add(k)
+            if k not in _pairs:
+                _pairs[k] = measure_pair(a, b, nets, settings)
+            if _pairs[k] is not None:
+                rows.append(_pairs[k])
+    for k in [k for k in _pairs if k not in seen and (among is None or k[0] in among or k[1] in among)]:
+        del _pairs[k]
+    seams = []
+    for r in drop_intended(rows, recipes({r["a"] for r in rows} | {r["b"] for r in rows})):
+        (Pa, oa), (Pb, ob_) = nets[r["a"]], nets[r["b"]]
+        m = {k: r[k] for k in ("gap", "angle", "curvature", "size")}
+        line = (_contact(Pa, oa, r["edge_a"], Pb, ob_, r["edge_b"], 2e-3 * r["size"])
+                if r.get("partial") else edge_polyline(Pa, oa, r["edge_a"], 48))
+        seams.append({"a": r["a"], "b": r["b"], "edge_a": r["edge_a"], "edge_b": r["edge_b"],
+                      "grade": r["grade"], "measure": m, "polyline": line,
+                      "partial": bool(r.get("partial"))})
     return seams
 
 

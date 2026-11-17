@@ -89,6 +89,13 @@ def run():
     issues = json.loads(ctx.scene.spline_surface.diagnose_report)
     print("diagnose:", len(issues), sorted({i["kind"] for i in issues}))
     assert not [i for i in issues if i["kind"] == "seam_open"], issues
+    # v0.82: Seam Colors measures as Diagnose does: nothing magenta ("open") here, and the
+    # split fill's pieces show along the part of the edge they cover
+    from spline_surface.seams import shared_seams
+    colours = shared_seams(ctx)
+    assert not [s for s in colours if s["grade"] == 'open'], [(s["a"], s["b"]) for s in colours
+                                                              if s["grade"] == 'open']
+    assert [s for s in colours if s["partial"]]
     # the door's tumblehome is an intended S: mark it, and Diagnose stops listing it
     door_wave = next(i for i in issues if i["a"] == "Door" and i["kind"] == "inflection")
     assert bpy.ops.spline_surface.diagnose_accept(a="Door", b="Door", kind="inflection") == {'FINISHED'}
