@@ -464,16 +464,21 @@ class _CurveTool(pick.ModalPicker):
         A, L, R, cyc = self._chains[key]
         self._endmove = {"key": key, "end": 'START' if i == 0 else 'END', "i": i,
                          "chain": (A, L, R, cyc), "anchor": np.array(p), "lines": lines,
-                         "on": None}
+                         "on": None, "plane": chain_plane(A, L, R)}
 
     def _drag_end(self, context, mouse):
         from .core.curveends import attach_end
         E = self._endmove
         A, L, R, cyc = E["chain"]
         q, on = None, None
-        if E["lines"]:
+        if self._move != 'VIEW':
+            # an axis or the curve's plane: the end keeps to it (snapping waits for V)
+            q = E["anchor"] + self._delta(context, mouse, E["anchor"], E["plane"])
+        elif E["lines"]:
             on = pick.nearest_polyline(context, E["lines"], mouse)
-        if on is not None:
+        if q is not None:
+            pass
+        elif on is not None:
             pts = np.asarray(E["lines"][on], float)
             scr = self._screen(context, pts)
             mm = np.array(mouse, float)
@@ -492,8 +497,12 @@ class _CurveTool(pick.ModalPicker):
         write_spline(bpy.data.objects[name], idx, A2, L2, R2)
         self._chains[E["key"]] = (A2, L2, R2, cyc)
         self._hover = ('POINT', E["key"], E["i"], A2[E["i"]])
-        self._note = ("   (end on %s %s)" % (on[0], pick.EDGE_NAMES.get(on[1], on[1]))
-                      if on is not None else "   (moving the end)")
+        if self._move != 'VIEW':
+            self._note = "   (moving the end along %s)" % (
+                "the curve's plane" if self._move == 'PLANE' else self._move)
+        else:
+            self._note = ("   (end on %s %s)" % (on[0], pick.EDGE_NAMES.get(on[1], on[1]))
+                          if on is not None else "   (moving the end)")
 
     # ------------------------------------------------------------ pull
     def _crossing_links(self, context, key, A, L, R, cyc):
@@ -547,11 +556,15 @@ class _CurveTool(pick.ModalPicker):
                       "plane": plane, "smooth": smooth_points(A, L, R), "added": added,
                       "links": self._crossing_links(context, key, A, L, R, cyc) if self._net else []}
 
-    def _delta(self, context, mouse):
+    def _delta(self, context, mouse, anchor=None, plane=None):
+        """How far the mouse has moved the point `anchor` (default: the pull's), in the
+        chosen direction: an axis, the curve's plane, or the view plane."""
         region, rv3d = context.region, context.region_data
         o = region_2d_to_origin_3d(region, rv3d, mouse)
         d = region_2d_to_vector_3d(region, rv3d, mouse)
-        a = Vector(self._pull["anchor"])
+        if anchor is None:
+            anchor, plane = self._pull["anchor"], self._pull["plane"]
+        a = Vector(anchor)
         if self._move in AXES:
             n = Vector(AXES[self._move])
             w = a - o
@@ -560,8 +573,8 @@ class _CurveTool(pick.ModalPicker):
             t = (b * e - dn) / den if abs(den) > 1e-4 else 0.0
             return np.array(n * t)
         normal = Vector(rv3d.view_rotation @ Vector((0, 0, -1)))
-        if self._move == 'PLANE' and self._pull["plane"] is not None:
-            pn = Vector(self._pull["plane"][1])
+        if self._move == 'PLANE' and plane is not None:
+            pn = Vector(plane[1])
             if abs(pn.dot(d)) > 0.05:          # not looking along the plane
                 normal = pn
         hit = intersect_line_plane(o, o + d, a, normal)
@@ -612,8 +625,11 @@ class _CurveTool(pick.ModalPicker):
             self._move = {'V': 'VIEW', 'P': 'PLANE'}.get(event.type, event.type)
         else:
             return False
-        if self._pull and event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'F', 'E'}:
+        if self._pull and event.type in {'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'F', 'E',
+                                         'V', 'P', 'X', 'Y', 'Z'}:
             self._drag_pull(context, self._mouse)
+        if self._endmove and event.type in {'V', 'P', 'X', 'Y', 'Z', 'S'}:
+            self._drag_end(context, self._mouse)
         self._header(context)
         context.area.tag_redraw()
         return True

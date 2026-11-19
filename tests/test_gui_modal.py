@@ -775,6 +775,44 @@ def s_p2_check():
           (len(A), moved, d, ends))
 
 
+# ---- Curve Pull: X, then drag an end -> it moves along X only
+def s_ax_setup():
+    from spline_surface.projecting import make_bezier_curve
+    ob = make_bezier_curve("AXc", np.array([(110, 0, 0), (110.5, 2, 0.6), (110, 4, 0)], float),
+                           bpy.context.collection)
+    ob.data.dimensions = '3D'
+    area = view()[1]
+    area.spaces[0].region_3d.view_rotation = Euler((0.9, 0.0, 0.5)).to_quaternion()
+    _focus([ob])
+    for o in bpy.context.scene.objects:
+        o.select_set(o is ob)
+    bpy.context.view_layer.objects.active = ob
+    S["ax0"] = _chain("AXc")[0][0].copy()
+
+
+def s_ax_drag():
+    win, area, region = view()
+    a = to_window(S["ax0"])
+    b = (a[0] + 70, a[1] + 40)                    # diagonal on screen
+    send('MOUSEMOVE', 'NOTHING', a)
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        log("curve pull invoke (end, X)", bpy.ops.spline_surface.curve_pull('INVOKE_DEFAULT'))
+    send('MOUSEMOVE', 'NOTHING', a)
+    press('X', a)
+    send('LEFTMOUSE', 'PRESS', a)
+    send('MOUSEMOVE', 'NOTHING', (a[0] + 35, a[1] + 20))
+    send('MOUSEMOVE', 'NOTHING', b)
+    send('LEFTMOUSE', 'RELEASE', b)
+    press('RET', b)
+
+
+def s_ax_check():
+    p = _chain("AXc")[0][0]
+    d = p - S["ax0"]
+    check("Curve Pull: X, then drag an end -> it moves along X only",
+          abs(d[0]) > 0.1 and abs(d[1]) < 1e-4 and abs(d[2]) < 1e-4, d)
+
+
 def s_done():
     ok = all(r for _, r in RESULTS)
     log("SUMMARY", "ALL OK" if ok else "FAILURES", [t for t, r in RESULTS if not r])
@@ -795,7 +833,8 @@ STEPS = [s_setup, s_fillet_start, s_fillet_pick, s_fillet_enter, s_fillet_adjust
          s_pull_setup, s_pull_drag, s_pull_check,
          s_cm_setup, s_cm_move, s_cm_check,
          s_snap_setup, s_snap_drag, s_snap_check,
-         s_p2_setup, s_p2_drag, s_p2_check, s_done]
+         s_p2_setup, s_p2_drag, s_p2_check,
+         s_ax_setup, s_ax_drag, s_ax_check, s_done]
 
 
 def tick():
