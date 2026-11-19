@@ -203,6 +203,20 @@ class SS_PT_curves(_SubPanel, bpy.types.Panel):
         row.operator("spline_surface.make_g2", icon='SMOOTHCURVE')
         row.operator("spline_surface.refit_curve", icon='MOD_DECIM')
         col.operator("spline_surface.fair_curves", icon='MOD_SMOOTH')
+        col = layout.column(align=True)
+        col.label(text="Connect:")
+        col.operator("spline_surface.attach_curve_ends", icon='SNAP_ON')
+        from . import curvature, curvemarks
+        col = layout.column(align=True)
+        col.label(text="See:")
+        on = curvemarks.is_on()
+        col.operator("spline_surface.point_continuity", icon='DECORATE_KEYFRAME', depress=on,
+                     text="Point Continuity: On" if on else "Point Continuity")
+        if on:
+            col.label(text=curvemarks.summary(context))
+        on = curvature.is_on("comb")
+        col.operator("spline_surface.curvature_comb", icon='FORCE_HARMONIC', depress=on,
+                     text="Curvature Comb: On" if on else "Curvature Comb")
 
 
 class SS_PT_create_settings(_SubPanel, bpy.types.Panel):

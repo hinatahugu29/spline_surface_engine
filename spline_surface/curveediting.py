@@ -207,6 +207,8 @@ class SS_OT_curve_points(pick.ModalPicker, bpy.types.Operator):
         self._pin = True
         self._net = True
         self._move = 'VIEW'         # VIEW, PLANE (the curve's own, when flat), X, Y, Z
+        self._snap = True           # a dragged end lands on patch edges and curves
+        self._endmove = None
         self._hover = None          # ('POINT', key, i, world) or ('CURVE', key, t, world)
         self._press = None
         self._slide = None
@@ -237,11 +239,11 @@ class SS_OT_curve_points(pick.ModalPicker, bpy.types.Operator):
         move = {'VIEW': "view plane", 'PLANE': "curve's plane"}.get(self._move, self._move)
         context.area.header_text_set(
             "Curve Points (%d edits): click curve: add point   drag curve: pull   drag point: "
-            "slide   Ctrl+click point: remove   Wheel: range %.3g   F: %s   E: ends %s   "
-            "N: crossings %s   V/P/X/Y/Z: %s   Ctrl+Z / Enter / Esc%s"
-            % (len(self._history), self._radius, self._profile.lower(),
-               "pinned" if self._pin else "free", "follow" if self._net else "stay", move,
-               self._note))
+            "slide (an end: move, S snap %s)   Ctrl+click point: remove   Wheel: range %.3g   "
+            "F: %s   E: ends %s   N: crossings %s   V/P/X/Y/Z: %s   Ctrl+Z / Enter / Esc%s"
+            % (len(self._history), "on" if self._snap else "off", self._radius,
+               self._profile.lower(), "pinned" if self._pin else "free",
+               "follow" if self._net else "stay", move, self._note))
 
     # ------------------------------------------------------------ drawing
     def _reach(self, key, t):
@@ -285,11 +287,15 @@ class SS_OT_curve_points(pick.ModalPicker, bpy.types.Operator):
         return out
 
     def _label(self):
-        if self._hover is None or self._slide or self._pull:
+        if self._hover is None or self._slide or self._pull or self._endmove:
             return None
-        kind, key, _, p = self._hover
-        text = ("drag: slide   Ctrl+click: remove" if kind == 'POINT'
-                else "click: add a point   drag: pull")
+        kind, key, i, p = self._hover
+        if kind == 'POINT' and self._is_end(self._hover):
+            text = "drag: move the end (S: snap %s)   Ctrl+click: remove" % ("on" if self._snap else "off")
+        elif kind == 'POINT':
+            text = "drag: slide   Ctrl+click: remove"
+        else:
+            text = "click: add a point   drag: pull"
         return text, p
 
     # ------------------------------------------------------------ picking
@@ -432,6 +438,54 @@ class SS_OT_curve_points(pick.ModalPicker, bpy.types.Operator):
         self._hover = ('POINT', s["key"], i, A2[i])
         self._note = "   (sliding: shape off by %.3g)" % err
 
+    # ------------------------------------------------------------ move an end
+    def _is_end(self, hover):
+        _, key, i, _ = hover
+        A, L, R, cyc = self._chains[key]
+        return not cyc and i in (0, len(A) - 1)
+
+    def _start_end(self, context):
+        from .recipe import surface_edges
+        _, key, i, p = self._press["hover"]
+        self._begin()
+        self._touch(key[0])
+        lines = surface_edges(context) if self._snap else {}
+        if self._snap:
+            lines.update({k: v for k, v in pick.curve_lines(context).items() if k[0] != key[0]})
+        A, L, R, cyc = self._chains[key]
+        self._endmove = {"key": key, "end": 'START' if i == 0 else 'END', "i": i,
+                         "chain": (A, L, R, cyc), "anchor": np.array(p), "lines": lines,
+                         "on": None}
+
+    def _drag_end(self, context, mouse):
+        from .core.curveends import attach_end
+        E = self._endmove
+        A, L, R, cyc = E["chain"]
+        q, on = None, None
+        if E["lines"]:
+            on = pick.nearest_polyline(context, E["lines"], mouse)
+        if on is not None:
+            pts = np.asarray(E["lines"][on], float)
+            scr = self._screen(context, pts)
+            mm = np.array(mouse, float)
+            j = int(_seg_dist(scr, mm).argmin())
+            f = _seg_frac(scr[j], scr[j + 1], mm)
+            q = pts[j] + f * (pts[j + 1] - pts[j])
+        else:
+            region, rv3d = context.region, context.region_data
+            o = region_2d_to_origin_3d(region, rv3d, mouse)
+            d = region_2d_to_vector_3d(region, rv3d, mouse)
+            normal = Vector(rv3d.view_rotation @ Vector((0, 0, -1)))
+            hit = intersect_line_plane(o, o + d, Vector(E["anchor"]), normal)
+            q = np.array(hit) if hit is not None else E["anchor"]
+        A2, L2, R2 = attach_end(A, L, R, E["end"], q)
+        name, idx = E["key"]
+        write_spline(bpy.data.objects[name], idx, A2, L2, R2)
+        self._chains[E["key"]] = (A2, L2, R2, cyc)
+        self._hover = ('POINT', E["key"], E["i"], A2[E["i"]])
+        self._note = ("   (end on %s %s)" % (on[0], pick.EDGE_NAMES.get(on[1], on[1]))
+                      if on is not None else "   (moving the end)")
+
     # ------------------------------------------------------------ pull
     def _crossing_links(self, context, key, A, L, R, cyc):
         """[(own parameter, partner key, partner parameter, partner's other crossings)]
@@ -531,6 +585,8 @@ class SS_OT_curve_points(pick.ModalPicker, bpy.types.Operator):
             self._pin = not self._pin
         elif event.type == 'N':
             self._net = not self._net
+        elif event.type == 'S':
+            self._snap = not self._snap
         elif event.type in {'V', 'P', 'X', 'Y', 'Z'} and not event.ctrl:
             self._move = {'V': 'VIEW', 'P': 'PLANE'}.get(event.type, event.type)
         else:
@@ -545,9 +601,9 @@ class SS_OT_curve_points(pick.ModalPicker, bpy.types.Operator):
         mouse = (event.mouse_region_x, event.mouse_region_y)
         self._mouse = mouse
         if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
-            if self._slide or self._pull:       # drop just the stroke in progress
+            if self._slide or self._pull or self._endmove:     # drop just this stroke
                 self._undo(context)
-                self._slide = self._pull = self._press = None
+                self._slide = self._pull = self._press = self._endmove = None
                 self._header(context)
                 context.area.tag_redraw()
                 return {'RUNNING_MODAL'}
@@ -556,7 +612,7 @@ class SS_OT_curve_points(pick.ModalPicker, bpy.types.Operator):
             self._cancel_all(context)
             self._finish(context)
             return {'CANCELLED'}
-        busy = self._slide or self._pull
+        busy = self._slide or self._pull or self._endmove
         if event.type in {'RET', 'NUMPAD_ENTER', 'SPACE'} and event.value == 'PRESS' and not busy:
             self._finish(context)
             return {'FINISHED'} if self._history else {'CANCELLED'}
@@ -568,7 +624,10 @@ class SS_OT_curve_points(pick.ModalPicker, bpy.types.Operator):
         if self._keys(context, event):
             return {'RUNNING_MODAL'}
         if event.type == 'MOUSEMOVE':
-            if self._slide:
+            if self._endmove:
+                self._drag_end(context, mouse)
+                self._header(context)
+            elif self._slide:
                 self._drag_slide(context, mouse)
                 self._header(context)
             elif self._pull:
@@ -577,7 +636,10 @@ class SS_OT_curve_points(pick.ModalPicker, bpy.types.Operator):
             elif self._press is not None:
                 moved = np.linalg.norm(np.subtract(mouse, self._press["mouse"]))
                 if moved > DRAG_PIXELS:
-                    if self._press["hover"][0] == 'POINT':
+                    if self._press["hover"][0] == 'POINT' and self._is_end(self._press["hover"]):
+                        self._start_end(context)
+                        self._drag_end(context, mouse)
+                    elif self._press["hover"][0] == 'POINT':
                         self._start_slide(context)
                         self._drag_slide(context, mouse)
                     else:
@@ -604,8 +666,8 @@ class SS_OT_curve_points(pick.ModalPicker, bpy.types.Operator):
             self._press = {"mouse": mouse, "hover": self._hover}
             return {'RUNNING_MODAL'}
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
-            if self._slide or self._pull:
-                self._slide = self._pull = None
+            if self._slide or self._pull or self._endmove:
+                self._slide = self._pull = self._endmove = None
                 self._read_all()
             elif self._press is not None and self._press["hover"][0] == 'CURVE':
                 _, key, t, _ = self._press["hover"]
@@ -795,6 +857,7 @@ def _context_menu(self, context):
     layout.operator("spline_surface.constrained_move")
     layout.operator("spline_surface.make_g2")
     layout.operator("spline_surface.refit_curve")
+    layout.operator("spline_surface.attach_curve_ends")
     layout.operator("spline_surface.curve_points")
 
 

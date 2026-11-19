@@ -687,6 +687,43 @@ def s_cm_check():
           0.5 < along < 1.1 and across < 1e-3 and others < 1e-6, (along, across, others))
 
 
+# ---- Curve Points: drag a curve end onto a patch edge (snaps)
+def s_snap_setup():
+    from spline_surface.projecting import make_bezier_curve
+    xs, ys = np.meshgrid(np.linspace(90, 92, 4), np.linspace(0, 2, 4), indexing="ij")
+    patch = free("EP", np.stack([xs, ys, np.zeros_like(xs)], -1))
+    c = make_bezier_curve("EC", np.array([(93.5, 1.4, 0.3), (95, 1.0, 0.6), (96.5, 1.2, 0.2)], float),
+                          bpy.context.collection)
+    c.data.dimensions = '3D'
+    area = view()[1]
+    area.spaces[0].region_3d.view_rotation = Euler((0.5, 0.0, 0.2)).to_quaternion()
+    _focus([patch, c])
+    for o in bpy.context.scene.objects:
+        o.select_set(o is c)
+    bpy.context.view_layer.objects.active = c
+
+
+def s_snap_drag():
+    win, area, region = view()
+    start = to_window(_chain("EC")[0][0])
+    goal = to_window(edge_polyline(*world_net(bpy.data.objects["EP"]), 'U1', 9)[4])   # x = 92
+    send('MOUSEMOVE', 'NOTHING', start)
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        log("curve points invoke (end)", bpy.ops.spline_surface.curve_points('INVOKE_DEFAULT'))
+    send('MOUSEMOVE', 'NOTHING', start)
+    send('LEFTMOUSE', 'PRESS', start)
+    send('MOUSEMOVE', 'NOTHING', ((start[0] + goal[0]) // 2, (start[1] + goal[1]) // 2))
+    send('MOUSEMOVE', 'NOTHING', goal)
+    send('LEFTMOUSE', 'RELEASE', goal)
+    press('RET', goal)
+
+
+def s_snap_check():
+    p = _chain("EC")[0][0]
+    check("Curve Points: drag a curve end onto a patch edge -> it lands on the edge",
+          abs(p[0] - 92.0) < 1e-3 and abs(p[2]) < 1e-3 and 0.0 < p[1] < 2.0, p)
+
+
 def s_done():
     ok = all(r for _, r in RESULTS)
     log("SUMMARY", "ALL OK" if ok else "FAILURES", [t for t, r in RESULTS if not r])
@@ -705,7 +742,8 @@ STEPS = [s_setup, s_fillet_start, s_fillet_pick, s_fillet_enter, s_fillet_adjust
          s_cp_dissolve, s_cp_dissolve_check, s_cp_undo_enter, s_cp_undo_check,
          s_es_setup, s_es_slide, s_es_check,
          s_pull_setup, s_pull_drag, s_pull_check,
-         s_cm_setup, s_cm_move, s_cm_check, s_done]
+         s_cm_setup, s_cm_move, s_cm_check,
+         s_snap_setup, s_snap_drag, s_snap_check, s_done]
 
 
 def tick():

@@ -491,6 +491,75 @@ def curve_shaping_ops():
     print("curve shaping OK (refit 30 -> %d points)" % n1)
 
 
+def curve_attach_ends():
+    """Attach Curve Ends: G2 onto another curve's end, G1 / Normal onto a patch."""
+    from spline_surface.bridge.write_surface import build_surface_data
+    from spline_surface.core.curveends import end_frame
+    from spline_surface.curveediting import read_spline
+    from spline_surface.recipe import raw_meta, store_meta
+    ctx = bpy.context
+    x = bezier_curve("AX", [(0, 900, 0), (2, 901, 0.3), (4, 901.5, 0.2)])
+    y = bezier_curve("AY", [(4.05, 901.55, 0.25), (6, 902, -0.4), (8, 901, 0)])   # starts a hair off
+    ctx.view_layer.update()
+    select([y])
+    assert bpy.ops.spline_surface.attach_curve_ends(continuity='G2') == {'FINISHED'}
+    p0, t0, k0 = end_frame(*read_spline(x, 0)[:3], 'END')
+    p1, t1, k1 = end_frame(*read_spline(y, 0)[:3], 'START')
+    assert np.linalg.norm(p1 - p0) < 1e-4 and np.allclose(t1, -t0, atol=1e-4)
+    assert np.linalg.norm(k1 - k0) < 1e-3 * max(np.linalg.norm(k0), 1e-6) + 1e-4, (k0, k1)
+    # onto a patch: G1 keeps the tangent in the surface, Normal leaves straight off it
+    xs, ys = np.meshgrid(np.linspace(0, 4, 4), np.linspace(910, 914, 4), indexing="ij")
+    net = np.stack([xs, ys, np.zeros_like(xs)], -1)
+    patch = bpy.data.objects.new("AP", build_surface_data("AP", net, 12))
+    ctx.collection.objects.link(patch)
+    store_meta(patch, raw_meta(net, world_net(patch)[1]))
+    c = bezier_curve("AC", [(2, 912, 0.05), (3, 912.5, 1.0), (4, 913, 2.0)])
+    ctx.view_layer.update()
+    select([c])
+    assert bpy.ops.spline_surface.attach_curve_ends(continuity='G1', on_patch='TANGENT') == {'FINISHED'}
+    p, t, _ = end_frame(*read_spline(c, 0)[:3], 'START')
+    assert abs(p[2]) < 1e-4 and abs(t[2]) < 1e-4, (p, t)          # on it, and along it
+    assert bpy.ops.spline_surface.attach_curve_ends(continuity='G1', on_patch='NORMAL') == {'FINISHED'}
+    p, t, _ = end_frame(*read_spline(c, 0)[:3], 'START')
+    assert abs(p[2]) < 1e-4 and abs(t[2] - 1) < 1e-4, (p, t)      # straight up off it
+    print("curve attach OK")
+
+
+def curve_marks_and_panel():
+    """Point Continuity: states of a curve's points; the Curves panel draws in both modes."""
+    from spline_surface import curvemarks, ui
+    from spline_surface.core.curvesmooth import make_all_g2
+    from spline_surface.curveediting import read_spline, write_spline
+    ctx = bpy.context
+    s = np.linspace(0, 2.4, 6)
+    ob = bezier_curve("PM", [(3 * np.cos(a), 950 + 3 * np.sin(a), 0.0) for a in s])
+    ctx.view_layer.update()
+    A, L, R, _ = read_spline(ob, 0)
+    T = np.stack([-np.sin(s), np.cos(s), 0 * s], -1) * 0.45
+    A, L, R, left = make_all_g2(A, A - T, A + T, range(1, 5))
+    assert not left
+    L[2] = A[2] + np.array([0.0, 0.0, 0.3])                       # one corner
+    write_spline(ob, 0, A, L, R)
+    select([ob])
+    m = curvemarks.marks(ctx)
+    assert len(m['END']) == 2 and len(m['CORNER']) == 1, {k: len(v) for k, v in m.items()}
+    assert len(m['G2']) + len(m['G1']) == 3
+    assert bpy.ops.spline_surface.point_continuity() == {'FINISHED'}     # on
+    assert curvemarks.is_on() and "corner 1" in curvemarks.summary(ctx)
+    assert bpy.ops.spline_surface.point_continuity() == {'FINISHED'}     # off
+    assert not curvemarks.is_on()
+    for mode in ('OBJECT', 'EDIT'):
+        bpy.ops.object.mode_set(mode=mode)
+        log = []
+        ui.SS_PT_curves.draw(type("P", (), {"layout": _FakeLayout(log)})(), ctx)
+        ops = {e[1] for e in log if e[0] == "op"}
+        assert {"spline_surface.curve_points", "spline_surface.make_g2", "spline_surface.refit_curve",
+                "spline_surface.attach_curve_ends", "spline_surface.point_continuity"} <= ops, ops
+        assert ("spline_surface.constrained_move" in ops) == (mode == 'EDIT')
+    bpy.ops.object.mode_set(mode='OBJECT')
+    print("curve marks and panel OK")
+
+
 def scene_full_copy():
     """Scene > Full Copy (what shot managers do): the copied patches still follow
     the original scene until Use This Scene's Copies points them at the copies."""
@@ -2406,6 +2475,8 @@ def run():
     duplicate_edges_to_coons()
     curve_points_keep_shape()
     curve_shaping_ops()
+    curve_attach_ends()
+    curve_marks_and_panel()
     scene_full_copy()            # last: switches the context scene
     spline_surface.unregister()
     print("ALL OK")

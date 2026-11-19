@@ -163,7 +163,7 @@ def _timer():
             refresh(bpy.context)
         except Exception:  # never let a timer die on a half-edited scene
             _state["dirty"] = False
-    return 0.4
+    return 0.15        # quick enough to follow a drag in edit mode
 
 
 @persistent      # kept when another file is opened

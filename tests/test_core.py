@@ -1932,6 +1932,35 @@ def test_curve_refit():
     assert _off(A, L, R, True, A5, L5, R5) < 0.01 * np.ptp(A, 0).max()
 
 
+def test_curve_attach_end():
+    from core.curveends import attach_end, end_frame
+    from core.curvesmooth import point_state
+    A, L, R = _flat_chain(n=5)
+    # G0: the end moves, with its handle
+    p = A[0] + np.array([0.1, -0.2, 0.3])
+    A2, L2, R2 = attach_end(A, L, R, 'START', p)
+    assert np.allclose(A2[0], p) and np.allclose(R2[0] - A2[0], R[0] - A[0])
+    assert np.allclose(A2[1:], A[1:])
+    # G1: leaves along the given direction, handle length kept
+    d = np.array([0.0, 0.6, 0.8])
+    A2, L2, R2 = attach_end(A, L, R, 'END', p, direction=d)
+    q, t, k = end_frame(A2, L2, R2, 'END')
+    assert np.allclose(q, p) and np.allclose(t, d)
+    assert abs(np.linalg.norm(L2[-1] - A2[-1]) - np.linalg.norm(L[-1] - A[-1])) < 1e-12
+    # G2: and bends as asked; the next point stays smooth
+    want = np.array([0.4, 0.0, 0.0]) - (np.array([0.4, 0, 0]) @ d) * d
+    A2, L2, R2 = attach_end(A, L, R, 'START', A[0], direction=d, curvature=want)
+    q, t, k = end_frame(A2, L2, R2, 'START')
+    assert np.allclose(t, d) and np.allclose(k, want, atol=1e-9), (k, want)
+    assert point_state(A2, L2, R2, 1) in ('G1', 'G2')
+    # continuing another curve's end: the same point, the opposite direction, the same bend
+    B, M, N = A + np.array([0.0, 0.0, 1.0]), L + np.array([0.0, 0.0, 1.0]), R + np.array([0.0, 0.0, 1.0])
+    p0, t0, k0 = end_frame(A, L, R, 'END')
+    B2, M2, N2 = attach_end(B, M, N, 'START', p0, direction=-t0, curvature=k0)
+    q, t, k = end_frame(B2, M2, N2, 'START')
+    assert np.allclose(q, p0) and np.allclose(t, -t0) and np.allclose(k, k0, atol=1e-9)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
