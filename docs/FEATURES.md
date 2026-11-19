@@ -1,8 +1,8 @@
 # Spline Surface 機能一覧
 
-対象バージョン：0.82.3 ／ Blender 5.0 以降（5.3 で動作確認）
+対象バージョン：0.86.3 ／ Blender 5.0 以降（5.3 で動作確認）
 
-機能を目的別に並べた一覧です。使い方の詳細は [説明書](MANUAL.md)、手順は [作業の流れ](WORKFLOWS.md) を見てください。
+機能を目的別に並べた一覧です。使い方の詳細は [説明書](MANUAL.md)、手順は [作業の流れ](WORKFLOWS.md)、画面に出るボタンの全部は [コマンド一覧](COMMANDS.md) を見てください。
 
 **検証の列の読み方**
 - **自動**：Blender をヘッドレスで動かすテスト（`tests/test_blender.py`）と、計算部分の単体テスト（`tests/test_core.py`）で、結果の数値まで確かめています。2つのサンプルは、開いて全部を作り直し、継ぎ目の角度とメッシュの穴まで確かめています（`tests/test_sample.py`、`tests/test_body.py`）。Live Update と Undo／Redo の組み合わせ、ファイルの開き直し、クリックで選ぶツール（Fillet・Flange・Fill Hole）の操作は、Blender の画面を開いて動かすテスト（`tests/test_gui.py`、`tests/test_gui_modal.py`）でも確かめています。まとめては `py tools/run_tests.py`

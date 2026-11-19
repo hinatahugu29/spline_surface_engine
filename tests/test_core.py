@@ -2073,6 +2073,19 @@ def test_fit_many_samples_fast():
     assert err < 0.01 and np.allclose(P[0], pts[0]) and np.allclose(P[-1], pts[-1])
 
 
+def test_command_list_up_to_date():
+    """docs/COMMANDS.md lists every button: rebuilt from the source, it must match."""
+    import importlib.util
+    root = os.path.join(os.path.dirname(__file__), "..")
+    spec = importlib.util.spec_from_file_location("list_commands", os.path.join(root, "tools", "list_commands.py"))
+    lc = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lc)
+    want = lc.build()
+    have = open(os.path.join(root, "docs", "COMMANDS.md"), encoding="utf-8").read()
+    assert have == want, "docs/COMMANDS.md is out of date: run  py tools/list_commands.py"
+    assert "（なし：すべての操作がパネルかメニューに出ています）" in want      # no button went missing
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

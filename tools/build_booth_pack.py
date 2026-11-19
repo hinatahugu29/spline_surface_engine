@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import build_zip  # noqa: E402
 
 ROOT = build_zip.ROOT
-DOCS = ("MANUAL.md", "FEATURES.md", "WORKFLOWS.md", "CHANGELOG.md", "VALIDATION_body.md")
+DOCS = ("MANUAL.md", "FEATURES.md", "COMMANDS.md", "CHECKLIST_hands_on.md", "WORKFLOWS.md", "CHANGELOG.md", "VALIDATION_body.md")
 DOC_IMAGES = "images/body"      # the pictures VALIDATION_body.md shows
 SAMPLES = (("hood_fender.blend", "build_sample_hood.py"),
            ("body_front_cabin.blend", "build_sample_body.py"))
@@ -28,8 +28,10 @@ README = """Spline Surface %(v)s
 3. 3D ビューで N キーを押し、サイドバーの「Spline Surface」タブを開く
 
 docs/MANUAL.md      説明書
-docs/WORKFLOWS.md   目的別の作業の流れ（6例）
+docs/WORKFLOWS.md   目的別の作業の流れ（7例）
 docs/FEATURES.md    機能一覧
+docs/COMMANDS.md    コマンド一覧（画面に出るボタンの全部）
+docs/CHECKLIST_hands_on.md  手で確かめる項目
 docs/CHANGELOG.md   更新履歴
 docs/VALIDATION_body.md  車体のサンプルを作って見つけたこと
 LICENSE.txt         ライセンス（GPL-3.0-or-later）
