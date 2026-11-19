@@ -2061,6 +2061,18 @@ def test_curve_pull_few_points():
     assert smooth_points(*B).all()
 
 
+def test_fit_many_samples_fast():
+    """A curve with many points gives hundreds of samples; the fit must stay quick
+    (the dense solve took ~6 s for 481 samples, 40 s for a 16-point Loft)."""
+    import time
+    s = np.linspace(0, 1, 481)
+    pts = np.stack([s * 4, np.sin(s * 5), 0.3 * np.cos(s * 3)], -1)
+    t0 = time.time()
+    P, err = fit_curve(pts, 5)
+    assert time.time() - t0 < 2.0, time.time() - t0
+    assert err < 0.01 and np.allclose(P[0], pts[0]) and np.allclose(P[-1], pts[-1])
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

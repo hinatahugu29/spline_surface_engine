@@ -111,21 +111,29 @@ def fit_curve(pts, degree, iterations=30):
     k, ni = len(pts), degree - 1
     cost = lambda P, t: float(((eval_curve(P, t) - pts) ** 2).sum())  # noqa: E731
     c, lam = cost(P, t), 1e-3
+    # Each sample's parameter only moves its own point, so its block of the
+    # normal equations is diagonal and is eliminated exactly (Schur complement):
+    # the system solved is the size of the control points, not of the samples.
+    # (A dense solve over every sample's parameter took 40 s for a 16-point curve.)
     for _ in range(iterations):
-        r = (eval_curve(P, t) - pts).reshape(-1)
-        B = bernstein(degree, t)[:, 1:-1]
-        dC = eval_curve(derivative(P), t)
-        J = np.zeros((3 * k, 3 * ni + k - 2))
-        for d in range(3):
-            J[d::3, d:3 * ni:3] = B
-        J[np.arange(3, 3 * k - 3).reshape(-1, 3), 3 * ni + np.arange(k - 2)[:, None]] = dC[1:-1]
-        JTJ, g = J.T @ J, J.T @ r
+        R = eval_curve(P, t) - pts                          # (k, 3) residuals
+        B = bernstein(degree, t)[:, 1:-1]                   # (k, ni)
+        dC = eval_curve(derivative(P), t)[1:-1]             # (k - 2, 3): the free samples
+        A = np.kron(B.T @ B, np.eye(3))                     # control-point block
+        Bm = (B[1:-1, :, None] * dC[:, None, :]).reshape(k - 2, 3 * ni)   # coupling
+        D = np.einsum("ij,ij->i", dC, dC)                   # parameter block (diagonal)
+        gp = (B.T @ R).reshape(-1)
+        gt = np.einsum("ij,ij->i", dC, R[1:-1])
         while True:
-            delta = np.linalg.solve(JTJ + lam * np.diag(np.diag(JTJ) + 1e-12), -g)
+            Ad = A + lam * np.diag(np.diag(A) + 1e-12)
+            Dd = D + lam * (D + 1e-12)
+            S = Ad - Bm.T @ (Bm / Dd[:, None])
+            dp = np.linalg.solve(S, -gp + Bm.T @ (gt / Dd))
+            dt = (-gt - Bm @ dp) / Dd
             P_new = P.copy()
-            P_new[1:-1] += delta[:3 * ni].reshape(ni, 3)
+            P_new[1:-1] += dp.reshape(ni, 3)
             t_new = t.copy()
-            t_new[1:-1] = np.clip(t[1:-1] + delta[3 * ni:], 0.0, 1.0)
+            t_new[1:-1] = np.clip(t[1:-1] + dt, 0.0, 1.0)
             c_new = cost(P_new, t_new)
             if c_new < c:
                 P, t, c, lam = P_new, t_new, c_new, lam * 0.3
