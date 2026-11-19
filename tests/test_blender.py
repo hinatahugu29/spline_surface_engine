@@ -554,10 +554,68 @@ def curve_marks_and_panel():
         ui.SS_PT_curves.draw(type("P", (), {"layout": _FakeLayout(log)})(), ctx)
         ops = {e[1] for e in log if e[0] == "op"}
         assert {"spline_surface.curve_points", "spline_surface.make_g2", "spline_surface.refit_curve",
-                "spline_surface.attach_curve_ends", "spline_surface.point_continuity"} <= ops, ops
+                "spline_surface.attach_curve_ends", "spline_surface.point_continuity",
+                "spline_surface.two_view_curve", "spline_surface.curve_fillet",
+                "spline_surface.offset_curve", "spline_surface.extend_curve"} <= ops, ops
         assert ("spline_surface.constrained_move" in ops) == (mode == 'EDIT')
     bpy.ops.object.mode_set(mode='OBJECT')
     print("curve marks and panel OK")
+
+
+def curve_making_ops():
+    """Two-View Curve, Curve Fillet, Offset Curve and Extend Curve through Blender."""
+    from spline_surface.core.curvepoint import nearest
+    from spline_surface.core.curvesmooth import point_state
+    from spline_surface.curveediting import read_spline
+    ctx = bpy.context
+    ys = np.linspace(1000, 1004, 7)
+    side = bezier_curve("TVside", [(5.0, y, 0.5 * np.sin(y - 1000)) for y in ys])
+    top = bezier_curve("TVtop", [(1 + 0.3 * (y - 1000) ** 1.5, y, -2.0) for y in ys[::-1]])
+    ctx.view_layer.update()
+    select([side, top])
+    assert bpy.ops.spline_surface.two_view_curve() == {'FINISHED'}
+    tv = ctx.active_object
+    assert tv.name.startswith("TwoViewCurve")
+    A, L, R, cyc = read_spline(tv, 0)
+    S0, SL, SR, _ = read_spline(side, 0)
+    T0, TL, TR, _ = read_spline(top, 0)
+    for p in A:
+        q = p.copy()
+        q[0] = 5.0                                        # seen from the side
+        assert nearest(S0, SL, SR, q)[1] < 5e-3, p
+        q = p.copy()
+        q[2] = -2.0                                       # seen from the top
+        assert nearest(T0, TL, TR, q)[1] < 5e-3, p
+    # Fillet: a polyline with sharp (VECTOR) corners
+    pl = bezier_curve("FL", [(0, 1010, 0), (2, 1010, 0), (2, 1012, 0), (4, 1012, 0)])
+    for b in pl.data.splines[0].bezier_points:
+        b.handle_left_type = b.handle_right_type = 'VECTOR'
+    ctx.view_layer.update()
+    select([pl])
+    assert bpy.ops.spline_surface.curve_fillet(radius=0.4) == {'FINISHED'}
+    A, L, R, cyc = read_spline(pl, 0)
+    assert len(A) == 6 and all(point_state(A, L, R, i) != 'CORNER' for i in range(len(A)))
+    # Offset: a flat arc, 0.25 inwards
+    s = np.linspace(0, np.pi / 2, 5)
+    arc = bezier_curve("OF", [(3 * np.cos(a), 1020 + 3 * np.sin(a), 0.0) for a in s])
+    ctx.view_layer.update()
+    select([arc])
+    assert bpy.ops.spline_surface.offset_curve(distance=0.25) == {'FINISHED'}
+    off = bpy.data.objects["OF_offset"]
+    B = read_spline(off, 0)[0]
+    r = np.linalg.norm(B - np.array([0.0, 1020.0, 0.0]), axis=1)
+    assert np.abs(r - 2.75).max() < 0.02 or np.abs(r - 3.25).max() < 0.02, r
+    # Extend: one more point at the end, its tilt carried over
+    ext = bezier_curve("EX", [(0, 1030, 0), (1, 1031, 0), (2, 1030.5, 0)])
+    ext.data.splines[0].bezier_points[-1].tilt = 0.7
+    ctx.view_layer.update()
+    select([ext])
+    assert bpy.ops.spline_surface.extend_curve(length=0.5, mode='NATURAL', ends='END') == {'FINISHED'}
+    pts = ext.data.splines[0].bezier_points
+    assert len(pts) == 4 and abs(pts[-1].tilt - 0.7) < 1e-6 and abs(pts[0].tilt) < 1e-6
+    assert bpy.ops.spline_surface.extend_curve(length=0.5, mode='STRAIGHT', ends='BOTH') == {'FINISHED'}
+    assert len(ext.data.splines[0].bezier_points) == 6
+    print("curve making OK")
 
 
 def scene_full_copy():
@@ -2477,6 +2535,7 @@ def run():
     curve_shaping_ops()
     curve_attach_ends()
     curve_marks_and_panel()
+    curve_making_ops()
     scene_full_copy()            # last: switches the context scene
     spline_surface.unregister()
     print("ALL OK")

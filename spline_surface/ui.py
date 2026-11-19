@@ -206,6 +206,13 @@ class SS_PT_curves(_SubPanel, bpy.types.Panel):
         col = layout.column(align=True)
         col.label(text="Connect:")
         col.operator("spline_surface.attach_curve_ends", icon='SNAP_ON')
+        col = layout.column(align=True)
+        col.label(text="Make:")
+        col.operator("spline_surface.two_view_curve", icon='VIEW_ORTHO')
+        row = col.row(align=True)
+        row.operator("spline_surface.curve_fillet", icon='SPHERECURVE', text="Fillet")
+        row.operator("spline_surface.offset_curve", icon='MOD_OFFSET', text="Offset")
+        row.operator("spline_surface.extend_curve", icon='FORWARD', text="Extend")
         from . import curvature, curvemarks
         col = layout.column(align=True)
         col.label(text="See:")

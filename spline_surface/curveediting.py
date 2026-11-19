@@ -126,7 +126,13 @@ def write_spline(ob, idx, A, L, R, inserted=None, removed=None):
         snap = snapshot(ob)
         pts = snap[idx]["points"]
         if inserted is not None:
-            a, b = pts[inserted - 1], pts[inserted % len(pts)]
+            cyclic = snap[idx].get("use_cyclic_u", False)
+            if not cyclic and inserted == 0:              # a new first point: like the old one
+                a = b = pts[0]
+            elif not cyclic and inserted >= len(pts):     # a new last point
+                a = b = pts[-1]
+            else:
+                a, b = pts[inserted - 1], pts[inserted % len(pts)]
             new = dict(a)
             for k in ("tilt", "radius", "weight_softbody"):
                 new[k] = 0.5 * (a[k] + b[k])
@@ -858,6 +864,8 @@ def _context_menu(self, context):
     layout.operator("spline_surface.make_g2")
     layout.operator("spline_surface.refit_curve")
     layout.operator("spline_surface.attach_curve_ends")
+    layout.operator("spline_surface.curve_fillet")
+    layout.operator("spline_surface.extend_curve")
     layout.operator("spline_surface.curve_points")
 
 
