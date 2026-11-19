@@ -553,7 +553,7 @@ def curve_marks_and_panel():
         log = []
         ui.SS_PT_curves.draw(type("P", (), {"layout": _FakeLayout(log)})(), ctx)
         ops = {e[1] for e in log if e[0] == "op"}
-        assert {"spline_surface.curve_points", "spline_surface.make_g2", "spline_surface.refit_curve",
+        assert {"spline_surface.curve_points", "spline_surface.curve_pull", "spline_surface.make_g2", "spline_surface.refit_curve",
                 "spline_surface.attach_curve_ends", "spline_surface.point_continuity",
                 "spline_surface.two_view_curve", "spline_surface.curve_fillet",
                 "spline_surface.offset_curve", "spline_surface.extend_curve"} <= ops, ops

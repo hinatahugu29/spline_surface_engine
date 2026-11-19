@@ -24,7 +24,7 @@ from mathutils.geometry import intersect_line_plane
 from . import pick
 from .core.curvepoint import (arc_param, arc_table, dissolve_point, insert_point, nearest,
                               point_at, segments, slide_point)
-from .core.curvepull import chain_plane, pull_curve, smooth_points
+from .core.curvepull import chain_plane, pull_curve, pull_gain, smooth_points
 from .core.softpull import PROFILES
 
 AXES = {'X': (1.0, 0.0, 0.0), 'Y': (0.0, 1.0, 0.0), 'Z': (0.0, 0.0, 1.0)}
@@ -180,7 +180,8 @@ def target_objects(context):
 
 
 # ---------------------------------------------------------------- Curve Points
-class SS_OT_curve_points(pick.ModalPicker, bpy.types.Operator):
+class _CurveTool(pick.ModalPicker):
+    """Curve Points and Curve Pull: one tool, two buttons (see the classes below)."""
     bl_idname = "spline_surface.curve_points"
     bl_label = "Curve Points"
     bl_description = ("Edit Bezier curves in the viewport. Click on a curve: add a point (the "
@@ -243,10 +244,12 @@ class SS_OT_curve_points(pick.ModalPicker, bpy.types.Operator):
 
     def _header(self, context):
         move = {'VIEW': "view plane", 'PLANE': "curve's plane"}.get(self._move, self._move)
+        title = ("Curve Pull (%d edits): drag on a curve: pull   click curve: add point   drag point: "
+                 if self.bl_idname == "spline_surface.curve_pull" else
+                 "Curve Points (%d edits): click curve: add point   drag curve: pull   drag point: ")
         context.area.header_text_set(
-            "Curve Points (%d edits): click curve: add point   drag curve: pull   drag point: "
-            "slide (an end: move, S snap %s)   Ctrl+click point: remove   Wheel: range %.3g   "
-            "F: %s   E: ends %s   N: crossings %s   V/P/X/Y/Z: %s   Ctrl+Z / Enter / Esc%s"
+            (title + "slide (an end: move, S snap %s)   Ctrl+click point: remove   Wheel: range %.3g   "
+             "F: %s   E: ends %s   N: crossings %s   V/P/X/Y/Z: %s   Ctrl+Z / Enter / Esc%s")
             % (len(self._history), "on" if self._snap else "off", self._radius,
                self._profile.lower(), "pinned" if self._pin else "free",
                "follow" if self._net else "stay", move, self._note))
@@ -528,11 +531,20 @@ class SS_OT_curve_points(pick.ModalPicker, bpy.types.Operator):
         A, L, R, cyc = self._chains[key]
         self._begin()
         self._touch(key[0])
+        added = False
+        if pull_gain(A, L, R, t, self._radius, cyc, self._profile, self._pin) < 0.35:
+            # Nothing free near the grab (a 2-point curve, or the nearest points pinned or
+            # out of range): add a point there first - exact, the shape does not change.
+            A2, L2, R2, i = insert_point(A, L, R, t, cyc)
+            if len(A2) != len(A):
+                write_spline(bpy.data.objects[key[0]], key[1], A2, L2, R2, inserted=i)
+                A, L, R, t, added = A2, L2, R2, float(i), True
+                self._chains[key] = (A, L, R, cyc)
         plane = chain_plane(A, L, R)
         if self._move == 'PLANE' and plane is None:
             self._move = 'VIEW'
         self._pull = {"key": key, "t": t, "anchor": np.array(p), "chain": (A, L, R, cyc),
-                      "plane": plane, "smooth": smooth_points(A, L, R),
+                      "plane": plane, "smooth": smooth_points(A, L, R), "added": added,
                       "links": self._crossing_links(context, key, A, L, R, cyc) if self._net else []}
 
     def _delta(self, context, mouse):
@@ -575,8 +587,11 @@ class SS_OT_curve_points(pick.ModalPicker, bpy.types.Operator):
             write_spline(bpy.data.objects[okey[0]], okey[1], *o2)
             moved += 1
         self._hover = ('CURVE', P["key"], P["t"], point_at(A2, L2, R2, [P["t"]], cyc)[0])
-        self._note = "   (pulling %.3g%s)" % (float(np.linalg.norm(delta)),
-                                               ", %d crossing curve(s) follow" % moved if moved else "")
+        pinned = pull_gain(A, L, R, P["t"], self._radius, cyc, self._profile, self._pin) < 0.05
+        self._note = "   (pulling %.3g%s%s%s)" % (
+            float(np.linalg.norm(delta)), ", a point added to pull" if P["added"] else "",
+            ", %d crossing curve(s) follow" % moved if moved else "",
+            " - the end is pinned, E frees it" if pinned else "")
 
     # ------------------------------------------------------------ modal
     def _keys(self, context, event):
@@ -866,6 +881,7 @@ def _context_menu(self, context):
     layout.operator("spline_surface.attach_curve_ends")
     layout.operator("spline_surface.curve_fillet")
     layout.operator("spline_surface.extend_curve")
+    layout.operator("spline_surface.curve_pull")
     layout.operator("spline_surface.curve_points")
 
 
@@ -877,4 +893,35 @@ def unregister():
     bpy.types.VIEW3D_MT_edit_curve_context_menu.remove(_context_menu)
 
 
-classes = (SS_OT_curve_points, SS_OT_slide_curve_points, SS_OT_dissolve_curve_points)
+class SS_OT_curve_points(_CurveTool, bpy.types.Operator):
+    bl_idname = "spline_surface.curve_points"
+    bl_label = "Curve Points"
+
+    # own methods (not just inherited): finish.wrap_operators wraps what a class defines
+    def invoke(self, context, event):
+        return _CurveTool.invoke(self, context, event)
+
+    def modal(self, context, event):
+        return _CurveTool.modal(self, context, event)
+
+
+class SS_OT_curve_pull(_CurveTool, bpy.types.Operator):
+    """The same tool as Curve Points, started for pulling (its own button and name)."""
+    bl_idname = "spline_surface.curve_pull"
+    bl_label = "Curve Pull"
+    bl_description = ("Grab anywhere on a curve and drag: that spot follows the mouse and the "
+                      "curve bends smoothly around it (a point is added there first if none is "
+                      "free nearby). Wheel: range, F: falloff, E: pin the ends, N: crossing "
+                      "curves follow, V / P / X / Y / Z: view plane / the curve's own plane / an "
+                      "axis. Also adds, slides and removes points like Curve Points. Ctrl+Z takes "
+                      "back one pull, Enter keeps, Esc drops all")
+
+    def invoke(self, context, event):
+        return _CurveTool.invoke(self, context, event)
+
+    def modal(self, context, event):
+        return _CurveTool.modal(self, context, event)
+
+
+classes = (SS_OT_curve_points, SS_OT_curve_pull, SS_OT_slide_curve_points,
+           SS_OT_dissolve_curve_points)

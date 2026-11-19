@@ -191,7 +191,9 @@ class SS_PT_curves(_SubPanel, bpy.types.Panel):
         layout = self.layout
         col = layout.column(align=True)
         col.label(text="Points (shape kept):")
-        col.operator("spline_surface.curve_points", icon='CURVE_PATH')
+        row = col.row(align=True)
+        row.operator("spline_surface.curve_pull", icon='FORCE_CURVE')
+        row.operator("spline_surface.curve_points", icon='CURVE_PATH')
         if context.mode == 'EDIT_CURVE':
             row = col.row(align=True)
             row.operator("spline_surface.slide_curve_points", icon='ARROW_LEFTRIGHT', text="Slide")

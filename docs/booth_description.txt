@@ -127,7 +127,7 @@ GitHub の Issues か、ご連絡で受け付けます。
 
 
 ■ 更新履歴(抜粋)
-v0.83〜0.86  カーブ編集(Curves 欄):Curve Points(点を足す・滑らせる・消す、カーブを引っぱる)、Constrained Move、Make G2、Refit Curve、Attach Curve Ends、Point Continuity、Two-View Curve、Curve Fillet、Offset Curve、Extend Curve
+v0.83〜0.86  カーブ編集(Curves 欄):Curve Pull、Curve Points(点を足す・滑らせる・消す、カーブを引っぱる)、Constrained Move、Make G2、Refit Curve、Attach Curve Ends、Point Continuity、Two-View Curve、Curve Fillet、Offset Curve、Extend Curve
 v0.82    Seam Colors の測り方を Diagnose とそろえた。Undo とファイルの開き直しまわりの不具合を修正(Zebra をオンにして Ctrl+Z で落ちることがある、別のファイルを開くと Live Update が止まる、など)
 v0.81    Fill Hole を角ごとに分けた面どうしが、中心まで滑らかに(G1)つながるように
 v0.80    Diagnose の結果に「意図どおり」の印。辺の一部だけで接する継ぎ目も測れるように

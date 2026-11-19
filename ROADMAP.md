@@ -3,7 +3,7 @@
 車のような滑らかな曲面を、NURBS の慣れなしで作れるようにする Blender 5.x アドオン。
 最終出力はメッシュ。操作はボタンとクリック選択が基本で、ギズモは操作が固まってから載せる。
 
-## 現在地（2026-11-19、v0.86.0）
+## 現在地（2026-11-19、v0.86.1）
 
 **v0.72.0 を公開候補（Release Candidate）とした。** その後 v0.73〜v0.76 で、内部の整理（下の「v0.73〜v0.76 の整理」）と、Even Gap・Presets の追加・Sweep の Rotate・Diagnose・Fill Hole の角の改善を入れた。v0.77〜v0.82 では、2つ目のサンプル（車体の前半＋キャビン、`tools/build_sample_body.py`）を作って詰まりを拾い、直した（`docs/VALIDATION_body.md`）。v0.82.1〜v0.82.3 では、Blender の画面を開いてランダムに操作を続ける確認で、Undo とファイルの開き直しまわりの不具合（Zebra と Ctrl+Z で落ちる、File → Open で Live Update が止まる、など）を見つけて直した。第1〜第4段階の作業はすべて終わった。公開前の確認も、自動で確かめられるものはすべてテストにした。残りは公開の手続き（アカウントでの操作）と、手で触ったときの感触の確認（`docs/CHECKLIST_hands_on.md`）だけ。
 
@@ -160,4 +160,4 @@
 | v0.83 | カーブ編集 A・B：Curve Points（点を足す・滑らせる・消す、どれも形を保つ。カーブ上をドラッグで引く Curve Pull）、編集モードの Slide Points・Dissolve Points。下の「カーブ編集」の段階表を参照 |
 | v0.84 | カーブ編集 B'・C：Constrained Move（点自身の向きに動かす・ハンドルの長さだけ・G2 を保つ）、Make G2、Refit Curve |
 | v0.85 | カーブ編集 D・F：Attach Curve Ends、端の吸着、Point Continuity、曲率の櫛の追従 |
-| v0.86 | カーブ編集 E：Two-View Curve、Curve Fillet、Offset Curve、Extend Curve。カーブ編集の段階表（A〜F）がすべて完了 |
+| v0.86 | カーブ編集 E：Two-View Curve、Curve Fillet、Offset Curve、Extend Curve。カーブ編集の段階表（A〜F）がすべて完了。v0.86.1：Curve Pull の専用ボタン、2点だけのカーブなど動かせる点が近くにないときに引けなかった不具合を修正（つかんだ所に点を足してから引く） |

@@ -20,6 +20,8 @@ import numpy as np
 from .curvepoint import arc_table, point_at, segments
 from .softpull import falloff
 
+MIN_GAIN = 0.05        # below this the grabbed point is (almost) pinned: leave the curve
+
 
 def _ctrl_params(n, cyclic):
     """Curve parameter each control point stands for: (anchors, left, right)."""
@@ -85,7 +87,9 @@ def pull_curve(A, L, R, t, delta, radius, cyclic=False, profile='SMOOTH', pin_en
             if cyclic:
                 d = np.minimum(d, total - d)
             out.append(falloff(d / radius, profile) * mask)
-        return out                                    # (kA, kL, kR)
+        kA, kL, kR = out
+        # a point's handles never lag behind it (with a small range they would kink the curve)
+        return kA, np.maximum(kL, kA), np.maximum(kR, kA)
 
     points = [float(t)] + [float(f) for f in fixed]
     targets = np.zeros((len(points), 3))
@@ -105,6 +109,8 @@ def pull_curve(A, L, R, t, delta, radius, cyclic=False, profile='SMOOTH', pin_en
             bA, bL, bR = _basis_rows(n, p, cyclic)
             for c, (kA, kL, kR) in enumerate(kernels):
                 M[r, c] = bA @ kA + bL @ kL + bR @ kR
+        if M[0, 0] < MIN_GAIN:                  # nothing free holds the grabbed point
+            return A0, L0, R0
         x = np.linalg.lstsq(M, targets, rcond=None)[0]          # (k, 3)
         for (kA, kL, kR), xc in zip(kernels, x):
             A += kA[:, None] * xc
@@ -156,3 +162,27 @@ def chain_plane(A, L, R, tol=1e-4):
     if sv[1] < 1e-9 * sv[0]:             # a straight line: any plane through it; none chosen
         return None
     return c, normal
+
+
+def pull_gain(A, L, R, t, radius, cyclic=False, profile='SMOOTH', pin_ends=True):
+    """How strongly the free control points in range hold the curve point at t
+    (1: it is a free point itself; 0: every control point near it is pinned or
+    out of range). Below about a third, add a point at t before pulling."""
+    A, L, R = (np.asarray(x, float) for x in (A, L, R))
+    n = len(A)
+    tt, ss = arc_table(A, L, R, cyclic)
+    total = ss[-1]
+    pa, pl, pr = _ctrl_params(n, cyclic)
+    mask = np.ones(n)
+    if pin_ends and not cyclic:
+        mask[0] = mask[-1] = 0.0
+    s0 = np.interp(t, tt, ss)
+    ks = []
+    for p in (pa, pl, pr):
+        d = np.abs(np.interp(p, tt, ss) - s0)
+        if cyclic:
+            d = np.minimum(d, total - d)
+        ks.append(falloff(d / max(float(radius), 1e-9), profile) * mask)
+    kA, kL, kR = ks[0], np.maximum(ks[1], ks[0]), np.maximum(ks[2], ks[0])
+    bA, bL, bR = _basis_rows(n, t, cyclic)
+    return float(bA @ kA + bL @ kL + bR @ kR)

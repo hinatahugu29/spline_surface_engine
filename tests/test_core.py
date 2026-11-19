@@ -2038,6 +2038,29 @@ def test_curve_offset_and_extend():
     assert point_state(A3, L3, R3, 1) == 'G1'          # straight meets the circle: tangent, not bend
 
 
+def test_curve_pull_few_points():
+    from core.curvepoint import insert_point, point_at
+    from core.curvepull import pull_curve, pull_gain, smooth_points
+    # Blender's default Bezier curve: 2 points, both ends pinned -> nothing can move there
+    A = np.array([(-1.0, 0, 0), (1, 0, 0)])
+    L = np.array([(-1.5, -0.5, 0), (0, 0, 0)])
+    R = np.array([(-0.5, 0.5, 0), (2, 0, 0)])
+    assert pull_gain(A, L, R, 0.5, 1.0) == 0.0
+    A2, L2, R2 = pull_curve(A, L, R, 0.5, np.array([0, 0, 1.0]), 1.0)
+    assert np.allclose(A2, A) and np.allclose(L2, L) and np.allclose(R2, R)   # left alone, not flung
+    # with a point added there (what the tool does) it pulls exactly, ends kept
+    A3, L3, R3, i = insert_point(A, L, R, 0.5)
+    assert pull_gain(A3, L3, R3, float(i), 1.0) > 0.99
+    B = pull_curve(A3, L3, R3, float(i), np.array([0, 0, 1.0]), 1.0)
+    assert np.allclose(point_at(*B, [float(i)])[0] - point_at(A3, L3, R3, [float(i)])[0], (0, 0, 1))
+    assert np.allclose(B[0][[0, -1]], A3[[0, -1]])
+    # a small range: the point's handles go with it (no kink), still smooth
+    A4, L4, R4 = _smooth_chain(n=6)
+    B = pull_curve(A4, L4, R4, 2.0, np.array([0, 0, 0.5]), radius=0.05)
+    assert np.allclose(B[1][2] - L4[2], B[0][2] - A4[2]) and np.allclose(B[2][2] - R4[2], B[0][2] - A4[2])
+    assert smooth_points(*B).all()
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

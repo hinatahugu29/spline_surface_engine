@@ -724,6 +724,57 @@ def s_snap_check():
           abs(p[0] - 92.0) < 1e-3 and abs(p[2]) < 1e-3 and 0.0 < p[1] < 2.0, p)
 
 
+# ---- Curve Pull button on a 2-point curve (Blender's default Bezier): it must bend
+def s_p2_setup():
+    from spline_surface.projecting import make_bezier_curve
+    ob = make_bezier_curve("P2", np.array([(100, 0, 0), (104, 0, 0)], float), bpy.context.collection)
+    ob.data.dimensions = '3D'
+    sp = ob.data.splines[0]
+    sp.bezier_points[0].handle_left_type = sp.bezier_points[0].handle_right_type = 'FREE'
+    sp.bezier_points[1].handle_left_type = sp.bezier_points[1].handle_right_type = 'FREE'
+    sp.bezier_points[0].handle_right = (101, 1, 0)
+    sp.bezier_points[1].handle_left = (103, -1, 0)
+    area = view()[1]
+    area.spaces[0].region_3d.view_rotation = Euler((0.0, 0.0, 0.0)).to_quaternion()
+    _focus([ob])
+    for o in bpy.context.scene.objects:
+        o.select_set(o is ob)
+    bpy.context.view_layer.objects.active = ob
+    S["p2_0"] = _chain("P2")
+
+
+def s_p2_drag():
+    from bpy_extras.view3d_utils import region_2d_to_location_3d
+    win, area, region = view()
+    p = _chain_at("P2", 0.5)
+    a = to_window(p)
+    b = (a[0], a[1] + 50)
+    send('MOUSEMOVE', 'NOTHING', a)
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        log("curve pull invoke", bpy.ops.spline_surface.curve_pull('INVOKE_DEFAULT'))
+    send('MOUSEMOVE', 'NOTHING', a)
+    send('LEFTMOUSE', 'PRESS', a)
+    send('MOUSEMOVE', 'NOTHING', (a[0], a[1] + 25))
+    send('MOUSEMOVE', 'NOTHING', b)
+    send('LEFTMOUSE', 'RELEASE', b)
+    press('RET', b)
+    rv3d = area.spaces[0].region_3d
+    S["p2_goal"] = np.array(region_2d_to_location_3d(region, rv3d, (b[0] - region.x, b[1] - region.y),
+                                                     Vector(p)))
+    S["p2_from"] = p
+
+
+def s_p2_check():
+    from spline_surface.core.curvepoint import nearest
+    A, L, R, c = _chain("P2")
+    moved = float(np.linalg.norm(S["p2_goal"] - S["p2_from"]))
+    t, d = nearest(A, L, R, S["p2_goal"], c)
+    ends = np.allclose(A[0], S["p2_0"][0][0]) and np.allclose(A[-1], S["p2_0"][0][-1])
+    check("Curve Pull button, 2-point curve: a point is added, the curve bends to the mouse, "
+          "ends stay", len(A) == 3 and moved > 0.3 and d < 0.02 * moved and ends,
+          (len(A), moved, d, ends))
+
+
 def s_done():
     ok = all(r for _, r in RESULTS)
     log("SUMMARY", "ALL OK" if ok else "FAILURES", [t for t, r in RESULTS if not r])
@@ -743,7 +794,8 @@ STEPS = [s_setup, s_fillet_start, s_fillet_pick, s_fillet_enter, s_fillet_adjust
          s_es_setup, s_es_slide, s_es_check,
          s_pull_setup, s_pull_drag, s_pull_check,
          s_cm_setup, s_cm_move, s_cm_check,
-         s_snap_setup, s_snap_drag, s_snap_check, s_done]
+         s_snap_setup, s_snap_drag, s_snap_check,
+         s_p2_setup, s_p2_drag, s_p2_check, s_done]
 
 
 def tick():
