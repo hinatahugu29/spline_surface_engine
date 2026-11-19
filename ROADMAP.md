@@ -3,7 +3,7 @@
 車のような滑らかな曲面を、NURBS の慣れなしで作れるようにする Blender 5.x アドオン。
 最終出力はメッシュ。操作はボタンとクリック選択が基本で、ギズモは操作が固まってから載せる。
 
-## 現在地（2026-11-17、v0.82.3）
+## 現在地（2026-11-19、v0.83.0）
 
 **v0.72.0 を公開候補（Release Candidate）とした。** その後 v0.73〜v0.76 で、内部の整理（下の「v0.73〜v0.76 の整理」）と、Even Gap・Presets の追加・Sweep の Rotate・Diagnose・Fill Hole の角の改善を入れた。v0.77〜v0.82 では、2つ目のサンプル（車体の前半＋キャビン、`tools/build_sample_body.py`）を作って詰まりを拾い、直した（`docs/VALIDATION_body.md`）。v0.82.1〜v0.82.3 では、Blender の画面を開いてランダムに操作を続ける確認で、Undo とファイルの開き直しまわりの不具合（Zebra と Ctrl+Z で落ちる、File → Open で Live Update が止まる、など）を見つけて直した。第1〜第4段階の作業はすべて終わった。公開前の確認も、自動で確かめられるものはすべてテストにした。残りは公開の手続き（アカウントでの操作）と、手で触ったときの感触の確認（`docs/CHECKLIST_hands_on.md`）だけ。
 
@@ -50,6 +50,20 @@
 | 形の回帰チェック | `tests/sample_snapshot.json`：サンプルを作り直した制御点を記録と比べる。形を変える修正のあとは `-- --update` で書き直す |
 | `rebuild.py` | 作り直しの計算と、作り方の登録（`@recipe("name")`）。新しい種類の面は登録だけで Live Update・Regenerate に乗る |
 | 分割 | `operators.py` → `creating.py`・`matching.py`・`extending.py`・`holefill.py`。`live.py` → `graph.py`（依存関係）・`links.py`（連続性と追従の変更）・`live.py`（作り直しとハンドラ） |
+
+## カーブ編集（v0.83〜）
+
+面の道具がそろったあと、「カーブ系は？」という声が増えた。このアドオンの中でのカーブに限らず、Blender のベジェ編集そのものの扱いにくさ（点とハンドルしかつかめない、形を保ったまま点を足す・消す・ずらす手段がない、意味のある方向に動かせない、G2 を保てない）を埋める。面がなくてもふつうのベジェカーブに使え、面と連動する部分（端の条件、網、Live Update）はその上に重ねる。
+
+| 段階 | 内容 | 状況 |
+|---|---|---|
+| A 点の構成を変える（形は保つ） | Curve Points（クリックで足す・ドラッグで滑らせる・Ctrl+クリックで消す、モーダル）、編集モードの Slide Points・Dissolve Points | ✅ v0.83.0 |
+| B 形を変える | Curve Pull（曲線上のどこでもつかんで引く。範囲・減衰・方向、端の固定、網の交点も付いてくる。P でカーブ自身の平面に固定） | ✅ v0.83.0 |
+| B' 意味のある向きに動かす | Constrained Move（編集モード。接線・法線方向、ハンドルの長さだけ、G2 を保つ） | ⬜ |
+| C 整える | Refit／Simplify（形を保って点を減らす）、Make G2（ハンドルの長さで曲率をそろえる）、Fair Curves（既存） | ⬜ |
+| D つなぐ・条件 | 端を面に接する向き（G1）で入れる、別のカーブに接して続ける、端を辺やカーブの上に乗せて滑らせる | ⬜ |
+| E 作る | 2方向の図から 3D カーブ、Curve Fillet、Offset Curve、Extend | ⬜ |
+| F 見る | 編集中も追従する曲率の櫛、点ごとの G1／G2 の表示 | ⬜ |
 
 ## 方針
 
@@ -143,3 +157,4 @@
 | v0.73〜v0.76 | Even Gap、Presets（Trunk、Roof + Side、Bumper）、Sweep の Rotate、Diagnose、Fill Hole の角を G1 に。内部の整理（`rebuild.py` のレシピ登録、`operators.py`・`live.py` の分割）、テストの一括実行と CI、形の回帰チェック |
 | v0.77〜v0.81 | 2つ目のサンプル（車体の前半＋キャビン）で拾った詰まりの修正：一部だけ向かい合う縁の Even Gap、Fill Hole の角のひだ（本当の角の数で埋め、分けた面どうしは中心まで G1）、Split Patch の後の追従、辺の一部だけで接する継ぎ目の測定、Diagnose の「意図どおり」の印、To Mesh の非多様体の印 |
 | v0.82 | Seam Colors を Check Continuity・Diagnose と同じ測り方に（フィレットで切り離した2枚を「open」と塗っていた）。掲載用の画像をスクリプトで撮り直し、Booth 一式に車体のサンプル、CI の更新。v0.82.1〜v0.82.3：画面つきのランダム操作で見つけた不具合の修正（Zebra と Ctrl+Z で落ちる、File → Open で Live Update が止まる、開いた直後の最初の変更、操作と作り直しを Ctrl+Z 1回で戻す、何度か Undo すると付いてこなくなる） |
+| v0.83 | カーブ編集 A・B：Curve Points（点を足す・滑らせる・消す、どれも形を保つ。カーブ上をドラッグで引く Curve Pull）、編集モードの Slide Points・Dissolve Points。下の「カーブ編集」の段階表を参照 |

@@ -58,15 +58,15 @@ def to_window(p):
     return int(region.x + x), int(region.y + y)
 
 
-def send(kind, value='PRESS', at=None, shift=False):
+def send(kind, value='PRESS', at=None, shift=False, ctrl=False):
     win = view()[0]
     x, y = at if at is not None else (win.width // 2, win.height // 2)
-    win.event_simulate(type=kind, value=value, x=x, y=y, shift=shift)
+    win.event_simulate(type=kind, value=value, x=x, y=y, shift=shift, ctrl=ctrl)
 
 
-def press(kind, at=None, shift=False):
-    send(kind, 'PRESS', at, shift)
-    send(kind, 'RELEASE', at, shift)
+def press(kind, at=None, shift=False, ctrl=False):
+    send(kind, 'PRESS', at, shift, ctrl)
+    send(kind, 'RELEASE', at, shift, ctrl)
 
 
 def free(name, net):
@@ -433,6 +433,210 @@ def s_loft_check():
           [m["sources"] for m in lofts])
 
 
+# ---- Curve Points (modal) and Slide Points (edit mode)
+def _chain(name):
+    from spline_surface.curveediting import read_spline
+    return read_spline(bpy.data.objects[name], 0)
+
+
+def _chain_at(name, t):
+    from spline_surface.core.curvepoint import point_at
+    A, L, R, cyc = _chain(name)
+    return point_at(A, L, R, [t], cyc)[0]
+
+
+def _shape_off(before, name):
+    from spline_surface.core.curvepoint import nearest, point_at, segments
+    A, L, R, cyc = _chain(name)
+    m = segments(len(A), cyc)
+    return max(nearest(*before[:3], p, before[3])[1]
+               for p in point_at(A, L, R, np.linspace(0, m, 30 * m + 1), cyc))
+
+
+def s_cp_setup():
+    from spline_surface.projecting import make_bezier_curve
+    ob = make_bezier_curve("CPv", np.array([(60, 0, 0), (62, 1.5, 0), (64, 0, 0), (66, 1.5, 0)],
+                                           float), bpy.context.collection)
+    ob.data.dimensions = '3D'
+    area = view()[1]
+    area.spaces[0].region_3d.view_rotation = Euler((0.0, 0.0, 0.0)).to_quaternion()   # top view
+    _focus([ob])
+    bpy.context.view_layer.update()
+    S["cp0"] = _chain("CPv")
+
+
+def s_cp_insert():
+    win, area, region = view()
+    S["cp_at"] = to_window(_chain_at("CPv", 0.5))
+    send('MOUSEMOVE', 'NOTHING', S["cp_at"])
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        log("curve points invoke", bpy.ops.spline_surface.curve_points('INVOKE_DEFAULT'))
+    send('MOUSEMOVE', 'NOTHING', S["cp_at"])
+    press('LEFTMOUSE', S["cp_at"])
+
+
+def s_cp_insert_check():
+    A = _chain("CPv")[0]
+    size = float(np.ptp(S["cp0"][0], 0).max())
+    check("Curve Points: click on a curve adds a point, shape unchanged",
+          len(A) == 5 and _shape_off(S["cp0"], "CPv") < 1e-4 * size,
+          (len(A), _shape_off(S["cp0"], "CPv")))
+
+
+def s_cp_slide():
+    # drag point 2 (the old second point) halfway towards point 3, along the curve
+    S["cp_from"] = _chain("CPv")[0][2].copy()
+    start, goal = to_window(S["cp_from"]), to_window(_chain_at("CPv", 2.5))
+    send('MOUSEMOVE', 'NOTHING', start)
+    send('LEFTMOUSE', 'PRESS', start)
+    mid = ((start[0] + goal[0]) // 2, (start[1] + goal[1]) // 2)
+    send('MOUSEMOVE', 'NOTHING', mid)
+    send('MOUSEMOVE', 'NOTHING', goal)
+    send('LEFTMOUSE', 'RELEASE', goal)
+    S["cp_goal"] = _chain_at("CPv", 2.5)
+
+
+def s_cp_slide_check():
+    A = _chain("CPv")[0]
+    size = float(np.ptp(S["cp0"][0], 0).max())
+    moved = float(np.linalg.norm(A[2] - S["cp_from"]))
+    off = _shape_off(S["cp0"], "CPv")
+    check("Curve Points: drag a point -> it slides along the curve, shape kept",
+          len(A) == 5 and moved > 0.3 and float(np.linalg.norm(A[2] - S["cp_goal"])) < 0.05 * size
+          and off < 1e-2 * size, (moved, float(np.linalg.norm(A[2] - S["cp_goal"])), off))   # a sharp zigzag
+
+
+def s_cp_dissolve():
+    at = to_window(_chain("CPv")[0][3])
+    send('MOUSEMOVE', 'NOTHING', at)
+    press('LEFTMOUSE', at, ctrl=True)
+
+
+def s_cp_dissolve_check():
+    n = len(_chain("CPv")[0])
+    size = float(np.ptp(S["cp0"][0], 0).max())
+    check("Curve Points: Ctrl+click a point removes it, shape close",
+          n == 4 and _shape_off(S["cp0"], "CPv") < 2e-2 * size, (n, _shape_off(S["cp0"], "CPv")))
+
+
+def s_cp_undo_enter():
+    at = S["cp_at"]
+    press('Z', at, ctrl=True)                    # back to 5 points
+    press('RET', at)
+
+
+def s_cp_undo_check():
+    n = len(_chain("CPv")[0])
+    check("Curve Points: Ctrl+Z takes back the last edit, Enter keeps the rest", n == 5, n)
+
+
+def s_es_setup():
+    ob = bpy.data.objects["CPv"]
+    for o in bpy.context.scene.objects:
+        o.select_set(o is ob)
+    bpy.context.view_layer.objects.active = ob
+    win, area, region = view()
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        bpy.ops.object.mode_set(mode='EDIT')
+    for k, b in enumerate(ob.data.splines[0].bezier_points):
+        b.select_control_point = b.select_left_handle = b.select_right_handle = (k == 1)
+    S["es0"] = _chain("CPv")
+    S["es_from"] = S["es0"][0][1].copy()
+
+
+def s_es_slide():
+    win, area, region = view()
+    a, b = to_window(S["es0"][0][1]), to_window(_chain_at("CPv", 1.6))
+    send('MOUSEMOVE', 'NOTHING', a)
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        log("slide points invoke", bpy.ops.spline_surface.slide_curve_points('INVOKE_DEFAULT'))
+    send('MOUSEMOVE', 'NOTHING', ((a[0] + b[0]) // 2, (a[1] + b[1]) // 2))
+    send('MOUSEMOVE', 'NOTHING', b)
+    press('LEFTMOUSE', b)
+
+
+def s_es_check():
+    win, area, region = view()
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        bpy.ops.object.mode_set(mode='OBJECT')
+    A = _chain("CPv")[0]
+    size = float(np.ptp(S["es0"][0], 0).max())
+    moved = float(np.linalg.norm(A[1] - S["es_from"]))
+    off = _shape_off(S["es0"], "CPv")
+    check("Slide Points (edit mode): the selected point slides along the curve, shape kept",
+          moved > 0.2 and off < 5e-3 * size, (moved, off))
+
+
+# ---- Curve Pull: drag on a curve; a crossing curve follows
+def _gap(a, b):
+    """Closest distance between two curves: the nearest sample pair, then projected
+    back and forth onto each curve until it settles (samples alone miss a crossing)."""
+    from spline_surface.core.curvepoint import nearest, point_at, segments
+    A, L, R, c = _chain(a)
+    B, M, N, d = _chain(b)
+    pa = point_at(A, L, R, np.linspace(0, segments(len(A), c), 400), c)
+    pb = point_at(B, M, N, np.linspace(0, segments(len(B), d), 400), d)
+    i, j = np.unravel_index(np.linalg.norm(pa[:, None] - pb[None], axis=2).argmin(), (400, 400))
+    q = pb[j]
+    for _ in range(30):
+        ta, _ = nearest(A, L, R, q, c)
+        p = point_at(A, L, R, [ta], c)[0]
+        tb, _ = nearest(B, M, N, p, d)
+        q = point_at(B, M, N, [tb], d)[0]
+    return float(np.linalg.norm(p - q))
+
+
+def s_pull_setup():
+    from spline_surface.projecting import make_bezier_curve
+    h = make_bezier_curve("PH", np.array([(70, 0, 0), (72, 0.1, 0), (74, -0.1, 0), (76, 0, 0)], float),
+                          bpy.context.collection)
+    v = make_bezier_curve("PV", np.array([(73, -3, 0), (73.1, -1, 0), (72.9, 1, 0), (73, 3, 0)], float),
+                          bpy.context.collection)
+    for o in (h, v):
+        o.data.dimensions = '3D'
+    _focus([h, v])
+    for o in bpy.context.scene.objects:
+        o.select_set(o in (h, v))
+    bpy.context.view_layer.update()
+    S["ph0"], S["pv0"] = _chain("PH"), _chain("PV")
+    S["gap0"] = _gap("PH", "PV")
+
+
+def s_pull_drag():
+    from bpy_extras.view3d_utils import region_2d_to_location_3d
+    win, area, region = view()
+    p = _chain_at("PH", 0.8)
+    a = to_window(p)
+    b = (a[0], a[1] + 60)
+    send('MOUSEMOVE', 'NOTHING', a)
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        log("curve points invoke (pull)", bpy.ops.spline_surface.curve_points('INVOKE_DEFAULT'))
+    send('MOUSEMOVE', 'NOTHING', a)
+    send('LEFTMOUSE', 'PRESS', a)
+    send('MOUSEMOVE', 'NOTHING', (a[0], a[1] + 30))
+    send('MOUSEMOVE', 'NOTHING', b)
+    send('LEFTMOUSE', 'RELEASE', b)
+    press('RET', b)
+    rv3d = area.spaces[0].region_3d
+    S["pull_goal"] = np.array(region_2d_to_location_3d(region, rv3d, (b[0] - region.x, b[1] - region.y),
+                                                       Vector(p)))
+    S["pull_from"] = p
+
+
+def s_pull_check():
+    from spline_surface.core.curvepoint import nearest
+    A, L, R, c = _chain("PH")
+    t, d = nearest(A, L, R, S["pull_goal"], c)
+    moved = float(np.linalg.norm(S["pull_goal"] - S["pull_from"]))
+    check("Curve Pull: drag on a curve -> it bends to the mouse (point count unchanged)",
+          len(A) == 4 and moved > 0.3 and d < 0.02 * moved, (len(A), moved, d))
+    vmoved = float(np.abs(_chain("PV")[0] - S["pv0"][0]).max())
+    check("Curve Pull: the crossing curve follows and the two still cross",
+          vmoved > 0.05 and _gap("PH", "PV") < 1e-3, (vmoved, _gap("PH", "PV")))
+    ends = (np.allclose(A[0], S["ph0"][0][0]) and np.allclose(A[-1], S["ph0"][0][-1]))
+    check("Curve Pull: ends pinned by default", ends, (A[0], A[-1]))
+
+
 def s_done():
     ok = all(r for _, r in RESULTS)
     log("SUMMARY", "ALL OK" if ok else "FAILURES", [t for t, r in RESULTS if not r])
@@ -447,7 +651,10 @@ STEPS = [s_setup, s_fillet_start, s_fillet_pick, s_fillet_enter, s_fillet_adjust
          s_flange_start, s_flange_click, s_flange_check,
          s_fill_setup, s_fill_start, s_fill_click, s_fill_enter, s_fill_check,
          s_kind_setup, s_kind_edges, s_kind_edges_check, s_kind_curves, s_kind_curves_check,
-         s_loft_setup, s_loft_clicks, s_loft_enter, s_loft_check, s_done]
+         s_loft_setup, s_loft_clicks, s_loft_enter, s_loft_check, s_cp_setup, s_cp_insert, s_cp_insert_check, s_cp_slide, s_cp_slide_check,
+         s_cp_dissolve, s_cp_dissolve_check, s_cp_undo_enter, s_cp_undo_check,
+         s_es_setup, s_es_slide, s_es_check,
+         s_pull_setup, s_pull_drag, s_pull_check, s_done]
 
 
 def tick():

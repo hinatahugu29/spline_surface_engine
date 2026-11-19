@@ -380,6 +380,66 @@ def duplicate_edges_to_coons():
     print("duplicate edge -> coons OK, outline off by %.3g" % worst)
 
 
+def _curve_shape_off(before, ob, idx=0):
+    """Largest distance of spline idx's shape from the chain `before` (A, L, R, cyclic)."""
+    from spline_surface.core.curvepoint import nearest, point_at, segments
+    from spline_surface.curveediting import read_spline
+    A, L, R, cyc = read_spline(ob, idx)
+    m = segments(len(A), cyc)
+    pts = point_at(A, L, R, np.linspace(0, m, 30 * m + 1), cyc)
+    return max(nearest(*before[:3], p, before[3])[1] for p in pts)
+
+
+def curve_points_keep_shape():
+    """Curve Points / Slide / Dissolve: points change, the curve stays."""
+    from spline_surface.core.curvepoint import insert_point
+    from spline_surface.curveediting import read_spline, write_spline
+    ctx = bpy.context
+    ob = bezier_curve("CP", [(0, 700, 0), (2, 701, 0.5), (4, 700.5, -0.3), (6, 702, 0.2)])
+    for k, b in enumerate(ob.data.splines[0].bezier_points):
+        b.tilt = 0.1 * k
+    sp2 = ob.data.splines.new('BEZIER')                    # a second spline, left alone
+    sp2.bezier_points.add(1)
+    sp2.bezier_points[0].co, sp2.bezier_points[1].co = (0, 705, 0), (3, 705, 0)
+    ob.location = (1.0, 0.0, 0.5)                          # world vs local must not matter
+    ctx.view_layer.update()
+    second = [tuple(b.co) for b in ob.data.splines[1].bezier_points]
+    before = read_spline(ob, 0)
+    size = float(np.ptp(before[0], 0).max())
+    # insert: exact, AUTO handles turned ALIGNED so Blender does not recompute them
+    A, L, R, i = insert_point(*before[:3], 1.4, before[3])
+    write_spline(ob, 0, A, L, R, inserted=i)
+    ctx.view_layer.update()
+    pts = ob.data.splines[0].bezier_points
+    assert len(pts) == 5 and len(ob.data.splines) == 2
+    assert [tuple(b.co) for b in ob.data.splines[1].bezier_points] == second
+    assert all(b.handle_left_type in {'ALIGNED', 'FREE'} for b in pts)
+    assert abs(pts[2].tilt - 0.15) < 1e-6, pts[2].tilt         # halfway between its neighbours
+    assert _curve_shape_off(before, ob) < 1e-5 * size
+    # edit mode: dissolve the inserted point, slide another
+    select([ob])
+    ctx.view_layer.objects.active = ob
+    bpy.ops.object.mode_set(mode='EDIT')
+    for k, b in enumerate(ob.data.splines[0].bezier_points):
+        b.select_control_point = b.select_left_handle = b.select_right_handle = (k == 2)
+    for b in ob.data.splines[1].bezier_points:
+        b.select_control_point = b.select_left_handle = b.select_right_handle = False
+    assert bpy.ops.spline_surface.dissolve_curve_points() == {'FINISHED'}
+    assert len(ob.data.splines[0].bezier_points) == 4
+    assert _curve_shape_off(before, ob) < 1e-4 * size          # it was one cubic before the insert
+    for k, b in enumerate(ob.data.splines[0].bezier_points):
+        b.select_control_point = (k == 1)
+    p1 = np.array(ob.matrix_world @ ob.data.splines[0].bezier_points[1].co)
+    assert bpy.ops.spline_surface.slide_curve_points(distance=0.6) == {'FINISHED'}
+    p2 = np.array(ob.matrix_world @ ob.data.splines[0].bezier_points[1].co)
+    assert 0.4 < np.linalg.norm(p2 - p1) < 0.61, np.linalg.norm(p2 - p1)   # along the curve, not across
+    assert _curve_shape_off(before, ob) < 5e-3 * size
+    bpy.ops.object.mode_set(mode='OBJECT')
+    assert len(ob.data.splines[0].bezier_points) == 4 and len(ob.data.splines) == 2
+    assert _curve_shape_off(before, ob) < 5e-3 * size
+    print("curve points OK")
+
+
 def scene_full_copy():
     """Scene > Full Copy (what shot managers do): the copied patches still follow
     the original scene until Use This Scene's Copies points them at the copies."""
@@ -2293,6 +2353,7 @@ def run():
     split_keeps_links()
     deferred_rebuilds()
     duplicate_edges_to_coons()
+    curve_points_keep_shape()
     scene_full_copy()            # last: switches the context scene
     spline_surface.unregister()
     print("ALL OK")

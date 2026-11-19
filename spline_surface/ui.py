@@ -181,6 +181,23 @@ class SS_PT_create(_SubPanel, bpy.types.Panel):
         layout.operator("spline_surface.regenerate", icon='FILE_REFRESH')
 
 
+class SS_PT_curves(_SubPanel, bpy.types.Panel):
+    bl_label = "Curves"
+
+    def draw_header(self, context):
+        self.layout.label(icon='CURVE_BEZCURVE')
+
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column(align=True)
+        col.label(text="Points (shape kept):")
+        col.operator("spline_surface.curve_points", icon='CURVE_PATH')
+        if context.mode == 'EDIT_CURVE':
+            row = col.row(align=True)
+            row.operator("spline_surface.slide_curve_points", icon='ARROW_LEFTRIGHT', text="Slide")
+            row.operator("spline_surface.dissolve_curve_points", icon='X', text="Dissolve")
+
+
 class SS_PT_create_settings(_SubPanel, bpy.types.Panel):
     bl_label = "Fit Settings"
     bl_parent_id = "SS_PT_create"
@@ -458,5 +475,5 @@ class SS_PT_help(_SubPanel, bpy.types.Panel):
         col.operator("spline_surface.copy_report", icon='COPYDOWN')
 
 
-classes = (SS_Settings, SS_PT_main, SS_PT_create, SS_PT_create_settings, SS_PT_grow,
+classes = (SS_Settings, SS_PT_main, SS_PT_create, SS_PT_create_settings, SS_PT_curves, SS_PT_grow,
            SS_PT_group, SS_PT_shape, SS_PT_inspect, SS_PT_output, SS_PT_help)

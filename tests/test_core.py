@@ -1804,6 +1804,48 @@ def test_curve_arc_param():
     assert arc_param(A, L, R, 1.0, -1e9) == 0.0
 
 
+def test_curve_pull():
+    from core.curvepoint import arc_table, point_at
+    from core.curvepull import chain_plane, pull_curve, smooth_points
+    A, L, R = _smooth_chain(n=9)
+    size = np.ptp(A, 0).max()
+    delta = np.array([0.0, 0.0, 0.4])
+    for profile in ('SMOOTH', 'SPHERE', 'LINEAR', 'SHARP', 'CONSTANT'):
+        A2, L2, R2 = pull_curve(A, L, R, 3.4, delta, radius=0.35 * size, profile=profile)
+        hit = point_at(A2, L2, R2, [3.4])[0] - point_at(A, L, R, [3.4])[0]
+        assert np.linalg.norm(hit - delta) < 1e-9, (profile, hit)                # exact
+        assert np.allclose(A2[0], A[0]) and np.allclose(R2[0], R[0])      # pinned end + tangent
+        assert np.allclose(A2[-1], A[-1]) and np.allclose(L2[-1], L[-1])
+        assert smooth_points(A2, L2, R2).all()                             # still G1 everywhere
+    # outside the radius nothing moves
+    t, s = arc_table(A, L, R)
+    A2, L2, R2 = pull_curve(A, L, R, 4.0, delta, radius=0.1 * size)
+    far = np.abs(np.interp(np.arange(9.0), t, s) - np.interp(4.0, t, s)) > 0.15 * size
+    assert np.allclose(A2[far], A[far])
+    # a fixed point stays put while a wide pull goes past it
+    A2, L2, R2 = pull_curve(A, L, R, 3.0, delta, radius=0.6 * size, fixed=[5.0])
+    assert np.linalg.norm(point_at(A2, L2, R2, [5.0])[0] - point_at(A, L, R, [5.0])[0]) < 1e-9
+    assert np.linalg.norm(point_at(A2, L2, R2, [3.0])[0] - point_at(A, L, R, [3.0])[0] - delta) < 1e-9
+    # ends free: the end itself follows
+    A2, _, _ = pull_curve(A, L, R, 0.0, delta, radius=0.3 * size, pin_ends=False)
+    assert np.linalg.norm(A2[0] - A[0] - delta) < 0.02 * 0.4
+    # cyclic
+    A, L, R = _smooth_chain(n=12, cyclic=True)
+    A2, L2, R2 = pull_curve(A, L, R, 0.2, delta, radius=0.3 * np.ptp(A, 0).max(), cyclic=True)
+    hit = point_at(A2, L2, R2, [0.2], True)[0] - point_at(A, L, R, [0.2], True)[0]
+    assert np.linalg.norm(hit - delta) < 0.02 * 0.4 and smooth_points(A2, L2, R2).all()
+    # a flat curve pulled within its plane stays flat
+    xs = np.linspace(0, 6, 5)
+    A = np.stack([xs, np.sin(xs), np.zeros(5)], -1)
+    D = np.stack([np.ones(5), np.cos(xs), np.zeros(5)], -1) * 0.5
+    L, R = A - D, A + D
+    c, nrm = chain_plane(A, L, R)
+    assert abs(abs(nrm[2]) - 1) < 1e-9
+    A2, L2, R2 = pull_curve(A, L, R, 2.2, np.array([0.3, 0.5, 0.0]), radius=3.0)
+    assert np.abs(np.concatenate([A2, L2, R2])[:, 2]).max() < 1e-12
+    assert chain_plane(A + np.array([[0, 0, 0.0]] * 4 + [[0, 0, 1.0]]), L, R) is None
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

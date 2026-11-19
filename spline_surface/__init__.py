@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Spline Surface",
     "author": "hinata",
-    "version": (0, 82, 3),
+    "version": (0, 83, 0),
     "blender": (5, 0, 0),
     "location": "View3D > Sidebar > Spline Surface",
     "description": "Build smooth NURBS patches from boundary curves",
@@ -11,11 +11,11 @@ bl_info = {
 import bpy  # noqa: E402
 
 from . import finish  # noqa: E402
-from . import blueprints, bugreport, cage, controlmesh, ctrlpoints, curvature, curvetools, filleting, flanging, followmap, gizmos, linked, links, live, netcheck, bridging, operators, orienting, panelgap, presetting, projecting, pulling, seams, shaping, splitting, trimming, symmetry, tomesh, ui, zebra  # noqa: E402
+from . import blueprints, bugreport, cage, controlmesh, ctrlpoints, curvature, curveediting, curvetools, filleting, flanging, followmap, gizmos, linked, links, live, netcheck, bridging, operators, orienting, panelgap, presetting, projecting, pulling, seams, shaping, splitting, trimming, symmetry, tomesh, ui, zebra  # noqa: E402
 
 classes = (ui.classes + blueprints.classes + bugreport.classes + operators.classes + bridging.classes + tomesh.classes + orienting.classes + filleting.classes + flanging.classes + live.classes + links.classes + linked.classes
            + cage.classes + symmetry.classes + splitting.classes + seams.classes + ctrlpoints.classes
-           + curvature.classes + netcheck.classes + curvetools.classes + pulling.classes + controlmesh.classes
+           + curvature.classes + netcheck.classes + curvetools.classes + curveediting.classes + pulling.classes + controlmesh.classes
            + followmap.classes + panelgap.classes + presetting.classes + projecting.classes + trimming.classes + shaping.classes + zebra.classes + gizmos.classes)
 
 
@@ -40,9 +40,11 @@ def register():
     netcheck.register()
     controlmesh.register()
     zebra.register()
+    curveediting.register()
 
 
 def unregister():
+    curveediting.unregister()
     zebra.unregister()
     controlmesh.unregister()
     netcheck.unregister()
