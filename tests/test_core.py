@@ -1846,6 +1846,92 @@ def test_curve_pull():
     assert chain_plane(A + np.array([[0, 0, 0.0]] * 4 + [[0, 0, 1.0]]), L, R) is None
 
 
+def _flat_chain(n=7, seed=2, cyclic=False):
+    """A flat (z = 0) G1 chain bending one way (no inflection), uneven handle lengths."""
+    r = np.random.default_rng(seed)
+    s = np.linspace(0, 2 * np.pi, n, endpoint=False) if cyclic else np.linspace(0, 2.4, n)
+    rad = 3.0
+    A = np.stack([rad * np.cos(s), rad * np.sin(s), 0 * s], -1)
+    T = np.stack([-np.sin(s), np.cos(s), 0 * s], -1)
+    step = (s[1] - s[0]) * rad / 3
+    a = step * (0.6 + 0.8 * r.random(n))
+    b = step * (0.6 + 0.8 * r.random(n))
+    return A, A - a[:, None] * T, A + b[:, None] * T
+
+
+def test_curve_make_g2():
+    from core.curvesmooth import make_all_g2, make_g2, point_state, side_curvature
+    A, L, R = _flat_chain()
+    i = 3
+    assert point_state(A, L, R, i) == 'G1'
+    A2, L2, R2, why = make_g2(A, L, R, i)
+    assert why is None and point_state(A2, L2, R2, i) == 'G2'
+    kl, kr = side_curvature(A2, L2, R2, i)
+    assert np.linalg.norm(kl - kr) < 1e-9 * np.linalg.norm(kl) + 1e-12
+    moved = [j for j in range(len(A)) if not (np.allclose(L2[j], L[j]) and np.allclose(R2[j], R[j]))]
+    assert moved == [i] and np.allclose(A2, A)                        # only this point's handles
+    assert np.allclose(np.cross(R2[i] - A[i], R[i] - A[i]), 0)        # along the same tangent
+    # the whole curve, a few passes
+    A3, L3, R3, left = make_all_g2(A, L, R, range(1, len(A) - 1))
+    assert not left and all(point_state(A3, L3, R3, j) == 'G2' for j in range(1, len(A) - 1))
+    # a loop
+    A, L, R = _flat_chain(n=8, cyclic=True)
+    A3, L3, R3, left = make_all_g2(A, L, R, range(len(A)), cyclic=True)
+    assert not left and all(point_state(A3, L3, R3, j, True) == 'G2' for j in range(len(A)))
+    # an S bend: bending up on the left, down on the right; lengths cannot make it G2
+    A = np.array([(-2.0, 1, 0), (0, 0, 0), (2, -1, 0)])
+    L = np.array([(-2.7, 1.3, 0), (-0.7, 0, 0), (1.3, -1, 0)])
+    R = np.array([(-1.3, 1.0, 0), (0.9, 0, 0), (2.7, -1.3, 0)])
+    assert make_g2(A, L, R, 1)[3] == 'inflection'
+    xs = np.linspace(0, 6, 5)
+    A = np.stack([xs, np.sin(xs * np.pi / 3), 0 * xs], -1)
+    D = np.stack([np.ones(5), np.pi / 3 * np.cos(xs * np.pi / 3), 0 * xs], -1) * 0.5
+    assert make_g2(A, A - D, A + D, 0)[3] == 'end'
+    L = A - D
+    L[2] = A[2] + np.array([0.0, -0.5, 0.0])                   # a corner
+    assert make_g2(A, L, A + D, 2)[3] == 'corner'
+
+
+def test_curve_frame():
+    from core.curvesmooth import frame
+    A, L, R = _flat_chain()
+    t, nrm, b = frame(A, L, R, 3)
+    assert abs(t @ nrm) < 1e-9 and abs(np.linalg.norm(nrm) - 1) < 1e-9
+    assert nrm @ (-A[3]) > 0                     # bends towards the circle's centre
+    assert abs(abs(b[2]) - 1) < 1e-9             # out of the flat curve's plane
+    xs = np.linspace(0, 3, 4)                    # straight: any perpendicular, kept in its plane
+    A = np.stack([xs, 0 * xs, 0 * xs], -1)
+    D = np.array([0.3, 0, 0])
+    t, nrm, b = frame(A, A - D, A + D, 1)
+    assert abs(t[0] - 1) < 1e-9 and abs(nrm @ t) < 1e-9
+
+
+def test_curve_refit():
+    from core.curvepoint import nearest, point_at, segments
+    from core.curvesmooth import point_state, refit
+    from core.curvepull import smooth_points
+    A, L, R = _smooth_chain(n=25)
+    size = np.ptp(A, 0).max()
+    A2, L2, R2, err = refit(A, L, R, count=7)
+    assert len(A2) == 7 and err < 0.01 * size, err
+    assert _off(A, L, R, False, A2, L2, R2) < 0.01 * size
+    assert np.allclose(A2[0], A[0]) and np.allclose(A2[-1], A[-1])
+    assert smooth_points(A2, L2, R2)[1:-1].all()
+    A3, L3, R3, err3 = refit(A, L, R, tolerance=1e-3 * size)
+    assert err3 <= 1e-3 * size and len(A3) < 25, (len(A3), err3)
+    # a corner is kept as a corner
+    Lc = L.copy()
+    Lc[12] = A[12] + np.array([0.0, 0.0, 0.4])
+    A4, L4, R4, _ = refit(A, Lc, R, count=6)
+    k = int(np.argmin(np.linalg.norm(A4 - A[12], axis=1)))
+    assert np.linalg.norm(A4[k] - A[12]) < 1e-9 and point_state(A4, L4, R4, k) == 'CORNER'
+    # a loop
+    A, L, R = _smooth_chain(n=24, cyclic=True)
+    A5, L5, R5, err5 = refit(A, L, R, cyclic=True, count=10)
+    assert len(A5) == 10 and err5 < 0.01 * np.ptp(A, 0).max()
+    assert _off(A, L, R, True, A5, L5, R5) < 0.01 * np.ptp(A, 0).max()
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
