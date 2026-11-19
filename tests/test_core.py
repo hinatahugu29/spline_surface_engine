@@ -1706,6 +1706,104 @@ def test_trim_grid():
     assert len(two[1]) > 0 and not np.any(np.isnan(two[0]))
 
 
+# ---------------------------------------------------------------- curve editing (core.curvepoint)
+def _smooth_chain(n=6, cyclic=False, seed=1):
+    """A G1 Bezier chain through a wavy 3D path (handles from the path's derivative)."""
+    r = np.random.default_rng(seed)
+    if cyclic:
+        s = np.linspace(0, 2 * np.pi, n, endpoint=False)
+        f = lambda s: np.stack([np.cos(s) * (2 + 0.3 * np.sin(3 * s)), np.sin(s) * 2,
+                                0.4 * np.sin(2 * s)], -1)
+        df = lambda s: (f(s + 1e-5) - f(s - 1e-5)) / 2e-5
+        h = 2 * np.pi / n / 3
+    else:
+        s = np.linspace(0, 3, n)
+        f = lambda s: np.stack([s * 2, np.sin(s * 1.7), 0.3 * np.cos(s * 2.3)], -1)
+        df = lambda s: (f(s + 1e-5) - f(s - 1e-5)) / 2e-5
+        h = 3 / (n - 1) / 3
+    A = f(s)
+    D = df(s) * h * (1 + 0.2 * r.random((n, 1)))   # uneven handle lengths, still G1
+    return A, A - D, A + D
+
+
+def _off(A, L, R, cyclic, A2, L2, R2, cyclic2=None):
+    """Largest distance of the second chain's shape from the first's."""
+    from core.curvepoint import nearest, point_at, segments
+    c2 = cyclic if cyclic2 is None else cyclic2
+    m = segments(len(A2), c2)
+    pts = point_at(A2, L2, R2, np.linspace(0, m, 40 * m + 1), c2)
+    return max(nearest(A, L, R, p, cyclic)[1] for p in pts)
+
+
+def test_curve_insert_and_dissolve():
+    from core.curvepoint import dissolve_point, insert_point, point_at
+    for cyclic in (False, True):
+        A, L, R = _smooth_chain(cyclic=cyclic)
+        A2, L2, R2, i = insert_point(A, L, R, 2.37, cyclic)
+        assert len(A2) == len(A) + 1 and i == 3
+        assert np.allclose(A2[i], point_at(A, L, R, [2.37], cyclic)[0])
+        assert _off(A, L, R, cyclic, A2, L2, R2) < 1e-9            # the shape is untouched
+        # back out the inserted point: the original span is one cubic, so it comes back
+        A3, L3, R3, err = dissolve_point(A2, L2, R2, i, cyclic)
+        assert len(A3) == len(A) and err < 1e-4
+        assert np.abs(R3 - R).max() < 1e-3 and np.abs(L3 - L).max() < 1e-3
+        # on an anchor: nothing changes
+        A4, _, _, j = insert_point(A, L, R, 2.0, cyclic)
+        assert j == 2 and len(A4) == len(A)
+
+
+def test_curve_dissolve_keeps_neighbours():
+    from core.curvepoint import _out_dir, dissolve_point
+    A, L, R = _smooth_chain(n=8)
+    A2, L2, R2, err = dissolve_point(A, L, R, 4)
+    assert len(A2) == 7
+    size = np.ptp(A, 0).max()
+    assert err < 0.02 * size                                         # close to the old shape
+    assert _off(A, L, R, False, A2, L2, R2) < 0.02 * size
+    for j, j2 in ((3, 3), (5, 4)):                                   # neighbours: same tangent
+        assert np.allclose(_out_dir(A, L, R, j, False, 'R'), _out_dir(A2, L2, R2, j2, False, 'R'))
+        assert np.allclose(_out_dir(A, L, R, j, False, 'L'), _out_dir(A2, L2, R2, j2, False, 'L'))
+    A3, _, _, _ = dissolve_point(A, L, R, 0)                         # an end just goes
+    assert len(A3) == 7 and np.allclose(A3[0], A[1])
+
+
+def test_curve_slide_keeps_shape():
+    from core.curvepoint import point_at, slide_point
+    for cyclic in (False, True):
+        # 12 points round the wavy loop; with fewer, one span cannot follow a lobe
+        A, L, R = _smooth_chain(n=12 if cyclic else 7, cyclic=cyclic)
+        size = np.ptp(A, 0).max()
+        for i, t in ((3, 3.4), (3, 2.55), (1, 0.4)):
+            A2, L2, R2, err = slide_point(A, L, R, i, t, cyclic)
+            assert np.allclose(A2[i], point_at(A, L, R, [t], cyclic)[0])     # on the old curve
+            assert err < 5e-3 * size, (cyclic, i, t, err)
+            assert _off(A, L, R, cyclic, A2, L2, R2) < 5e-3 * size
+            assert len(A2) == len(A)
+        if cyclic:                                                   # across the seam at point 0
+            for t in (0.4, len(A) - 0.4):
+                A2, L2, R2, err = slide_point(A, L, R, 0, t, cyclic)
+                assert np.allclose(A2[0], point_at(A, L, R, [t], cyclic)[0])
+                assert _off(A, L, R, cyclic, A2, L2, R2) < 5e-3 * size, t
+        else:                                                        # ends trim exactly
+            A2, L2, R2, err = slide_point(A, L, R, 0, 0.3, cyclic)
+            assert err == 0 and _off(A, L, R, False, A2, L2, R2) < 1e-9
+            assert np.allclose(A2[0], point_at(A, L, R, [0.3])[0])
+            A2, L2, R2, _ = slide_point(A, L, R, len(A) - 1, len(A) - 1.5, cyclic)
+            assert _off(A, L, R, False, A2, L2, R2) < 1e-9
+        # held between its neighbours
+        A2, _, _, _ = slide_point(A, L, R, 3, 9.0, cyclic)
+        assert np.linalg.norm(A2[3] - A[4]) < 0.05 * size
+
+
+def test_curve_arc_param():
+    from core.curvepoint import arc_param, arc_table
+    A, L, R = _smooth_chain()
+    t, s = arc_table(A, L, R)
+    t1 = arc_param(A, L, R, 1.0, 0.5)
+    assert abs(np.interp(t1, t, s) - np.interp(1.0, t, s) - 0.5) < 1e-6
+    assert arc_param(A, L, R, 1.0, -1e9) == 0.0
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
