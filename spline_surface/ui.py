@@ -196,6 +196,13 @@ class SS_PT_curves(_SubPanel, bpy.types.Panel):
             row = col.row(align=True)
             row.operator("spline_surface.slide_curve_points", icon='ARROW_LEFTRIGHT', text="Slide")
             row.operator("spline_surface.dissolve_curve_points", icon='X', text="Dissolve")
+            col.operator("spline_surface.constrained_move", icon='ORIENTATION_NORMAL')
+        col = layout.column(align=True)
+        col.label(text="Smooth:")
+        row = col.row(align=True)
+        row.operator("spline_surface.make_g2", icon='SMOOTHCURVE')
+        row.operator("spline_surface.refit_curve", icon='MOD_DECIM')
+        col.operator("spline_surface.fair_curves", icon='MOD_SMOOTH')
 
 
 class SS_PT_create_settings(_SubPanel, bpy.types.Panel):

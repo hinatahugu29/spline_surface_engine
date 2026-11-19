@@ -440,6 +440,57 @@ def curve_points_keep_shape():
     print("curve points OK")
 
 
+def curve_shaping_ops():
+    """Constrained Move (normal, keep G2), Make G2 and Refit Curve through Blender."""
+    from spline_surface.core.curvesmooth import frame, make_all_g2, point_state
+    from spline_surface.curveediting import read_spline, write_spline
+    ctx = bpy.context
+    s = np.linspace(0, 2.4, 7)
+    pts = [(3 * np.cos(a), 800 + 3 * np.sin(a), 0.0) for a in s]
+    ob = bezier_curve("CS", pts)
+    ctx.view_layer.update()
+    A, L, R, cyc = read_spline(ob, 0)
+    T = np.stack([-np.sin(s), np.cos(s), 0 * s], -1) * 0.4        # an arc with its true tangents
+    A, L, R, left = make_all_g2(A, A - T, A + T * 1.2, range(1, 6))   # start from an all-G2 arc
+    assert not left, left
+    write_spline(ob, 0, A, L, R)
+    assert all(point_state(A, L, R, j) == 'G2' for j in range(1, 6))
+    select([ob])
+    bpy.ops.object.mode_set(mode='EDIT')
+    for k, b in enumerate(ob.data.splines[0].bezier_points):
+        b.select_control_point = (k == 3)
+    t, nrm, bn = frame(A, L, R, 3)
+    assert bpy.ops.spline_surface.constrained_move(axis='N', amount=0.2, keep_g2=True) == {'FINISHED'}
+    A2, L2, R2, _ = read_spline(ob, 0)
+    assert np.allclose(A2[3] - A[3], 0.2 * nrm, atol=1e-4)    # along its own normal (float32 at y=800)
+    assert np.allclose(A2[[0, 1, 2, 4, 5, 6]], A[[0, 1, 2, 4, 5, 6]], atol=1e-4)
+    assert all(point_state(A2, L2, R2, j) == 'G2' for j in (2, 3, 4)), \
+        [point_state(A2, L2, R2, j) for j in (2, 3, 4)]
+    bpy.ops.object.mode_set(mode='OBJECT')
+    # Make G2 in object mode: uneven handles everywhere, then every inner point G2
+    A, L, R, _ = read_spline(ob, 0)
+    R = A + (R - A) * (1.0 + 0.3 * (np.arange(7) % 2))[:, None]
+    write_spline(ob, 0, A, L, R)
+    assert any(point_state(A, L, R, j) == 'G1' for j in range(1, 6))
+    select([ob])
+    assert bpy.ops.spline_surface.make_g2() == {'FINISHED'}
+    A, L, R, _ = read_spline(ob, 0)
+    assert all(point_state(A, L, R, j) == 'G2' for j in range(1, 6))
+    # Refit: a dense curve to few points within the tolerance, then to a count
+    dense = bezier_curve("CR", [(x, 810 + np.sin(x), 0.3 * np.cos(1.3 * x)) for x in np.linspace(0, 6, 30)])
+    ctx.view_layer.update()
+    before = read_spline(dense, 0)
+    select([dense])
+    assert bpy.ops.spline_surface.refit_curve(mode='TOLERANCE', tolerance=0.2) == {'FINISHED'}
+    n1 = len(dense.data.splines[0].bezier_points)
+    size = float(np.ptp(before[0], 0).max())
+    assert n1 < 15, n1
+    assert _curve_shape_off(before, dense) < 0.002 * size * 1.01
+    assert bpy.ops.spline_surface.refit_curve(mode='COUNT', count=4) == {'FINISHED'}
+    assert len(dense.data.splines[0].bezier_points) == 4
+    print("curve shaping OK (refit 30 -> %d points)" % n1)
+
+
 def scene_full_copy():
     """Scene > Full Copy (what shot managers do): the copied patches still follow
     the original scene until Use This Scene's Copies points them at the copies."""
@@ -2354,6 +2405,7 @@ def run():
     deferred_rebuilds()
     duplicate_edges_to_coons()
     curve_points_keep_shape()
+    curve_shaping_ops()
     scene_full_copy()            # last: switches the context scene
     spline_surface.unregister()
     print("ALL OK")

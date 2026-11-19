@@ -637,6 +637,56 @@ def s_pull_check():
     check("Curve Pull: ends pinned by default", ends, (A[0], A[-1]))
 
 
+# ---- Constrained Move (edit mode)
+def s_cm_setup():
+    from spline_surface.projecting import make_bezier_curve
+    ob = make_bezier_curve("CMv", np.array([(80, 0, 0), (82, 1.5, 0), (84, 2, 0), (86, 1.5, 0),
+                                            (88, 0, 0)], float), bpy.context.collection)
+    ob.data.dimensions = '3D'
+    area = view()[1]
+    area.spaces[0].region_3d.view_rotation = Euler((0.0, 0.0, 0.0)).to_quaternion()
+    _focus([ob])
+    for o in bpy.context.scene.objects:
+        o.select_set(o is ob)
+    bpy.context.view_layer.objects.active = ob
+    win, area, region = view()
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        bpy.ops.object.mode_set(mode='EDIT')
+    for k, b in enumerate(ob.data.splines[0].bezier_points):
+        b.select_control_point = b.select_left_handle = b.select_right_handle = (k == 2)
+    S["cm0"] = _chain("CMv")
+
+
+def s_cm_move():
+    from spline_surface.core.curvesmooth import frame
+    win, area, region = view()
+    A, L, R, c = S["cm0"]
+    t, nrm, b = frame(A, L, R, 2, c)
+    a = to_window(A[2])
+    goal = to_window(A[2] + 0.8 * t)
+    send('MOUSEMOVE', 'NOTHING', a)
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        log("constrained move invoke", bpy.ops.spline_surface.constrained_move('INVOKE_DEFAULT'))
+    press('T', a)                                # along the tangent
+    send('MOUSEMOVE', 'NOTHING', ((a[0] + goal[0]) // 2, (a[1] + goal[1]) // 2))
+    send('MOUSEMOVE', 'NOTHING', goal)
+    press('LEFTMOUSE', goal)
+    S["cm_t"] = t
+
+
+def s_cm_check():
+    win, area, region = view()
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        bpy.ops.object.mode_set(mode='OBJECT')
+    A = _chain("CMv")[0]
+    d = A[2] - S["cm0"][0][2]
+    along = float(d @ S["cm_t"])
+    across = float(np.linalg.norm(d - along * S["cm_t"]))
+    others = float(np.abs(np.delete(A, 2, axis=0) - np.delete(S["cm0"][0], 2, axis=0)).max())
+    check("Constrained Move: T, then the mouse -> the point moves along its own tangent only",
+          0.5 < along < 1.1 and across < 1e-3 and others < 1e-6, (along, across, others))
+
+
 def s_done():
     ok = all(r for _, r in RESULTS)
     log("SUMMARY", "ALL OK" if ok else "FAILURES", [t for t, r in RESULTS if not r])
@@ -654,7 +704,8 @@ STEPS = [s_setup, s_fillet_start, s_fillet_pick, s_fillet_enter, s_fillet_adjust
          s_loft_setup, s_loft_clicks, s_loft_enter, s_loft_check, s_cp_setup, s_cp_insert, s_cp_insert_check, s_cp_slide, s_cp_slide_check,
          s_cp_dissolve, s_cp_dissolve_check, s_cp_undo_enter, s_cp_undo_check,
          s_es_setup, s_es_slide, s_es_check,
-         s_pull_setup, s_pull_drag, s_pull_check, s_done]
+         s_pull_setup, s_pull_drag, s_pull_check,
+         s_cm_setup, s_cm_move, s_cm_check, s_done]
 
 
 def tick():

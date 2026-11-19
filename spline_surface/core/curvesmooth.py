@@ -9,7 +9,7 @@ that side and the next handle beyond it: for the segment leaving A along R,
 So with the tangent kept, the anchor's own two handle lengths set the two
 curvatures: Make G2 scales them so both sides have the same curvature; no
 other control point moves (the neighbours' curvature shifts a little, so a
-whole curve takes a few passes, make_all_g2). That works when
+whole curve is solved as one system, make_all_g2). That works when
 both sides bend the same way; at an inflection, or next to a straight side,
 lengths alone cannot do it and the point is reported instead.
 """
@@ -116,21 +116,107 @@ def make_g2(A, L, R, i, cyclic=False, max_factor=4.0):
     return A, L, R, None
 
 
-def make_all_g2(A, L, R, points, cyclic=False, passes=30):
-    """Make G2 at each of `points`, over and over: a point's handle lengths also
-    change its neighbours' curvature, so a few passes are needed to settle.
+def _why_not(A, L, R, i, cyclic):
+    """Why lengths alone cannot make anchor i G2 (None: they can, or it already is)."""
+    state = point_state(A, L, R, i, cyclic)
+    if state == 'END':
+        return 'end'
+    if state == 'CORNER':
+        return 'corner'
+    kl, kr = side_curvature(A, L, R, i, cyclic)
+    if kl is None or kr is None:
+        return 'end'
+    ml, mr = np.linalg.norm(kl), np.linalg.norm(kr)
+    if max(ml, mr) < 1e-12:
+        return None                                   # straight through: already G2
+    if min(ml, mr) < 1e-6 * max(ml, mr):
+        return 'straight'
+    cos = kl @ kr / (ml * mr)
+    if cos < -0.5:
+        return 'inflection'
+    if cos < np.cos(np.radians(5.0)):
+        return 'twisted'
+    return None
 
+
+def make_all_g2(A, L, R, points, cyclic=False, max_factor=4.0, iterations=60):
+    """Make G2 at all of `points` together, by their handle lengths only.
+
+    A point's lengths also change its neighbours' curvature, so they are solved
+    as one system (Levenberg-Marquardt on the log lengths): the curvature on
+    both sides of every point made equal, with the least change of the lengths.
+    A point that cannot be done is left as it was, with the reason.
     Returns (A, L, R, {point: why it was left}).
     """
-    left = {}
-    for _ in range(passes):
-        left = {}
-        for i in points:
-            A, L, R, why = make_g2(A, L, R, i, cyclic)
-            if why is not None and why != 'end':
-                left[i] = why
-        if all(point_state(A, L, R, i, cyclic) in ('G2', 'END') for i in points if i not in left):
+    A, L, R = (np.array(x, float) for x in (A, L, R))
+    left, work = {}, []
+    for i in points:
+        why = _why_not(A, L, R, i, cyclic)
+        if why == 'end':
+            continue
+        if why is not None:
+            left[i] = why
+        else:
+            work.append(i)              # G2 ones too: their neighbours' lengths will change
+    if not work or all(point_state(A, L, R, i, cyclic) == 'G2' for i in work):
+        return A, L, R, left
+    uL = {i: _unit(L[i] - A[i]) for i in work}
+    uR = {i: _unit(R[i] - A[i]) for i in work}
+    x0 = np.log(np.array([[np.linalg.norm(L[i] - A[i]), np.linalg.norm(R[i] - A[i])]
+                          for i in work]).ravel())
+    keep = 0.02                                   # how strongly the lengths stay put
+
+    def put(x):
+        for k, i in enumerate(work):
+            L[i] = A[i] + np.exp(x[2 * k]) * uL[i]
+            R[i] = A[i] + np.exp(x[2 * k + 1]) * uR[i]
+
+    def resid(x):
+        put(x)
+        r = []
+        for i in work:
+            kl, kr = side_curvature(A, L, R, i, cyclic)
+            ml, mr = np.linalg.norm(kl), np.linalg.norm(kr)
+            if ml < 1e-15 or mr < 1e-15 or kl @ kr <= 0:
+                r.append(10.0)                    # a side went straight or flipped: far off
+            else:
+                r.append(np.log(ml) - np.log(mr))
+        return np.concatenate([r, keep * (x - x0)])
+
+    x = x0.copy()
+    f = resid(x)
+    cost, lam = f @ f, 1e-3
+    for _ in range(iterations):
+        J = np.empty((len(f), len(x)))
+        for c in range(len(x)):
+            dx = np.zeros_like(x)
+            dx[c] = 1e-6
+            J[:, c] = (resid(x + dx) - f) / 1e-6
+        g, H = J.T @ f, J.T @ J
+        while True:
+            x2 = x - np.linalg.solve(H + lam * np.diag(np.diag(H) + 1e-12), g)
+            f2 = resid(x2)
+            if f2 @ f2 < cost:
+                x, f, cost, lam = x2, f2, f2 @ f2, max(lam / 10, 1e-12)
+                break
+            lam *= 10
+            if lam > 1e10:
+                break
+        if lam > 1e10 or np.abs(f[:len(work)]).max() < 1e-6:
             break
+    put(x)
+    # Points still off, or pushed too far from where they were: back as they were.
+    factor = np.exp(np.abs(x - x0)).reshape(-1, 2).max(axis=1)
+    for k, i in enumerate(work):
+        if factor[k] > max_factor:
+            left[i] = 'too far'
+    for k, i in enumerate(work):
+        if i in left:
+            L[i] = A[i] + np.exp(x0[2 * k]) * uL[i]
+            R[i] = A[i] + np.exp(x0[2 * k + 1]) * uR[i]
+    for i in work:
+        if i not in left and point_state(A, L, R, i, cyclic) != 'G2':
+            left[i] = 'too far'
     return A, L, R, left
 
 

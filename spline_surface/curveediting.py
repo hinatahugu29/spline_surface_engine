@@ -114,8 +114,10 @@ def _collinear(a, b):
 
 
 def write_spline(ob, idx, A, L, R, inserted=None, removed=None):
-    """Write world (A, L, R) to Bezier spline idx; `inserted` / `removed` is the
-    index of an anchor added / taken away (the count changes)."""
+    """Write world (A, L, R) to Bezier spline idx. When the count changes,
+    `inserted` / `removed` names the anchor added / taken away (its neighbours'
+    attributes carry over exactly); with neither, the attributes are spread
+    over the new points."""
     Minv = np.linalg.inv(np.array(ob.matrix_world))
     loc = lambda X: np.asarray(X, float) @ Minv[:3, :3].T + Minv[:3, 3]
     A, L, R = loc(A), loc(L), loc(R)
@@ -133,6 +135,22 @@ def write_spline(ob, idx, A, L, R, inserted=None, removed=None):
             pts.insert(inserted, new)
         elif removed is not None:
             pts.pop(removed)
+        else:                       # any new count (Refit): attributes spread over the new points
+            old = pts
+            k = len(A)
+            pts = []
+            for j in range(k):
+                f = j * (len(old) - 1) / max(k - 1, 1)
+                lo = int(np.floor(f))
+                hi = min(lo + 1, len(old) - 1)
+                w = f - lo
+                new = dict(old[lo])
+                for key in ("tilt", "radius", "weight_softbody"):
+                    new[key] = (1 - w) * old[lo][key] + w * old[hi][key]
+                sel = old[lo]["select_control_point"] or old[hi]["select_control_point"]
+                new["select_control_point"] = new["select_left_handle"] = new["select_right_handle"] = sel
+                pts.append(new)
+            snap[idx]["points"] = pts
         for p, a, l, r in zip(pts, A, L, R):
             p["co"], p["handle_left"], p["handle_right"] = tuple(a), tuple(l), tuple(r)
         restore(ob, snap)
@@ -774,6 +792,9 @@ def _context_menu(self, context):
     layout.separator()
     layout.operator("spline_surface.slide_curve_points")
     layout.operator("spline_surface.dissolve_curve_points")
+    layout.operator("spline_surface.constrained_move")
+    layout.operator("spline_surface.make_g2")
+    layout.operator("spline_surface.refit_curve")
     layout.operator("spline_surface.curve_points")
 
 
