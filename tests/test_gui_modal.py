@@ -813,6 +813,73 @@ def s_ax_check():
           abs(d[0]) > 0.1 and abs(d[1]) < 1e-4 and abs(d[2]) < 1e-4, d)
 
 
+# ---- Curve Pull: drag a middle point -> it is pulled (follows the mouse); Shift+drag slides it
+def s_pp_setup():
+    from spline_surface.projecting import make_bezier_curve
+    ob = make_bezier_curve("PPc", np.array([(120, 0, 0), (121, 2, 0), (120, 4, 0), (121, 6, 0),
+                                             (120, 8, 0)], float), bpy.context.collection)
+    ob.data.dimensions = '3D'
+    area = view()[1]
+    area.spaces[0].region_3d.view_rotation = Euler((0.0, 0.0, 0.0)).to_quaternion()
+    _focus([ob])
+    for o in bpy.context.scene.objects:
+        o.select_set(o is ob)
+    bpy.context.view_layer.objects.active = ob
+    S["pp0"] = _chain("PPc")
+
+
+def _pp_drag(shift):
+    from bpy_extras.view3d_utils import region_2d_to_location_3d
+    win, area, region = view()
+    p = _chain("PPc")[0][2].copy()
+    a = to_window(p)
+    b = (a[0] + 60, a[1] + 10)
+    send('MOUSEMOVE', 'NOTHING', a)
+    with bpy.context.temp_override(window=win, area=area, region=region):
+        log("curve pull invoke (point, shift=%s)" % shift, bpy.ops.spline_surface.curve_pull('INVOKE_DEFAULT'))
+    send('MOUSEMOVE', 'NOTHING', a)
+    send('LEFTMOUSE', 'PRESS', a, shift=shift)
+    send('MOUSEMOVE', 'NOTHING', (a[0] + 30, a[1] + 5), shift=shift)
+    send('MOUSEMOVE', 'NOTHING', b, shift=shift)
+    send('LEFTMOUSE', 'RELEASE', b, shift=shift)
+    press('RET', b)
+    rv3d = area.spaces[0].region_3d
+    return p, np.array(region_2d_to_location_3d(region, rv3d, (b[0] - region.x, b[1] - region.y), Vector(p)))
+
+
+def s_pp_drag():
+    S["pp_from"], S["pp_goal"] = _pp_drag(False)
+
+
+def s_pp_check():
+    A, L, R, c = _chain("PPc")
+    A0 = S["pp0"][0]
+    ends = np.allclose(A[0], A0[0]) and np.allclose(A[-1], A0[-1])
+    d = float(np.linalg.norm(A[2] - S["pp_goal"]))
+    moved = float(np.linalg.norm(S["pp_goal"] - S["pp_from"]))
+    from spline_surface.core.curvepoint import point_at
+    soft = float(np.linalg.norm(point_at(A, L, R, [1.5], c)[0] - point_at(*S["pp0"][:3], [1.5], c)[0]))
+    check("Curve Pull: drag a middle point -> it follows the mouse, neighbours follow softly, "
+          "ends stay", len(A) == 5 and moved > 0.3 and d < 0.02 * moved and ends
+          and soft > 0.05 * moved, (len(A), moved, d, ends, soft))
+    S["pp1"] = _chain("PPc")
+
+
+def s_pp_shift_drag():
+    _pp_drag(True)
+
+
+def s_pp_shift_check():
+    from spline_surface.core.curvepoint import nearest
+    A, L, R, c = _chain("PPc")
+    A1, L1, R1, c1 = S["pp1"]
+    t, d = nearest(A1, L1, R1, A[2], c1)
+    others = all(np.allclose(A[i], A1[i]) for i in (0, 1, 3, 4))
+    check("Curve Pull: Shift+drag a middle point -> it slides along the curve",
+          len(A) == 5 and np.linalg.norm(A[2] - A1[2]) > 0.05 and d < 1e-2 and others,
+          (len(A), float(np.linalg.norm(A[2] - A1[2])), d, others))
+
+
 def s_done():
     ok = all(r for _, r in RESULTS)
     log("SUMMARY", "ALL OK" if ok else "FAILURES", [t for t, r in RESULTS if not r])
@@ -834,7 +901,8 @@ STEPS = [s_setup, s_fillet_start, s_fillet_pick, s_fillet_enter, s_fillet_adjust
          s_cm_setup, s_cm_move, s_cm_check,
          s_snap_setup, s_snap_drag, s_snap_check,
          s_p2_setup, s_p2_drag, s_p2_check,
-         s_ax_setup, s_ax_drag, s_ax_check, s_done]
+         s_ax_setup, s_ax_drag, s_ax_check,
+         s_pp_setup, s_pp_drag, s_pp_check, s_pp_shift_drag, s_pp_shift_check, s_done]
 
 
 def tick():

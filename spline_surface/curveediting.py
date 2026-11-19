@@ -182,13 +182,15 @@ def target_objects(context):
 # ---------------------------------------------------------------- Curve Points
 class _CurveTool(pick.ModalPicker):
     """Curve Points and Curve Pull: one tool, two buttons (see the classes below)."""
+    _for_pull = False           # Curve Pull: dragging a middle point pulls it (not bl_idname:
+                                # on a running operator that reads SPLINE_SURFACE_OT_...)
     bl_idname = "spline_surface.curve_points"
     bl_label = "Curve Points"
     bl_description = ("Edit Bezier curves in the viewport. Click on a curve: add a point (the "
                       "shape does not change). Drag on a curve: pull it, the rest follows softly "
                       "(Wheel: range, F: falloff, E: pin the ends, N: crossing curves follow, "
                       "V / P / X / Y / Z: view plane / the curve's own plane / an axis). Drag a "
-                      "point: slide it along the curve. Ctrl+click a point: remove it, keeping "
+                      "point: slide it along the curve (Shift+drag: pull it). Ctrl+click a point: remove it, keeping "
                       "the shape. Ctrl+Z takes back one edit, Enter keeps them, Esc drops all")
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -244,8 +246,9 @@ class _CurveTool(pick.ModalPicker):
 
     def _header(self, context):
         move = {'VIEW': "view plane", 'PLANE': "curve's plane"}.get(self._move, self._move)
-        title = ("Curve Pull (%d edits): drag on a curve: pull   click curve: add point   drag point: "
-                 if self.bl_idname == "spline_surface.curve_pull" else
+        title = ("Curve Pull (%d edits): drag on a curve or a point: pull   click curve: add point   "
+                 "Shift+drag point: "
+                 if self._for_pull else
                  "Curve Points (%d edits): click curve: add point   drag curve: pull   drag point: ")
         context.area.header_text_set(
             (title + "slide (an end: move, S snap %s)   Ctrl+click point: remove   Wheel: range %.3g   "
@@ -286,8 +289,9 @@ class _CurveTool(pick.ModalPicker):
         if self._pull:
             for run in self._reach(self._pull["key"], self._pull["t"]):
                 out.append((run, pick.COLOR_SELECTED, 3.0))
-        elif hover is not None and hover[0] == 'CURVE':
-            for run in self._reach(hover[1], hover[2]):
+        elif hover is not None and (hover[0] == 'CURVE' or (
+                self._point_pulls() and not self._is_end(hover))):
+            for run in self._reach(hover[1], float(hover[2])):
                 out.append((run, pick.COLOR_PREVIEW, 2.5))
         if hover is not None:
             kind, key, _, p = hover
@@ -302,7 +306,8 @@ class _CurveTool(pick.ModalPicker):
         if kind == 'POINT' and self._is_end(self._hover):
             text = "drag: move the end (S: snap %s)   Ctrl+click: remove" % ("on" if self._snap else "off")
         elif kind == 'POINT':
-            text = "drag: slide   Ctrl+click: remove"
+            text = ("drag: pull   Shift+drag: slide   Ctrl+click: remove" if self._point_pulls() else
+                    "drag: slide   Shift+drag: pull   Ctrl+click: remove")
         else:
             text = "click: add a point   drag: pull"
         return text, p
@@ -535,6 +540,13 @@ class _CurveTool(pick.ModalPicker):
             out.append((t_own, okey, t_other, rest))
         return out
 
+    def _point_pulls(self, shift=None):
+        """Does dragging a (middle) point pull the curve? Curve Pull: yes, Shift+drag
+        slides it; Curve Points: the other way round."""
+        if shift is None:
+            shift = getattr(self, "_shift", False)
+        return self._for_pull != bool(shift)
+
     def _start_pull(self, context):
         _, key, t, p = self._press["hover"]
         A, L, R, cyc = self._chains[key]
@@ -661,6 +673,7 @@ class _CurveTool(pick.ModalPicker):
         if self._keys(context, event):
             return {'RUNNING_MODAL'}
         if event.type == 'MOUSEMOVE':
+            self._shift = event.shift
             if self._endmove:
                 self._drag_end(context, mouse)
                 self._header(context)
@@ -676,6 +689,11 @@ class _CurveTool(pick.ModalPicker):
                     if self._press["hover"][0] == 'POINT' and self._is_end(self._press["hover"]):
                         self._start_end(context)
                         self._drag_end(context, mouse)
+                    elif self._press["hover"][0] == 'POINT' and self._point_pulls(self._press["shift"]):
+                        kind, key, i, p = self._press["hover"]
+                        self._press["hover"] = ('CURVE', key, float(i), p)
+                        self._start_pull(context)
+                        self._drag_pull(context, mouse)
                     elif self._press["hover"][0] == 'POINT':
                         self._start_slide(context)
                         self._drag_slide(context, mouse)
@@ -700,7 +718,7 @@ class _CurveTool(pick.ModalPicker):
                 self._header(context)
                 context.area.tag_redraw()
                 return {'RUNNING_MODAL'}
-            self._press = {"mouse": mouse, "hover": self._hover}
+            self._press = {"mouse": mouse, "hover": self._hover, "shift": event.shift}
             return {'RUNNING_MODAL'}
         if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
             if self._slide or self._pull or self._endmove:
@@ -925,11 +943,13 @@ class SS_OT_curve_pull(_CurveTool, bpy.types.Operator):
     """The same tool as Curve Points, started for pulling (its own button and name)."""
     bl_idname = "spline_surface.curve_pull"
     bl_label = "Curve Pull"
+    _for_pull = True
     bl_description = ("Grab anywhere on a curve and drag: that spot follows the mouse and the "
                       "curve bends smoothly around it (a point is added there first if none is "
                       "free nearby). Wheel: range, F: falloff, E: pin the ends, N: crossing "
                       "curves follow, V / P / X / Y / Z: view plane / the curve's own plane / an "
-                      "axis. Also adds, slides and removes points like Curve Points. Ctrl+Z takes "
+                      "axis. Dragging a point pulls too (Shift+drag slides it along the curve). Also "
+                      "adds and removes points like Curve Points. Ctrl+Z takes "
                       "back one pull, Enter keeps, Esc drops all")
 
     def invoke(self, context, event):

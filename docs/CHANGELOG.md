@@ -4,6 +4,7 @@
 
 | バージョン | 日付 | 内容 |
 |---|---|---|
+| 0.86.4 | 2026-11-20 | Curve Pull: dragging a point in the middle of a curve now pulls it (the point follows the mouse, the curve bends around it); before, it slid the point along the curve, so only end points seemed to pull. Shift+drag slides a point (in Curve Points, Shift+drag pulls it instead). Fix: Curve Pull's header showed Curve Points' title (a running operator's bl_idname reads SPLINE_SURFACE_OT_...) |
 | (docs) | 2026-11-19 | Command list (docs/COMMANDS.md): every button of the sidebar and the menus, in panel order, with its mode, whether it runs in the viewport, when it shows and its tooltip; built from the source by tools/list_commands.py, and a test fails when it is out of date. The hands-on checklist gets a section for the curve tools (v0.83-v0.86.3) |
 | 0.86.3 | 2026-11-19 | Curve Pull / Curve Points: the direction keys now also hold a dragged end point - X / Y / Z move it along that axis, P within the curve's plane (snapping waits until V); changing the key mid-drag applies at once. Before, an end always moved in the view plane |
 | 0.86.2 | 2026-11-19 | Speed: Loft, Coons and the other tools that fit boundary curves were very slow on curves with many points (a Loft through three 16-point curves took 39 s, 10 points 6 s) - the fit solved one dense system over every sample's parameter. Each parameter only moves its own sample, so that block is now eliminated exactly (Schur complement): the same result (within 1e-8), 16 points 0.07 s, 30 points 0.12 s |
