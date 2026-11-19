@@ -1961,6 +1961,83 @@ def test_curve_attach_end():
     assert np.allclose(q, p0) and np.allclose(t, -t0) and np.allclose(k, k0, atol=1e-9)
 
 
+def test_curve_two_view():
+    from core.curvemake import fit_points, two_view
+    from core.curvepoint import point_at, segments
+    y = np.linspace(0, 4, 60)
+    side = np.stack([np.full_like(y, 5.0), y, 0.5 * np.sin(y)], -1)        # x = 5: seen from the side
+    top = np.stack([1 + 0.3 * y ** 1.5, y, np.full_like(y, -2.0)], -1)[::-1]   # z = -2: from the top (drawn backwards)
+    pts, c = two_view(side, top)
+    assert c == 1
+    assert np.allclose(pts[:, 2], 0.5 * np.sin(pts[:, 1]), atol=2e-3)       # height from the side view
+    assert np.allclose(pts[:, 0], 1 + 0.3 * pts[:, 1] ** 1.5, atol=2e-3)   # width from the top view
+    A, L, R, err = fit_points(pts)
+    assert len(A) < 15 and err < 5e-3
+    for bad, msg in ((side, "same view"), (np.stack([y, y, y], -1), "flat")):
+        try:
+            two_view(side, bad)
+        except ValueError as e:
+            assert msg in str(e), e
+        else:
+            raise AssertionError("expected an error")
+
+
+def test_curve_fillet_corner():
+    from core.curvemake import fillet_corner
+    from core.curvepoint import arc_table
+    from core.curvesmooth import point_state
+    # an L of two straight pieces: the round must be a quarter circle-like G1 span
+    A = np.array([(0.0, 0, 0), (2, 0, 0), (2, 2, 0)])
+    L = np.array([(-0.5, 0, 0), (1.5, 0, 0), (2, 1.5, 0)])
+    R = np.array([(0.5, 0, 0), (2, 0.5, 0), (2, 2.5, 0)])
+    A2, L2, R2, j = fillet_corner(A, L, R, 1, 0.5)
+    assert len(A2) == 4 and np.allclose(A2[j], (1.5, 0, 0), atol=1e-3) \
+        and np.allclose(A2[j + 1], (2, 0.5, 0), atol=1e-3)                  # cut 0.5 along each side
+    assert point_state(A2, L2, R2, j) != 'CORNER' and point_state(A2, L2, R2, j + 1) != 'CORNER'
+    mid = 0.125 * A2[j] + 0.375 * R2[j] + 0.375 * L2[j + 1] + 0.125 * A2[j + 1]
+    assert abs(np.linalg.norm(mid - (1.5, 0.5, 0)) - 0.5) < 2e-3          # on the circle of radius 0.5
+    # a loop with the corner at point 0
+    A = np.array([(0.0, 0, 0), (2, 0, 0), (2, 2, 0), (0, 2, 0)])
+    L = A + np.array([(0, 0.4, 0), (-0.4, 0, 0), (0, -0.4, 0), (0.4, 0, 0)])
+    R = A + np.array([(0.4, 0, 0), (0, 0.4, 0), (-0.4, 0, 0), (0, -0.4, 0)])
+    A2, L2, R2, j = fillet_corner(A, L, R, 0, 0.3, cyclic=True)
+    assert len(A2) == 5 and all(point_state(A2, L2, R2, k, True) != 'CORNER'
+                                for k in (j, (j + 1) % 5))
+    try:
+        fillet_corner(A2, L2, R2, j, 0.1, cyclic=True)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a smooth point is not a corner")
+
+
+def test_curve_offset_and_extend():
+    from core.curvemake import extend_end, fit_points, offset_points
+    from core.curvepoint import point_at
+    from core.curvesmooth import point_state
+    s = np.linspace(0, np.pi / 2, 4)                                         # a quarter circle, r = 3
+    A = np.stack([3 * np.cos(s), 3 * np.sin(s), 0 * s], -1)
+    T = np.stack([-np.sin(s), np.cos(s), 0 * s], -1) * (3 * 4 / 3 * np.tan(np.pi / 24))   # circle handles
+    L, R = A - T, A + T
+    pts = offset_points(A, L, R, 0.5, (0, 0, 1))
+    r = np.linalg.norm(pts[:, :2], axis=1)
+    assert np.abs(r - 2.5).max() < 2e-3                                     # to the left: inwards
+    pts = offset_points(A, L, R, -0.5, (0, 0, 1))
+    assert np.abs(np.linalg.norm(pts[:, :2], axis=1) - 3.5).max() < 2e-3
+    B, M, N, err = fit_points(pts)
+    assert err < 5e-3
+    # extend naturally: continues the circle-like cubic, smooth at the old end
+    A2, L2, R2 = extend_end(A, L, R, 'END', 0.8, 'NATURAL')
+    assert len(A2) == 5 and point_state(A2, L2, R2, 3) in ('G1', 'G2')
+    seg = np.linspace(0, 1, 30)
+    tail = point_at(A2, L2, R2, 3 + seg)
+    assert np.linalg.norm(np.diff(tail, axis=0), axis=1).sum() - 0.8 < 1e-3
+    assert np.abs(np.linalg.norm(tail[:, :2], axis=1) - 3.0).max() < 0.02   # still near the circle
+    A3, L3, R3 = extend_end(A, L, R, 'START', 1.0, 'STRAIGHT')
+    assert len(A3) == 5 and np.allclose(A3[0], (3, -1, 0))
+    assert point_state(A3, L3, R3, 1) == 'G1'          # straight meets the circle: tangent, not bend
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
