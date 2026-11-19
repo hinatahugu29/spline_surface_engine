@@ -1,7 +1,7 @@
 bl_info = {
     "name": "Spline Surface",
     "author": "hinata",
-    "version": (0, 86, 4),
+    "version": (0, 86, 5),
     "blender": (5, 0, 0),
     "location": "View3D > Sidebar > Spline Surface",
     "description": "Build smooth NURBS patches from boundary curves",
@@ -42,9 +42,11 @@ def register():
     zebra.register()
     curveediting.register()
     curvemarks.register()
+    links.register()
 
 
 def unregister():
+    links.unregister()
     curvemarks.unregister()
     curveediting.unregister()
     zebra.unregister()

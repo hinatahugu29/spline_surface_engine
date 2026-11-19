@@ -263,4 +263,36 @@ class SS_OT_edit_continuity(bpy.types.Operator):
         return {'FINISHED'}
 
 
+# ---------------------------------------------------------------- tension field
+# Object.ss_seam_tension: the panel's Tension field under G0 / G1 / G2. It stores
+# nothing itself: it reads the recipe's tension and setting it rebuilds the patch
+# (and what reads it) as Edit Continuity does - so dragging it shows the shape live.
+
+def _tension_get(ob):
+    meta = continuity_recipe(ob)
+    return float(meta.get("tension", 1.0)) if meta is not None else 1.0
+
+
+def _tension_set(ob, value):
+    meta = continuity_recipe(ob)
+    if meta is None or abs(float(meta.get("tension", 1.0)) - value) < 1e-6:
+        return
+    try:
+        set_continuity(bpy.context, ob, meta["continuity"], value)
+    except ValueError as e:
+        print("Spline Surface: tension not changed:", e)
+
+
+def register():
+    bpy.types.Object.ss_seam_tension = bpy.props.FloatProperty(
+        name="Tension", min=0.05, max=5.0, soft_min=0.2, soft_max=3.0, step=5, precision=2,
+        description="How far the seam's shape reaches in (rebuilds the patch, and the patches "
+                    "built on it, as you drag)",
+        get=_tension_get, set=_tension_set, options=set())
+
+
+def unregister():
+    del bpy.types.Object.ss_seam_tension
+
+
 classes = (SS_OT_edit_continuity, SS_OT_match_link_edit, SS_OT_match_link_remove)

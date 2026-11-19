@@ -269,14 +269,15 @@ class SS_PT_grow(_SubPanel, bpy.types.Panel):
         meta = continuity_recipe(context.active_object)
         if meta is not None:
             box = layout.box()
-            box.label(text="%s: %s, tension %.2f" % (context.active_object.name,
-                      meta["continuity"], meta.get("tension", 1.0)), icon='MOD_CURVE')
+            box.label(text="%s: %s" % (context.active_object.name, meta["continuity"]),
+                      icon='MOD_CURVE')
             row = box.row(align=True)
             for g in ('G0', 'G1', 'G2'):
                 op = row.operator("spline_surface.edit_continuity", text=g,
                                   depress=(g == meta["continuity"]))
                 op.continuity = g
                 op.tension = meta.get("tension", 1.0)
+            box.prop(context.active_object, "ss_seam_tension")
         _draw_match_links(layout, context.active_object)
 
 

@@ -4,6 +4,7 @@
 
 | バージョン | 日付 | 内容 |
 |---|---|---|
+| 0.86.5 | 2026-11-20 | Continuity box (an Extend, Bridge or Corner Fill patch active): a Tension field under G0 / G1 / G2. Dragging it rebuilds the patch and what is built on it as you drag; before, tension could only be changed in the Adjust Last Operation panel after pressing a G button |
 | 0.86.4 | 2026-11-20 | Curve Pull: dragging a point in the middle of a curve now pulls it (the point follows the mouse, the curve bends around it); before, it slid the point along the curve, so only end points seemed to pull. Shift+drag slides a point (in Curve Points, Shift+drag pulls it instead). Fix: Curve Pull's header showed Curve Points' title (a running operator's bl_idname reads SPLINE_SURFACE_OT_...) |
 | (docs) | 2026-11-19 | Command list (docs/COMMANDS.md): every button of the sidebar and the menus, in panel order, with its mode, whether it runs in the viewport, when it shows and its tooltip; built from the source by tools/list_commands.py, and a test fails when it is out of date. The hands-on checklist gets a section for the curve tools (v0.83-v0.86.3) |
 | 0.86.3 | 2026-11-19 | Curve Pull / Curve Points: the direction keys now also hold a dragged end point - X / Y / Z move it along that axis, P within the curve's plane (snapping waits until V); changing the key mid-drag applies at once. Before, an end always moved in the view plane |

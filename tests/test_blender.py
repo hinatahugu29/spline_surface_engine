@@ -1127,6 +1127,18 @@ def run():
             got = grade(measure(ns, nf, sh[0], sh[1], sh[2], os_, of))
             print("edit continuity", g, src.name, got, nf.shape)
             assert got == g, (g, got)
+    # the panel's Tension field: setting it rebuilds the patch, the seams stay G2
+    before = world_net(br)[0].copy()
+    assert abs(br.ss_seam_tension - json.loads(br["spline_surface"]).get("tension", 1.0)) < 1e-6
+    br.ss_seam_tension = 1.8
+    assert abs(json.loads(br["spline_surface"])["tension"] - 1.8) < 1e-6
+    assert abs(br.ss_seam_tension - 1.8) < 1e-6
+    nf, of = world_net(br)
+    assert np.abs(nf - before).max() > 1e-3, "tension field did not rebuild"
+    for src in (pa, pb):
+        ns, os_ = world_net(src)
+        sh = find_shared_edge(ns, nf, 1e-4, os_, of)
+        assert grade(measure(ns, nf, sh[0], sh[1], sh[2], os_, of)) == 'G2'
     # live update: move the base, the extension chain follows and stays G2
     bpy.context.scene.cursor.location = (0, 90, 0)
     bpy.ops.spline_surface.add_patch(shape='DOME')
