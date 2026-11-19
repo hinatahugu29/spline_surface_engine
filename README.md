@@ -32,7 +32,7 @@ GNU General Public License v3.0 以降（GPL-3.0-or-later）。個人・商用�
 - [English summary](README_en.md)
 - [説明書](docs/MANUAL.md)：考え方、全機能の説明、操作キー、困ったとき、不具合の報告
 - [機能一覧](docs/FEATURES.md)：何ができるか、何ができないか、検証の状況
-- [作業の流れ](docs/WORKFLOWS.md)：目的別に6例の手順
+- [作業の流れ](docs/WORKFLOWS.md)：目的別に7例の手順
 - [更新履歴](docs/CHANGELOG.md)
 - [検証の記録](docs/VALIDATION_body.md)：車体の前半＋キャビンを作って見つけたこと
 - [手で確かめる項目](docs/CHECKLIST_hands_on.md)：自動テストでは見られない、操作の感触と見た目

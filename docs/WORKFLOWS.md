@@ -1,6 +1,6 @@
 # Spline Surface 作業の流れ
 
-目的ごとに、最初から最後までの手順を6例にまとめました。ボタンの意味は [説明書](MANUAL.md)、機能の全体は [機能一覧](FEATURES.md) を見てください。
+目的ごとに、最初から最後までの手順を7例にまとめました。ボタンの意味は [説明書](MANUAL.md)、機能の全体は [機能一覧](FEATURES.md) を見てください。
 
 どの例も、サイドバー（N キー）の **Spline Surface** タブから始めます。座標は x＝車幅方向（中心線が x=0）、y＝前後（前が +y）、z＝上下です。
 
@@ -12,6 +12,7 @@
 | 4 | カーブの網で、1枚のパネルを滑らかに作る | Curve Network、Network Check、Fair Curves |
 | 5 | 窓やライトの開口部を作る | Project Curve、Coons、Flange |
 | 6 | 仕上げの検査とメッシュ出力 | Diagnose、Check Continuity、Zebra、Panel Gap と Even Gap、To Mesh |
+| 7 | カーブを狙った形に整える | Two-View Curve、Refit Curve、Curve Points（Pull）、Point Continuity、Make G2、Constrained Move、Attach Curve Ends |
 
 ---
 
@@ -120,6 +121,24 @@ blender -b --factory-startup --python tools/build_sample_body.py
 8. Output 欄で Mesh Resolution を決め、全部の面を選んで **To Mesh**。継ぎ目は溶接され、隙間はない。Quads をオンのままにすると、5角形以上の面は四角形と三角形に分けられ、サブディビジョンしても崩れにくい。1本の辺に3枚以上の面が付く所（継ぎ目のモールなど）は警告が出て、頂点グループ non_manifold に入る
 
 **メッシュにした後**：メッシュは元のパッチとは切り離されたスナップショット。形を変えたいときはパッチに戻って直し、To Mesh をやり直す。
+
+---
+
+## 例 7：カーブを狙った形に整える
+
+**目的**：下絵に合わせてキャラクターラインを描き、点の少ない滑らかなカーブに整えて、面の材料にする。
+
+1. Create 欄の **Add Blueprint** で側面図と上面図を立てる（例 3 と同じ）
+2. 側面図に合わせて1本、上面図に合わせて1本、ラインを描く（Line で出して点を動かす、Blender 標準のベジェカーブでもよい）。それぞれ、その図の平面に平らなままにする
+3. 2本を選んで Curves 欄の **Two-View Curve**。側面の高さと上面の幅を持った 3D カーブができる
+4. 点が多いときは **Refit Curve**（Tolerance 0.2% 前後）で、形を保ったまま点を減らす
+5. **Curve Points** で形を詰める。カーブの上をドラッグすると、つかんだ所が付いてきて周りがなめらかに曲がる（ホイールで範囲、P で平らなカーブの平面に沿って）。点が足りなければカーブの上をクリックして足し（形は変わらない）、位置が悪ければ点をドラッグしてカーブに沿って滑らせる。余分な点は Ctrl+クリックで消す
+6. **Point Continuity** を On にして点の色を見る。黄色（G1）の点が残っていれば **Make G2**（オブジェクトモードなら全部の点）。曲率の櫛（**Curvature Comb**）も On にすると、編集しながら曲がり具合の変化が見える
+7. 編集モードで、点を**その点の向き**に動かしたいときは **Constrained Move**（N＝曲がる側、T＝カーブに沿って、H＝ハンドルの長さだけ）。K を On にしておくと G2 のまま動く
+8. ラインの端を面につなぐときは **Attach Curve Ends**。面の辺に端を乗せ、G1（面に沿う向き）にする。ほかのラインの端に続けるなら G2
+9. 角を丸めたい所は **Curve Fillet**、平行な見切り線は **Offset Curve**、少し伸ばしたいときは **Extend Curve**
+
+**ポイント**：面の材料になるカーブの滑らかさは、そのまま面の滑らかさになる。Point Continuity が緑（G2）になっているカーブから張った面は、縞模様（Zebra）もきれいに流れる。カーブを後から動かしても、Live Update で面が付いてくる。
 
 ---
 
